@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PlataformaRes — Sistema de Reservas</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- Lucide Icons via CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/lucide/0.263.1/umd/lucide.min.js"></script>
+</head>
+<body>
+
+<!-- ==================== SIDEBAR ==================== -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-brand">
+    <div class="brand-icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+    </div>
+    <div class="brand-text">
+      <span class="brand-name">PlataformaRes</span>
+      <span class="brand-sub">Gestão de Equipamentos</span>
+    </div>
+  </div>
+
+  <!-- Perfil simulado -->
+  <div class="sidebar-profile">
+    <div class="profile-avatar" id="profileAvatar">A</div>
+    <div class="profile-info">
+      <span class="profile-name" id="profileName">Administrador</span>
+      <span class="profile-role" id="profileRole">Admin</span>
+    </div>
+    <button class="profile-switch-btn" onclick="openProfileModal()" title="Trocar perfil">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 014-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>
+    </button>
+  </div>
+
+  <nav class="sidebar-nav">
+    <div class="nav-group">
+      <span class="nav-label">Principal</span>
+      <a class="nav-item active" data-page="dashboard" onclick="navigate('dashboard')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        Dashboard
+      </a>
+      <a class="nav-item" data-page="platforms" onclick="navigate('platforms')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 20h20"/><path d="M6 20V10l6-6 6 6v10"/><path d="M10 20v-5h4v5"/></svg>
+        Plataformas
+      </a>
+      <a class="nav-item" data-page="reservations" onclick="navigate('reservations')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z"/></svg>
+        Reservas
+      </a>
+      <a class="nav-item" data-page="calendar" onclick="navigate('calendar')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><circle cx="12" cy="16" r="1" fill="currentColor"/><circle cx="8" cy="16" r="1" fill="currentColor"/><circle cx="16" cy="16" r="1" fill="currentColor"/></svg>
+        Calendário
+      </a>
+      <a class="nav-item" data-page="history" onclick="navigate('history')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><path d="M12 22V12"/><circle cx="12" cy="12" r="10" stroke="none"/><path d="M12 6v6l4 2" stroke-width="2"/><circle cx="12" cy="12" r="9"/></svg>
+        Histórico
+      </a>
+    </div>
+  </nav>
+
+  <div class="sidebar-footer">
+    <span class="version-tag">v1.0.0 — Protótipo</span>
+  </div>
+</aside>
+
+<!-- ==================== MAIN CONTENT ==================== -->
+<div class="main-wrapper">
+
+  <!-- Top Bar -->
+  <header class="topbar">
+    <button class="hamburger" onclick="toggleSidebar()">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+    <div class="topbar-title" id="topbarTitle">Dashboard</div>
+    <div class="topbar-actions">
+      <div class="topbar-date" id="topbarDate"></div>
+      <button class="btn-primary-sm" onclick="openNewReservationModal()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Nova Reserva
+      </button>
+    </div>
+  </header>
+
+  <!-- Pages -->
+  <main class="content">
+
+    <!-- ===== DASHBOARD ===== -->
+    <section class="page active" id="page-dashboard">
+      <div class="page-header">
+        <h1>Visão Geral</h1>
+        <p>Resumo do sistema — <span id="dashDate"></span></p>
+      </div>
+
+      <!-- KPI Cards -->
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-icon kpi-blue">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 20h20"/><path d="M6 20V10l6-6 6 6v10"/><path d="M10 20v-5h4v5"/></svg>
+          </div>
+          <div class="kpi-info">
+            <span class="kpi-value" id="kpi-total-platforms">0</span>
+            <span class="kpi-label">Plataformas</span>
+          </div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon kpi-green">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          </div>
+          <div class="kpi-info">
+            <span class="kpi-value" id="kpi-available">0</span>
+            <span class="kpi-label">Disponíveis</span>
+          </div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon kpi-orange">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z"/></svg>
+          </div>
+          <div class="kpi-info">
+            <span class="kpi-value" id="kpi-today">0</span>
+            <span class="kpi-label">Reservas Hoje</span>
+          </div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon kpi-purple">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </div>
+          <div class="kpi-info">
+            <span class="kpi-value" id="kpi-upcoming">0</span>
+            <span class="kpi-label">Próximas 7 dias</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="dash-cols">
+        <!-- Reservas do dia -->
+        <div class="dash-panel">
+          <div class="panel-header">
+            <h2>Reservas de Hoje</h2>
+            <span class="panel-tag" id="todayCount">0</span>
+          </div>
+          <div id="todayReservations" class="panel-list"></div>
+        </div>
+
+        <!-- Próximas reservas -->
+        <div class="dash-panel">
+          <div class="panel-header">
+            <h2>Próximas Reservas</h2>
+          </div>
+          <div id="upcomingReservations" class="panel-list"></div>
+        </div>
+
+        <!-- Status das plataformas -->
+        <div class="dash-panel dash-panel--full">
+          <div class="panel-header">
+            <h2>Status das Plataformas</h2>
+          </div>
+          <div id="platformStatusGrid" class="platform-status-grid"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== PLATAFORMAS ===== -->
+    <section class="page" id="page-platforms">
+      <div class="page-header">
+        <div>
+          <h1>Plataformas</h1>
+          <p>Gerencie os equipamentos e espaços compartilhados</p>
+        </div>
+        <button class="btn-primary" onclick="openPlatformModal()" id="addPlatformBtn">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Nova Plataforma
+        </button>
+      </div>
+
+      <!-- Filtros -->
+      <div class="filter-bar">
+        <div class="search-wrap">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" placeholder="Buscar plataforma..." id="platformSearch" oninput="filterPlatforms()" />
+        </div>
+        <select id="platformStatusFilter" onchange="filterPlatforms()">
+          <option value="">Todos os status</option>
+          <option value="disponivel">Disponível</option>
+          <option value="reservada">Reservada</option>
+          <option value="manutencao">Em Manutenção</option>
+          <option value="inativa">Inativa</option>
+        </select>
+      </div>
+
+      <div class="table-wrap">
+        <table class="data-table" id="platformsTable">
+          <thead>
+            <tr>
+              <th>Código</th>
+              <th>Nome</th>
+              <th>Localização</th>
+              <th>Capacidade</th>
+              <th>Status</th>
+              <th>Observações</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody id="platformsTableBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ===== RESERVAS ===== -->
+    <section class="page" id="page-reservations">
+      <div class="page-header">
+        <div>
+          <h1>Reservas</h1>
+          <p>Agende e gerencie o uso das plataformas</p>
+        </div>
+        <button class="btn-primary" onclick="openNewReservationModal()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Nova Reserva
+        </button>
+      </div>
+
+      <!-- Filtros -->
+      <div class="filter-bar">
+        <div class="search-wrap">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" placeholder="Buscar por setor, responsável..." id="reservationSearch" oninput="filterReservations()" />
+        </div>
+        <select id="reservationStatusFilter" onchange="filterReservations()">
+          <option value="">Todos os status</option>
+          <option value="agendada">Agendada</option>
+          <option value="em_uso">Em Uso</option>
+          <option value="concluida">Concluída</option>
+          <option value="cancelada">Cancelada</option>
+        </select>
+        <input type="date" id="reservationDateFilter" onchange="filterReservations()" />
+      </div>
+
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Setor</th>
+              <th>Responsável</th>
+              <th>Plataforma</th>
+              <th>Data</th>
+              <th>Horário</th>
+              <th>Prioridade</th>
+              <th>Status</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody id="reservationsTableBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ===== CALENDÁRIO ===== -->
+    <section class="page" id="page-calendar">
+      <div class="page-header">
+        <div>
+          <h1>Calendário</h1>
+          <p>Visualize a agenda de reservas por semana</p>
+        </div>
+        <div class="cal-nav">
+          <button class="btn-outline" onclick="changeWeek(-1)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <span id="calWeekLabel" style="font-weight:600;font-size:0.95rem;"></span>
+          <button class="btn-outline" onclick="changeWeek(1)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+          <button class="btn-outline" onclick="goToToday()">Hoje</button>
+        </div>
+      </div>
+
+      <!-- Legenda de setores -->
+      <div class="cal-legend" id="calLegend"></div>
+
+      <div class="cal-grid-wrap">
+        <div class="cal-grid" id="calGrid"></div>
+      </div>
+    </section>
+
+    <!-- ===== HISTÓRICO ===== -->
+    <section class="page" id="page-history">
+      <div class="page-header">
+        <div>
+          <h1>Histórico</h1>
+          <p>Registro completo de todas as reservas</p>
+        </div>
+        <button class="btn-outline" onclick="exportCSV()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Exportar CSV
+        </button>
+      </div>
+
+      <!-- Filtros -->
+      <div class="filter-bar filter-bar--wide">
+        <div class="search-wrap">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" placeholder="Buscar..." id="historySearch" oninput="filterHistory()" />
+        </div>
+        <select id="historySectorFilter" onchange="filterHistory()">
+          <option value="">Todos os setores</option>
+        </select>
+        <select id="historyPlatformFilter" onchange="filterHistory()">
+          <option value="">Todas as plataformas</option>
+        </select>
+        <select id="historyStatusFilter" onchange="filterHistory()">
+          <option value="">Todos os status</option>
+          <option value="agendada">Agendada</option>
+          <option value="em_uso">Em Uso</option>
+          <option value="concluida">Concluída</option>
+          <option value="cancelada">Cancelada</option>
+        </select>
+        <input type="date" id="historyDateFrom" onchange="filterHistory()" placeholder="De" />
+        <input type="date" id="historyDateTo" onchange="filterHistory()" placeholder="Até" />
+      </div>
+
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Data/Hora Reserva</th>
+              <th>Setor</th>
+              <th>Responsável</th>
+              <th>Plataforma</th>
+              <th>Período</th>
+              <th>Motivo</th>
+              <th>Status</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody id="historyTableBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ==================== MODALS ==================== -->
+
+<!-- Modal: Detalhes / Editar Reserva -->
+<div class="modal-overlay" id="reservationDetailModal">
+  <div class="modal modal--lg">
+    <div class="modal-header">
+      <h3 id="reservationDetailTitle">Detalhes da Reserva</h3>
+      <button class="modal-close" onclick="closeModal('reservationDetailModal')">✕</button>
+    </div>
+    <div class="modal-body" id="reservationDetailBody"></div>
+    <div class="modal-footer" id="reservationDetailFooter"></div>
+  </div>
+</div>
+
+<!-- Modal: Nova/Editar Reserva (Form) -->
+<div class="modal-overlay" id="reservationFormModal">
+  <div class="modal modal--lg">
+    <div class="modal-header">
+      <h3 id="reservationFormTitle">Nova Reserva</h3>
+      <button class="modal-close" onclick="closeModal('reservationFormModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <form id="reservationForm" onsubmit="submitReservation(event)">
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Setor Solicitante *</label>
+            <select id="rf-sector" required onchange="updateResponsibleOptions()">
+              <option value="">Selecione o setor</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Responsável *</label>
+            <input type="text" id="rf-responsible" placeholder="Nome do responsável" required />
+          </div>
+          <div class="form-group">
+            <label>Plataforma *</label>
+            <select id="rf-platform" required onchange="checkConflicts()">
+              <option value="">Selecione a plataforma</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Prioridade</label>
+            <select id="rf-priority">
+              <option value="normal">Normal</option>
+              <option value="alta">Alta</option>
+              <option value="urgente">Urgente</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Data *</label>
+            <input type="date" id="rf-date" required onchange="checkConflicts()" />
+          </div>
+          <div class="form-group form-group--half">
+            <label>Horário Inicial *</label>
+            <input type="time" id="rf-start" required onchange="checkConflicts()" />
+          </div>
+          <div class="form-group form-group--half">
+            <label>Horário Final *</label>
+            <input type="time" id="rf-end" required onchange="checkConflicts()" />
+          </div>
+          <div class="form-group form-group--full">
+            <label>Motivo / Descrição *</label>
+            <textarea id="rf-motive" placeholder="Descreva o motivo e detalhes do uso..." rows="3" required></textarea>
+          </div>
+        </div>
+        <!-- Alerta de conflito -->
+        <div class="conflict-alert" id="conflictAlert" style="display:none;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <span id="conflictMsg">Conflito de horário detectado.</span>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('reservationFormModal')">Cancelar</button>
+      <button class="btn-primary" onclick="submitReservation(event)" id="reservationSubmitBtn">Criar Reserva</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Nova/Editar Plataforma -->
+<div class="modal-overlay" id="platformModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="platformModalTitle">Nova Plataforma</h3>
+      <button class="modal-close" onclick="closeModal('platformModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <form id="platformForm">
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Código / ID *</label>
+            <input type="text" id="pf-code" placeholder="Ex: PLT-001" required />
+          </div>
+          <div class="form-group">
+            <label>Nome *</label>
+            <input type="text" id="pf-name" placeholder="Nome da plataforma" required />
+          </div>
+          <div class="form-group">
+            <label>Localização *</label>
+            <input type="text" id="pf-location" placeholder="Ex: Galpão A, Piso 2" required />
+          </div>
+          <div class="form-group">
+            <label>Capacidade / Carga</label>
+            <input type="text" id="pf-capacity" placeholder="Ex: 500kg, 10 pessoas" />
+          </div>
+          <div class="form-group">
+            <label>Status</label>
+            <select id="pf-status">
+              <option value="disponivel">Disponível</option>
+              <option value="manutencao">Em Manutenção</option>
+              <option value="inativa">Inativa</option>
+            </select>
+          </div>
+          <div class="form-group form-group--full">
+            <label>Observações</label>
+            <textarea id="pf-notes" placeholder="Informações adicionais..." rows="2"></textarea>
+          </div>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('platformModal')">Cancelar</button>
+      <button class="btn-primary" onclick="submitPlatform()" id="platformSubmitBtn">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Trocar Perfil -->
+<div class="modal-overlay" id="profileModal">
+  <div class="modal modal--sm">
+    <div class="modal-header">
+      <h3>Selecionar Perfil</h3>
+      <button class="modal-close" onclick="closeModal('profileModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:1rem;">Selecione o perfil para simular diferentes níveis de acesso.</p>
+      <div class="profile-list" id="profileList"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast Notification -->
+<div class="toast" id="toast"></div>
+
+<script src="script.js"></script>
+</body>
+</html>

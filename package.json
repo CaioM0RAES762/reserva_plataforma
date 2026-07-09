@@ -1,0 +1,18 @@
+{
+  "name": "plataformares",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev:web": "pnpm --filter @plataformares/web dev",
+    "dev:api": "pnpm --filter @plataformares/api dev",
+    "build": "pnpm -r --if-present build",
+    "lint": "pnpm -r --if-present lint",
+    "test": "pnpm -r --if-present test",
+    "migrate:up": "pnpm --filter @plataformares/api migrate:up",
+    "migrate:down": "pnpm --filter @plataformares/api migrate:down",
+    "seed": "pnpm --filter @plataformares/api seed"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

@@ -1,0 +1,12 @@
+node_modules/
+.claude
+.next/
+dist/
+build/
+*.log
+.env
+.env.local
+coverage/
+.turbo/
+SDD.md
+MASTER.md

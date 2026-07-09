@@ -1,0 +1,22 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 20px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.badge::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.disponivel { background: var(--green-light); color: var(--green); }
+.reservada { background: var(--primary-light); color: var(--primary); }
+.manutencao { background: var(--orange-light); color: var(--orange); }
+.inativa { background: #F3F4F6; color: var(--gray); }
