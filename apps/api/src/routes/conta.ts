@@ -11,7 +11,9 @@ export async function contaRoutes(app: FastifyInstance): Promise<void> {
       .request()
       .input("id", sql.UniqueIdentifier, request.usuario!.sub)
       .query(
-        "SELECT id, nome, email, perfil, setor_id, ultimo_login FROM Usuario WHERE id = @id"
+        `SELECT u.id, u.nome, u.email, u.perfil, u.setor_id, s.nome AS setor_nome, u.ultimo_login
+         FROM Usuario u LEFT JOIN Setor s ON s.id = u.setor_id
+         WHERE u.id = @id`
       );
     const usuario = result.recordset[0];
     if (!usuario) {
@@ -23,6 +25,7 @@ export async function contaRoutes(app: FastifyInstance): Promise<void> {
       email: usuario.email,
       perfil: usuario.perfil,
       setorId: usuario.setor_id,
+      setorNome: usuario.setor_nome,
       ultimoLogin: usuario.ultimo_login,
     });
   });

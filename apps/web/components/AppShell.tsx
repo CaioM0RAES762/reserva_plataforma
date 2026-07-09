@@ -8,6 +8,7 @@ const TITULOS: Record<string, string> = {
   "/dashboard": "Dashboard",
   "/conta": "Minha Conta",
   "/plataformas": "Plataformas",
+  "/reservas": "Reservas",
 };
 
 export function AppShell({ children }: { children: React.ReactNode }) {

@@ -80,3 +80,36 @@ export function templateCodigoVerificacao(codigo: string, tipo: "ativacao_conta"
     `,
   };
 }
+
+export interface DadosNovaReservaPendente {
+  plataformaNome: string;
+  setorNome: string;
+  solicitanteNome: string;
+  data: string;
+  horaInicio: string;
+  horaFim: string;
+  motivo: string;
+  prioridade: string;
+}
+
+export function templateNovaReservaPendente(dados: DadosNovaReservaPendente): {
+  assunto: string;
+  corpoHtml: string;
+} {
+  return {
+    assunto: `PlataformaRes — Nova reserva pendente (${dados.plataformaNome})`,
+    corpoHtml: `
+      <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
+        <h2>Nova reserva aguardando aprovação</h2>
+        <p><strong>${dados.solicitanteNome}</strong> (${dados.setorNome}) solicitou o uso de <strong>${dados.plataformaNome}</strong>.</p>
+        <table style="font-size: 14px; color: #333;">
+          <tr><td style="padding: 2px 8px 2px 0;color:#666;">Data</td><td>${dados.data}</td></tr>
+          <tr><td style="padding: 2px 8px 2px 0;color:#666;">Horário</td><td>${dados.horaInicio} – ${dados.horaFim}</td></tr>
+          <tr><td style="padding: 2px 8px 2px 0;color:#666;">Prioridade</td><td>${dados.prioridade}</td></tr>
+          <tr><td style="padding: 2px 8px 2px 0;color:#666;">Motivo</td><td>${dados.motivo}</td></tr>
+        </table>
+        <p style="color: #666; font-size: 12px;">Acesse o PlataformaRes para aprovar ou rejeitar esta solicitação.</p>
+      </div>
+    `,
+  };
+}

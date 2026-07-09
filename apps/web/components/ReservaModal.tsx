@@ -1,0 +1,228 @@
+"use client";
+
+import { useEffect, useState, type FormEvent } from "react";
+import styles from "../app/(app)/reservas/page.module.css";
+import { apiFetch } from "../lib/api";
+
+export interface ReservaFormValues {
+  plataformaId: string;
+  data: string;
+  horaInicio: string;
+  horaFim: string;
+  motivo: string;
+  prioridade: "normal" | "alta" | "urgente";
+}
+
+interface PlataformaOpcao {
+  id: string;
+  nome: string;
+  status: string;
+}
+
+interface ConflitoResposta {
+  conflito: boolean;
+  reserva: { id: string; setorNome: string; horaInicio: string; horaFim: string } | null;
+}
+
+interface ReservaModalProps {
+  solicitanteNome: string;
+  setorNome: string | null;
+  onClose: () => void;
+  onSalvar: (valores: ReservaFormValues) => Promise<void>;
+}
+
+function hojeStr(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+export function ReservaModal({ solicitanteNome, setorNome, onClose, onSalvar }: ReservaModalProps) {
+  const [plataformas, setPlataformas] = useState<PlataformaOpcao[]>([]);
+  const [plataformaId, setPlataformaId] = useState("");
+  const [prioridade, setPrioridade] = useState<"normal" | "alta" | "urgente">("normal");
+  const [data, setData] = useState(hojeStr());
+  const [horaInicio, setHoraInicio] = useState("");
+  const [horaFim, setHoraFim] = useState("");
+  const [motivo, setMotivo] = useState("");
+  const [erro, setErro] = useState<string | null>(null);
+  const [salvando, setSalvando] = useState(false);
+  const [conflito, setConflito] = useState<ConflitoResposta["reserva"]>(null);
+  const [horarioInvalido, setHorarioInvalido] = useState(false);
+
+  useEffect(() => {
+    apiFetch<PlataformaOpcao[]>("/api/v1/plataformas")
+      .then((lista) => setPlataformas(lista.filter((p) => p.status !== "inativa")))
+      .catch(() => setPlataformas([]));
+  }, []);
+
+  useEffect(() => {
+    if (!plataformaId || !data || !horaInicio || !horaFim) {
+      setConflito(null);
+      setHorarioInvalido(false);
+      return;
+    }
+    if (horaFim <= horaInicio) {
+      setHorarioInvalido(true);
+      setConflito(null);
+      return;
+    }
+    setHorarioInvalido(false);
+
+    const timer = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({ plataformaId, data, horaInicio, horaFim });
+        const resposta = await apiFetch<ConflitoResposta>(`/api/v1/reservas/conflitos?${params}`);
+        setConflito(resposta.conflito ? resposta.reserva : null);
+      } catch {
+        setConflito(null);
+      }
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [plataformaId, data, horaInicio, horaFim]);
+
+  const bloqueado = horarioInvalido || conflito !== null;
+
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    setErro(null);
+
+    if (!plataformaId || !data || !horaInicio || !horaFim || !motivo.trim()) {
+      setErro("Preencha todos os campos obrigatórios.");
+      return;
+    }
+    if (bloqueado) {
+      setErro("Não é possível salvar: conflito de horário detectado.");
+      return;
+    }
+
+    setSalvando(true);
+    try {
+      await onSalvar({ plataformaId, data, horaInicio, horaFim, motivo: motivo.trim(), prioridade });
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Erro ao criar reserva.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <div
+      className={styles.modalOverlay}
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div className={styles.modal}>
+        <div className={styles.modalHeader}>
+          <h3>Nova Reserva</h3>
+          <button type="button" className={styles.modalClose} onClick={onClose}>
+            ✕
+          </button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className={styles.modalBody}>
+            {erro && <div className={styles.error}>{erro}</div>}
+            <div className={styles.formGrid}>
+              <div className={styles.formGroup}>
+                <label htmlFor="rf-sector">Setor Solicitante</label>
+                <input id="rf-sector" value={setorNome ?? "—"} disabled />
+              </div>
+              <div className={styles.formGroup}>
+                <label htmlFor="rf-responsible">Responsável</label>
+                <input id="rf-responsible" value={solicitanteNome} disabled />
+              </div>
+              <div className={styles.formGroup}>
+                <label htmlFor="rf-platform">Plataforma *</label>
+                <select
+                  id="rf-platform"
+                  value={plataformaId}
+                  onChange={(e) => setPlataformaId(e.target.value)}
+                  required
+                >
+                  <option value="">Selecione a plataforma</option>
+                  {plataformas.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.nome}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className={styles.formGroup}>
+                <label htmlFor="rf-priority">Prioridade</label>
+                <select
+                  id="rf-priority"
+                  value={prioridade}
+                  onChange={(e) => setPrioridade(e.target.value as ReservaFormValues["prioridade"])}
+                >
+                  <option value="normal">Normal</option>
+                  <option value="alta">Alta</option>
+                  <option value="urgente">Urgente</option>
+                </select>
+              </div>
+              <div className={styles.formGroup}>
+                <label htmlFor="rf-date">Data *</label>
+                <input
+                  id="rf-date"
+                  type="date"
+                  min={hojeStr()}
+                  value={data}
+                  onChange={(e) => setData(e.target.value)}
+                  required
+                />
+              </div>
+              <div className={styles.formGroup}>
+                <label htmlFor="rf-start">Horário Inicial *</label>
+                <input
+                  id="rf-start"
+                  type="time"
+                  value={horaInicio}
+                  onChange={(e) => setHoraInicio(e.target.value)}
+                  required
+                />
+              </div>
+              <div className={styles.formGroup}>
+                <label htmlFor="rf-end">Horário Final *</label>
+                <input
+                  id="rf-end"
+                  type="time"
+                  value={horaFim}
+                  onChange={(e) => setHoraFim(e.target.value)}
+                  required
+                />
+              </div>
+              <div className={`${styles.formGroup} ${styles.formGroupFull}`}>
+                <label htmlFor="rf-motive">Motivo / Descrição *</label>
+                <textarea
+                  id="rf-motive"
+                  rows={3}
+                  value={motivo}
+                  onChange={(e) => setMotivo(e.target.value)}
+                  placeholder="Descreva o motivo e detalhes do uso..."
+                  required
+                />
+              </div>
+            </div>
+
+            {horarioInvalido && (
+              <div className={styles.conflictAlert} id="conflictAlert">
+                O horário final deve ser após o horário inicial.
+              </div>
+            )}
+            {!horarioInvalido && conflito && (
+              <div className={styles.conflictAlert} id="conflictAlert">
+                Conflito com reserva do setor {conflito.setorNome} ({conflito.horaInicio}–{conflito.horaFim}).
+              </div>
+            )}
+          </div>
+          <div className={styles.modalFooter}>
+            <button type="button" className={styles.btnGhost} onClick={onClose}>
+              Cancelar
+            </button>
+            <button type="submit" className={styles.btnPrimary} disabled={salvando || bloqueado}>
+              {salvando ? "Criando..." : "Criar Reserva"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
