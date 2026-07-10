@@ -8,6 +8,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3333";
 interface Kpis {
   totalPlataformas: number;
   disponiveis: number;
+  pendenciasAprovacao: number;
 }
 
 interface Plataforma {
@@ -32,6 +33,7 @@ export default async function DashboardPage() {
   const usuario = await usuarioRes.json();
   const kpis: Kpis = await kpisRes.json();
   const plataformas: Plataforma[] = await plataformasRes.json();
+  const ehAprovador = usuario.perfil === "admin" || usuario.perfil === "gestor_setor";
 
   return (
     <section>
@@ -49,6 +51,12 @@ export default async function DashboardPage() {
           <span className={styles.kpiValue}>{kpis.disponiveis}</span>
           <span className={styles.kpiLabel}>Disponíveis</span>
         </div>
+        {ehAprovador && (
+          <Link href="/reservas/aprovacoes" className={styles.kpiCard}>
+            <span className={styles.kpiValue}>{kpis.pendenciasAprovacao}</span>
+            <span className={styles.kpiLabel}>Pendências de Aprovação</span>
+          </Link>
+        )}
       </div>
 
       <div className={styles.panel}>

@@ -9,6 +9,7 @@ interface NavItem {
   label: string;
   icon: React.ReactNode;
   disponivel: boolean;
+  perfis?: Array<"admin" | "gestor_setor" | "colaborador">;
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -48,9 +49,21 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
+    href: "/reservas/aprovacoes",
+    label: "Fila de Aprovações",
+    disponivel: true,
+    perfis: ["admin", "gestor_setor"],
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M9 11l3 3L22 4" />
+        <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
+      </svg>
+    ),
+  },
+  {
     href: "/calendario",
     label: "Calendário",
-    disponivel: false,
+    disponivel: true,
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <rect x="3" y="4" width="18" height="18" rx="2" />
@@ -61,7 +74,7 @@ const NAV_ITEMS: NavItem[] = [
   {
     href: "/historico",
     label: "Histórico",
-    disponivel: false,
+    disponivel: true,
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <circle cx="12" cy="12" r="9" />
@@ -73,8 +86,14 @@ const NAV_ITEMS: NavItem[] = [
 
 export interface SidebarProps {
   nome: string;
-  perfil: "admin" | "colaborador";
+  perfil: "admin" | "gestor_setor" | "colaborador";
 }
+
+const PERFIL_LABEL: Record<SidebarProps["perfil"], string> = {
+  admin: "Admin",
+  gestor_setor: "Gestor de Setor",
+  colaborador: "Colaborador",
+};
 
 export function Sidebar({ nome, perfil }: SidebarProps) {
   const pathname = usePathname();
@@ -84,6 +103,7 @@ export function Sidebar({ nome, perfil }: SidebarProps) {
     .slice(0, 2)
     .join("")
     .toUpperCase();
+  const itensVisiveis = NAV_ITEMS.filter((item) => !item.perfis || item.perfis.includes(perfil));
 
   return (
     <aside className={styles.sidebar}>
@@ -104,14 +124,14 @@ export function Sidebar({ nome, perfil }: SidebarProps) {
         <div className={styles.profileAvatar}>{iniciais}</div>
         <div className={styles.profileInfo}>
           <span className={styles.profileName}>{nome}</span>
-          <span className={styles.profileRole}>{perfil === "admin" ? "Admin" : "Colaborador"}</span>
+          <span className={styles.profileRole}>{PERFIL_LABEL[perfil]}</span>
         </div>
       </div>
 
       <nav className={styles.nav}>
         <div className={styles.navGroup}>
           <span className={styles.navLabel}>Principal</span>
-          {NAV_ITEMS.map((item) =>
+          {itensVisiveis.map((item) =>
             item.disponivel ? (
               <Link
                 key={item.href}
@@ -133,7 +153,7 @@ export function Sidebar({ nome, perfil }: SidebarProps) {
       </nav>
 
       <div className={styles.footer}>
-        <span className={styles.versionTag}>PlataformaRes — S3</span>
+        <span className={styles.versionTag}>PlataformaRes — S7</span>
       </div>
     </aside>
   );

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { STATUS_PLATAFORMA } from "../enums.js";
+import { CATEGORIAS_PLATAFORMA, RISCOS_PLATAFORMA, STATUS_PLATAFORMA } from "../enums.js";
 
 export const plataformaPublicaSchema = z.object({
   id: z.string().uuid(),
@@ -8,6 +8,9 @@ export const plataformaPublicaSchema = z.object({
   localizacao: z.string().nullable(),
   capacidade: z.number().int().nullable(),
   status: z.enum(STATUS_PLATAFORMA),
+  categoria: z.enum(CATEGORIAS_PLATAFORMA),
+  risco: z.enum(RISCOS_PLATAFORMA),
+  aprovacaoAutomatica: z.boolean(),
   observacoes: z.string().nullable(),
   criadoEm: z.string(),
   atualizadoEm: z.string(),
@@ -19,6 +22,11 @@ export const criarPlataformaSchema = z.object({
   nome: z.string().trim().min(2, "Nome deve ter no mínimo 2 caracteres").max(120),
   localizacao: z.string().trim().max(160).optional(),
   capacidade: z.number().int().positive().optional(),
+  categoria: z.enum(CATEGORIAS_PLATAFORMA).default("outro"),
+  // RN: risco tem default por categoria (SDD §2.4) — quando omitido, o backend aplica
+  // RISCO_PADRAO_POR_CATEGORIA; quando informado, o Admin pode sobrescrever.
+  risco: z.enum(RISCOS_PLATAFORMA).optional(),
+  aprovacaoAutomatica: z.boolean().default(false),
   observacoes: z.string().trim().max(500).optional(),
 });
 export type CriarPlataformaInput = z.infer<typeof criarPlataformaSchema>;
@@ -36,5 +44,6 @@ export type AtualizarStatusPlataformaInput = z.infer<typeof atualizarStatusPlata
 export const dashboardKpisSchema = z.object({
   totalPlataformas: z.number().int().nonnegative(),
   disponiveis: z.number().int().nonnegative(),
+  pendenciasAprovacao: z.number().int().nonnegative(),
 });
 export type DashboardKpis = z.infer<typeof dashboardKpisSchema>;

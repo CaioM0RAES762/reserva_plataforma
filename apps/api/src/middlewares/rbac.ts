@@ -29,3 +29,15 @@ export function requireRole(perfis: JwtPayload["perfil"][]) {
     }
   };
 }
+
+export interface UsuarioSessao {
+  perfil: JwtPayload["perfil"];
+  setorId: string | null;
+}
+
+// RN-RES-07 (S7): Admin aprova/rejeita/altera status de reserva de qualquer setor;
+// Gestor de Setor só atua em reservas do próprio setor; Colaborador nunca chega aqui
+// (bloqueado por requireRole nas rotas de aprovação antes desta checagem).
+export function usuarioNoEscopoDaReserva(usuario: UsuarioSessao, setorReservaId: string): boolean {
+  return usuario.perfil === "admin" || usuario.setorId === setorReservaId;
+}

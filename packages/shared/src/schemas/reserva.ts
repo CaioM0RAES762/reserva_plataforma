@@ -17,6 +17,11 @@ export const reservaPublicaSchema = z.object({
   motivo: z.string(),
   prioridade: z.enum(PRIORIDADES_RESERVA),
   status: z.enum(STATUS_RESERVA),
+  aprovadoPorNome: z.string().nullable(),
+  segundaAprovacaoPorNome: z.string().nullable(),
+  motivoRejeicao: z.string().nullable(),
+  horaInicioReal: z.string().nullable(),
+  horaFimReal: z.string().nullable(),
   criadoEm: z.string(),
   atualizadoEm: z.string(),
 });
@@ -45,6 +50,32 @@ export const conflitoQuerySchema = z.object({
   ignorarReservaId: z.string().uuid().optional(),
 });
 export type ConflitoQueryInput = z.infer<typeof conflitoQuerySchema>;
+
+export const rejeitarReservaSchema = z.object({
+  motivo: z.string().trim().min(5, "Motivo da rejeição deve ter no mínimo 5 caracteres.").max(500),
+});
+export type RejeitarReservaInput = z.infer<typeof rejeitarReservaSchema>;
+
+export const alterarStatusReservaSchema = z.object({
+  acao: z.enum(["iniciar_uso", "concluir"]),
+});
+export type AlterarStatusReservaInput = z.infer<typeof alterarStatusReservaSchema>;
+
+export const historicoQuerySchema = z.object({
+  q: z.string().trim().min(1).optional(),
+  setor: z.string().uuid().optional(),
+  plataforma: z.string().uuid().optional(),
+  status: z.enum(STATUS_RESERVA).optional(),
+  dateFrom: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Data inicial inválida.")
+    .optional(),
+  dateTo: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Data final inválida.")
+    .optional(),
+});
+export type HistoricoQueryInput = z.infer<typeof historicoQuerySchema>;
 
 export const conflitoRespostaSchema = z.object({
   conflito: z.boolean(),

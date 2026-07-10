@@ -18,5 +18,12 @@ export default async function ReservasPage() {
 
   const usuario = await response.json();
 
-  return <ReservasClient solicitanteNome={usuario.nome} setorNome={usuario.setorNome} />;
+  return (
+    <ReservasClient
+      solicitanteNome={usuario.nome}
+      setorNome={usuario.setorNome}
+      perfil={usuario.perfil}
+      setorId={usuario.setorId}
+    />
+  );
 }

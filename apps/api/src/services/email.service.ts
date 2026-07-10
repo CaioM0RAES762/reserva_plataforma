@@ -113,3 +113,106 @@ export function templateNovaReservaPendente(dados: DadosNovaReservaPendente): {
     `,
   };
 }
+
+export interface DadosDecisaoReserva {
+  plataformaNome: string;
+  data: string;
+  horaInicio: string;
+  horaFim: string;
+}
+
+export function templateReservaAprovada(dados: DadosDecisaoReserva): {
+  assunto: string;
+  corpoHtml: string;
+} {
+  return {
+    assunto: `PlataformaRes — Reserva aprovada (${dados.plataformaNome})`,
+    corpoHtml: `
+      <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
+        <h2 style="color:#16A34A;">Reserva aprovada</h2>
+        <p>Sua solicitação de uso de <strong>${dados.plataformaNome}</strong> foi aprovada e está agendada.</p>
+        <table style="font-size: 14px; color: #333;">
+          <tr><td style="padding: 2px 8px 2px 0;color:#666;">Data</td><td>${dados.data}</td></tr>
+          <tr><td style="padding: 2px 8px 2px 0;color:#666;">Horário</td><td>${dados.horaInicio} – ${dados.horaFim}</td></tr>
+        </table>
+        <p style="color: #666; font-size: 12px;">Acesse o PlataformaRes para mais detalhes.</p>
+      </div>
+    `,
+  };
+}
+
+export interface DadosSegundaAprovacaoNecessaria extends DadosDecisaoReserva {
+  gestorNome: string;
+}
+
+// UC-02 (S7): quando o Gestor de Setor dá a primeira aprovação num caso de dupla
+// aprovação (RN-RES-08), o Admin é notificado de que falta a segunda decisão.
+export function templateSegundaAprovacaoNecessaria(dados: DadosSegundaAprovacaoNecessaria): {
+  assunto: string;
+  corpoHtml: string;
+} {
+  return {
+    assunto: `PlataformaRes — Segunda aprovação necessária (${dados.plataformaNome})`,
+    corpoHtml: `
+      <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
+        <h2 style="color:#D97706;">Segunda aprovação necessária</h2>
+        <p><strong>${dados.gestorNome}</strong> já aprovou o uso de <strong>${dados.plataformaNome}</strong>, mas esta reserva exige aprovação adicional do Admin (prioridade urgente ou plataforma de risco alto).</p>
+        <table style="font-size: 14px; color: #333;">
+          <tr><td style="padding: 2px 8px 2px 0;color:#666;">Data</td><td>${dados.data}</td></tr>
+          <tr><td style="padding: 2px 8px 2px 0;color:#666;">Horário</td><td>${dados.horaInicio} – ${dados.horaFim}</td></tr>
+        </table>
+        <p style="color: #666; font-size: 12px;">Acesse a Fila de Aprovações no PlataformaRes para decidir.</p>
+      </div>
+    `,
+  };
+}
+
+export interface DadosEscalonamentoSla extends DadosDecisaoReserva {
+  slaHoras: number;
+}
+
+// RN-RES-09 (S7): reserva urgente sem decisão dentro do SLA configurado é escalada ao Admin.
+export function templateEscalonamentoSla(dados: DadosEscalonamentoSla): {
+  assunto: string;
+  corpoHtml: string;
+} {
+  return {
+    assunto: `PlataformaRes — SLA de aprovação estourado (${dados.plataformaNome})`,
+    corpoHtml: `
+      <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
+        <h2 style="color:#DC2626;">Reserva urgente sem decisão dentro do SLA</h2>
+        <p>Uma reserva de prioridade <strong>urgente</strong> para <strong>${dados.plataformaNome}</strong> está pendente há mais de ${dados.slaHoras}h sem aprovação ou rejeição.</p>
+        <table style="font-size: 14px; color: #333;">
+          <tr><td style="padding: 2px 8px 2px 0;color:#666;">Data</td><td>${dados.data}</td></tr>
+          <tr><td style="padding: 2px 8px 2px 0;color:#666;">Horário</td><td>${dados.horaInicio} – ${dados.horaFim}</td></tr>
+        </table>
+        <p style="color: #666; font-size: 12px;">Acesse a Fila de Aprovações no PlataformaRes com urgência.</p>
+      </div>
+    `,
+  };
+}
+
+export interface DadosRejeicaoReserva extends DadosDecisaoReserva {
+  motivo: string;
+}
+
+export function templateReservaRejeitada(dados: DadosRejeicaoReserva): {
+  assunto: string;
+  corpoHtml: string;
+} {
+  return {
+    assunto: `PlataformaRes — Reserva rejeitada (${dados.plataformaNome})`,
+    corpoHtml: `
+      <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
+        <h2 style="color:#DC2626;">Reserva rejeitada</h2>
+        <p>Sua solicitação de uso de <strong>${dados.plataformaNome}</strong> foi rejeitada.</p>
+        <table style="font-size: 14px; color: #333;">
+          <tr><td style="padding: 2px 8px 2px 0;color:#666;">Data</td><td>${dados.data}</td></tr>
+          <tr><td style="padding: 2px 8px 2px 0;color:#666;">Horário</td><td>${dados.horaInicio} – ${dados.horaFim}</td></tr>
+        </table>
+        <p style="font-size: 14px;"><strong>Motivo:</strong> ${dados.motivo}</p>
+        <p style="color: #666; font-size: 12px;">Acesse o PlataformaRes para mais detalhes ou solicitar novamente.</p>
+      </div>
+    `,
+  };
+}

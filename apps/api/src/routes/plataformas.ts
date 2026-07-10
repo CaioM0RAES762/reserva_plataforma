@@ -6,7 +6,11 @@ import {
 } from "@plataformares/shared";
 import { getPool, sql } from "../db/pool.js";
 import { autenticar, requireRole } from "../middlewares/rbac.js";
-import { normalizarCodigoPlataforma } from "../services/plataforma.service.js";
+import {
+  normalizarCodigoPlataforma,
+  resolverRiscoPlataforma,
+  sqlStatusPlataformaDerivado,
+} from "../services/plataforma.service.js";
 
 const CONFLITO_UNIQUE_SQL_ERROS = new Set([2601, 2627]);
 
@@ -17,6 +21,9 @@ interface PlataformaRow {
   localizacao: string | null;
   capacidade: number | null;
   status: string;
+  categoria: string;
+  risco: string;
+  aprovacao_automatica: boolean;
   observacoes: string | null;
   criado_em: Date;
   atualizado_em: Date;
@@ -30,6 +37,9 @@ function mapPlataforma(row: PlataformaRow) {
     localizacao: row.localizacao,
     capacidade: row.capacidade,
     status: row.status,
+    categoria: row.categoria,
+    risco: row.risco,
+    aprovacaoAutomatica: row.aprovacao_automatica,
     observacoes: row.observacoes,
     criadoEm: row.criado_em,
     atualizadoEm: row.atualizado_em,
@@ -37,7 +47,7 @@ function mapPlataforma(row: PlataformaRow) {
 }
 
 const SELECT_COLUNAS =
-  "id, codigo, nome, localizacao, capacidade, status, observacoes, criado_em, atualizado_em";
+  "id, codigo, nome, localizacao, capacidade, status, categoria, risco, aprovacao_automatica, observacoes, criado_em, atualizado_em";
 
 async function registrarAuditoria(
   transaction: sql.Transaction,
@@ -65,6 +75,8 @@ export async function plataformasRoutes(app: FastifyInstance): Promise<void> {
     const pool = await getPool();
     const dbRequest = pool.request();
 
+    // RN-PLAT-03: "reservada" é derivado em tempo de leitura via CTE (nunca persistido) —
+    // por isso o filtro de status abaixo é aplicado sobre o status já calculado.
     let where = "WHERE 1=1";
     if (q) {
       dbRequest.input("q", sql.NVarChar, `%${q}%`);
@@ -76,7 +88,14 @@ export async function plataformasRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const result = await dbRequest.query<PlataformaRow>(
-      `SELECT ${SELECT_COLUNAS} FROM Plataforma ${where} ORDER BY codigo`
+      `WITH PlataformaComStatus AS (
+         SELECT p.id, p.codigo, p.nome, p.localizacao, p.capacidade,
+                ${sqlStatusPlataformaDerivado("p")} AS status,
+                p.categoria, p.risco, p.aprovacao_automatica,
+                p.observacoes, p.criado_em, p.atualizado_em
+         FROM Plataforma p
+       )
+       SELECT ${SELECT_COLUNAS} FROM PlataformaComStatus ${where} ORDER BY codigo`
     );
     return reply.status(200).send(result.recordset.map(mapPlataforma));
   });
@@ -90,6 +109,7 @@ export async function plataformasRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(422).send({ erro: "Dados inválidos.", detalhes: parsed.error.flatten() });
       }
       const codigo = normalizarCodigoPlataforma(parsed.data.codigo);
+      const risco = resolverRiscoPlataforma(parsed.data.categoria, parsed.data.risco);
       const pool = await getPool();
 
       const existente = await pool
@@ -109,13 +129,16 @@ export async function plataformasRoutes(app: FastifyInstance): Promise<void> {
           .input("nome", sql.NVarChar, parsed.data.nome)
           .input("localizacao", sql.NVarChar, parsed.data.localizacao ?? null)
           .input("capacidade", sql.Int, parsed.data.capacidade ?? null)
+          .input("categoria", sql.VarChar, parsed.data.categoria)
+          .input("risco", sql.VarChar, risco)
+          .input("aprovacao_automatica", sql.Bit, parsed.data.aprovacaoAutomatica)
           .input("observacoes", sql.NVarChar, parsed.data.observacoes ?? null)
           .query<PlataformaRow>(
-            `INSERT INTO Plataforma (codigo, nome, localizacao, capacidade, observacoes)
+            `INSERT INTO Plataforma (codigo, nome, localizacao, capacidade, categoria, risco, aprovacao_automatica, observacoes)
              OUTPUT ${SELECT_COLUNAS.split(", ")
                .map((coluna) => `INSERTED.${coluna}`)
                .join(", ")}
-             VALUES (@codigo, @nome, @localizacao, @capacidade, @observacoes)`
+             VALUES (@codigo, @nome, @localizacao, @capacidade, @categoria, @risco, @aprovacao_automatica, @observacoes)`
           );
 
         const nova = insercao.recordset[0];
@@ -147,6 +170,7 @@ export async function plataformasRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(422).send({ erro: "Dados inválidos.", detalhes: parsed.error.flatten() });
       }
       const codigo = normalizarCodigoPlataforma(parsed.data.codigo);
+      const risco = resolverRiscoPlataforma(parsed.data.categoria, parsed.data.risco);
       const pool = await getPool();
 
       const atual = await pool
@@ -176,11 +200,16 @@ export async function plataformasRoutes(app: FastifyInstance): Promise<void> {
           .input("nome", sql.NVarChar, parsed.data.nome)
           .input("localizacao", sql.NVarChar, parsed.data.localizacao ?? null)
           .input("capacidade", sql.Int, parsed.data.capacidade ?? null)
+          .input("categoria", sql.VarChar, parsed.data.categoria)
+          .input("risco", sql.VarChar, risco)
+          .input("aprovacao_automatica", sql.Bit, parsed.data.aprovacaoAutomatica)
           .input("observacoes", sql.NVarChar, parsed.data.observacoes ?? null)
           .query<PlataformaRow>(
             `UPDATE Plataforma SET
                codigo = @codigo, nome = @nome, localizacao = @localizacao,
-               capacidade = @capacidade, observacoes = @observacoes, atualizado_em = SYSUTCDATETIME()
+               capacidade = @capacidade, categoria = @categoria, risco = @risco,
+               aprovacao_automatica = @aprovacao_automatica, observacoes = @observacoes,
+               atualizado_em = SYSUTCDATETIME()
              OUTPUT ${SELECT_COLUNAS.split(", ")
                .map((coluna) => `INSERTED.${coluna}`)
                .join(", ")}

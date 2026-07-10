@@ -6,23 +6,15 @@ import { apiFetch } from "../lib/api";
 import { ReservaStatusBadge } from "./ReservaStatusBadge";
 import { PriorityBadge } from "./PriorityBadge";
 import { ReservaModal, type ReservaFormValues } from "./ReservaModal";
+import { ReservaDetalheModal, type ReservaDetalhe } from "./ReservaDetalheModal";
 
-interface Reserva {
-  id: string;
-  setorNome: string;
-  solicitanteNome: string;
-  plataformaNome: string;
-  data: string;
-  horaInicio: string;
-  horaFim: string;
-  motivo: string;
-  prioridade: "normal" | "alta" | "urgente";
-  status: string;
-}
+type Reserva = ReservaDetalhe;
 
 interface ReservasClientProps {
   solicitanteNome: string;
   setorNome: string | null;
+  perfil: "admin" | "gestor_setor" | "colaborador";
+  setorId: string | null;
 }
 
 function formatarData(data: string): string {
@@ -30,7 +22,7 @@ function formatarData(data: string): string {
   return `${dia}/${mes}/${ano}`;
 }
 
-export function ReservasClient({ solicitanteNome, setorNome }: ReservasClientProps) {
+export function ReservasClient({ solicitanteNome, setorNome, perfil, setorId }: ReservasClientProps) {
   const [reservas, setReservas] = useState<Reserva[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
@@ -38,6 +30,7 @@ export function ReservasClient({ solicitanteNome, setorNome }: ReservasClientPro
   const [statusFiltro, setStatusFiltro] = useState("");
   const [dataFiltro, setDataFiltro] = useState("");
   const [modalAberto, setModalAberto] = useState(false);
+  const [reservaSelecionada, setReservaSelecionada] = useState<Reserva | null>(null);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -133,7 +126,7 @@ export function ReservasClient({ solicitanteNome, setorNome }: ReservasClientPro
               </tr>
             ) : (
               reservas.map((r) => (
-                <tr key={r.id}>
+                <tr key={r.id} onClick={() => setReservaSelecionada(r)} style={{ cursor: "pointer" }}>
                   <td>
                     <strong>{r.setorNome}</strong>
                   </td>
@@ -162,6 +155,19 @@ export function ReservasClient({ solicitanteNome, setorNome }: ReservasClientPro
           setorNome={setorNome}
           onClose={() => setModalAberto(false)}
           onSalvar={handleSalvar}
+        />
+      )}
+
+      {reservaSelecionada && (
+        <ReservaDetalheModal
+          reserva={reservaSelecionada}
+          perfil={perfil}
+          setorId={setorId}
+          onClose={() => setReservaSelecionada(null)}
+          onAtualizado={async () => {
+            setReservaSelecionada(null);
+            await carregar();
+          }}
         />
       )}
     </section>

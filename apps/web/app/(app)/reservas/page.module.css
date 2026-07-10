@@ -106,6 +106,19 @@
   border-radius: var(--radius-sm);
 }
 .btnGhost:hover { background: var(--surface-2); }
+.btnGhost:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.btnDanger {
+  background: var(--red);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 8px 14px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.btnDanger:hover { opacity: 0.9; }
+.btnDanger:disabled { opacity: 0.6; cursor: not-allowed; }
 
 /* ---------- Modal ---------- */
 .modalOverlay {

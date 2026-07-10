@@ -7,7 +7,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3333";
 
 interface ContaResponse {
   nome: string;
-  perfil: "admin" | "colaborador";
+  perfil: "admin" | "gestor_setor" | "colaborador";
 }
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {

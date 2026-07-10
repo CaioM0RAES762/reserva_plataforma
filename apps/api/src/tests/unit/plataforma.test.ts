@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { codigoJaCadastrado, normalizarCodigoPlataforma } from "../../services/plataforma.service.js";
+import {
+  codigoJaCadastrado,
+  normalizarCodigoPlataforma,
+  resolverRiscoPlataforma,
+} from "../../services/plataforma.service.js";
 
 describe("normalizarCodigoPlataforma", () => {
   it("remove espaços nas extremidades e converte para maiúsculas", () => {
@@ -32,5 +36,22 @@ describe("codigoJaCadastrado (rejeição de código duplicado)", () => {
 
   it("retorna falso para lista vazia", () => {
     expect(codigoJaCadastrado([], "PLT-001")).toBe(false);
+  });
+});
+
+describe("resolverRiscoPlataforma (S7 — SDD §2.4, risco padrão por categoria)", () => {
+  it.each([
+    ["elevatoria", "alto"],
+    ["andaime", "alto"],
+    ["sala", "baixo"],
+    ["patio", "medio"],
+    ["veiculo", "medio"],
+    ["outro", "baixo"],
+  ] as const)("categoria %s -> risco padrão %s quando não informado", (categoria, riscoEsperado) => {
+    expect(resolverRiscoPlataforma(categoria)).toBe(riscoEsperado);
+  });
+
+  it("respeita o risco informado explicitamente, sobrescrevendo o padrão da categoria", () => {
+    expect(resolverRiscoPlataforma("sala", "alto")).toBe("alto");
   });
 });
