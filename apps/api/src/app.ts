@@ -10,6 +10,8 @@ import { reservasRoutes } from "./routes/reservas.js";
 import { historicoRoutes } from "./routes/historico.js";
 import { setoresRoutes } from "./routes/setores.js";
 import { usuariosRoutes } from "./routes/usuarios.js";
+import { checklistRoutes } from "./routes/checklist.js";
+import { uploadsRoutes } from "./routes/uploads.js";
 
 const isProduction = process.env.NODE_ENV === "production";
 
@@ -77,6 +79,8 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(historicoRoutes);
   await app.register(setoresRoutes);
   await app.register(usuariosRoutes);
+  await app.register(checklistRoutes);
+  await app.register(uploadsRoutes);
 
   return app;
 }

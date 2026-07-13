@@ -5,6 +5,12 @@ import styles from "../app/(app)/reservas/page.module.css";
 import { apiFetch } from "../lib/api";
 import { ReservaStatusBadge } from "./ReservaStatusBadge";
 import { PriorityBadge } from "./PriorityBadge";
+import { ChecklistSeguranca } from "./ChecklistSeguranca";
+
+// S8 (RN-RES-12): categorias de plataforma cujo checklist de segurança é obrigatório
+// antes de "em_uso" — mantido em espelho do backend (checklist.service.ts, requerChecklist)
+// só para a UI decidir se deve bloquear o botão "Iniciar Uso"; o backend revalida sempre.
+const CATEGORIAS_COM_CHECKLIST_OBRIGATORIO = ["elevatoria", "andaime"];
 
 export interface ReservaDetalhe {
   id: string;
@@ -12,6 +18,7 @@ export interface ReservaDetalhe {
   setorNome: string;
   solicitanteNome: string;
   plataformaNome: string;
+  plataformaCategoria: string;
   data: string;
   horaInicio: string;
   horaFim: string;
@@ -44,6 +51,7 @@ export function ReservaDetalheModal({ reserva, perfil, setorId, onClose, onAtual
   const [erro, setErro] = useState<string | null>(null);
   const [mostrarFormRejeicao, setMostrarFormRejeicao] = useState(false);
   const [motivoRejeicao, setMotivoRejeicao] = useState("");
+  const [checklistTodosConformes, setChecklistTodosConformes] = useState<boolean | null>(null);
 
   // S7 (RN-RES-07/08): Admin não tem restrição de escopo; Gestor de Setor só age em
   // reservas do próprio setor e, para aprovar, só quando ainda não deu sua própria
@@ -55,9 +63,15 @@ export function ReservaDetalheModal({ reserva, perfil, setorId, onClose, onAtual
     noEscopo &&
     reserva.status === "pendente" &&
     !(perfil === "gestor_setor" && reserva.aprovadoPorNome !== null);
-  const podeIniciarUso = ehAprovador && noEscopo && reserva.status === "agendada";
+  // RF-RES-10/RN-RES-12: plataforma elevatória/andaime só inicia uso com checklist
+  // aprovado (todosConformes === true). Enquanto o checklist ainda carrega (null),
+  // deixamos o backend ser o árbitro final — o botão some se a chamada retornar bloqueio.
+  const exigeChecklist = CATEGORIAS_COM_CHECKLIST_OBRIGATORIO.includes(reserva.plataformaCategoria);
+  const checklistLiberaUso = !exigeChecklist || checklistTodosConformes === true;
+  const podeIniciarUso = ehAprovador && noEscopo && reserva.status === "agendada" && checklistLiberaUso;
   const podeConcluir = ehAprovador && noEscopo && reserva.status === "em_uso";
   const podeCancelar = ["pendente", "agendada", "em_uso"].includes(reserva.status) && noEscopo;
+  const checklistSomenteLeitura = !noEscopo || ["concluida", "cancelada", "rejeitada"].includes(reserva.status);
 
   async function executarAcao(fn: () => Promise<void>) {
     setErro(null);
@@ -207,6 +221,20 @@ export function ReservaDetalheModal({ reserva, perfil, setorId, onClose, onAtual
               </div>
             )}
           </div>
+
+          {["agendada", "em_uso", "concluida"].includes(reserva.status) && (
+            <ChecklistSeguranca
+              reservaId={reserva.id}
+              somenteLeitura={checklistSomenteLeitura}
+              onAtualizado={setChecklistTodosConformes}
+            />
+          )}
+          {exigeChecklist && reserva.status === "agendada" && !checklistLiberaUso && (
+            <p style={{ color: "var(--red)", fontSize: "0.8rem", marginTop: 8 }}>
+              O botão &quot;Iniciar Uso&quot; fica bloqueado até o checklist de segurança acima ser preenchido com
+              todos os itens obrigatórios conformes (RN-RES-12).
+            </p>
+          )}
 
           {mostrarFormRejeicao && (
             <div className={styles.formGroup} style={{ marginTop: 14 }}>

@@ -192,6 +192,30 @@ export function templateEscalonamentoSla(dados: DadosEscalonamentoSla): {
   };
 }
 
+export interface DadosChecklistNaoConforme {
+  plataformaNome: string;
+  setorNome: string;
+}
+
+// RF-CHK-03/RN-CHK-02 (S8): item obrigatório não conforme não muda o status da
+// plataforma automaticamente — apenas notifica o Admin para revisão manual.
+export function templateChecklistNaoConforme(dados: DadosChecklistNaoConforme): {
+  assunto: string;
+  corpoHtml: string;
+} {
+  return {
+    assunto: `PlataformaRes — Checklist com não conformidade (${dados.plataformaNome})`,
+    corpoHtml: `
+      <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
+        <h2 style="color:#DC2626;">Checklist de segurança com item não conforme</h2>
+        <p>O checklist de segurança de <strong>${dados.plataformaNome}</strong> (setor ${dados.setorNome}) foi preenchido com pelo menos um item obrigatório não conforme.</p>
+        <p>O início de uso desta reserva está bloqueado (RN-CHK-02). Revise a plataforma e, se necessário, marque-a como em manutenção.</p>
+        <p style="color: #666; font-size: 12px;">Acesse o PlataformaRes para ver o detalhe do checklist.</p>
+      </div>
+    `,
+  };
+}
+
 export interface DadosRejeicaoReserva extends DadosDecisaoReserva {
   motivo: string;
 }

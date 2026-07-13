@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { PRIORIDADES_RESERVA, STATUS_RESERVA } from "../enums.js";
+import { CATEGORIAS_PLATAFORMA, PRIORIDADES_RESERVA, STATUS_RESERVA } from "../enums.js";
 
 const HORA_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -11,6 +11,10 @@ export const reservaPublicaSchema = z.object({
   solicitanteNome: z.string(),
   plataformaId: z.string().uuid(),
   plataformaNome: z.string(),
+  // S8 (RN-RES-12): usada pelo frontend para decidir se mostra a seção de Checklist
+  // de Segurança e para espelhar o bloqueio de "Iniciar Uso" — o backend é sempre a
+  // fonte de verdade (rota /reservas/:id/status revalida via requerChecklist).
+  plataformaCategoria: z.enum(CATEGORIAS_PLATAFORMA),
   data: z.string(),
   horaInicio: z.string(),
   horaFim: z.string(),

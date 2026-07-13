@@ -4,6 +4,7 @@ import {
   conflitoQuerySchema,
   criarReservaSchema,
   rejeitarReservaSchema,
+  type CategoriaPlataforma,
   type PrioridadeReserva,
   type RiscoPlataforma,
   type StatusReserva,
@@ -12,6 +13,7 @@ import { getPool, sql } from "../db/pool.js";
 import { autenticar, requireRole, usuarioNoEscopoDaReserva } from "../middlewares/rbac.js";
 import { encontrarConflito, type ReservaExistente } from "../services/conflito.service.js";
 import { enfileirarEmail } from "../services/queue.js";
+import { requerChecklist } from "../services/checklist.service.js";
 import {
   templateNovaReservaPendente,
   templateReservaAprovada,
@@ -41,6 +43,7 @@ export interface ReservaRow {
   solicitante_nome: string;
   plataforma_id: string;
   plataforma_nome: string;
+  plataforma_categoria: string;
   data: string;
   hora_inicio: string;
   hora_fim: string;
@@ -59,7 +62,7 @@ export interface ReservaRow {
 export const SELECT_RESERVA = `
   r.id, r.setor_id, s.nome AS setor_nome,
   r.solicitante_id, u.nome AS solicitante_nome,
-  r.plataforma_id, p.nome AS plataforma_nome,
+  r.plataforma_id, p.nome AS plataforma_nome, p.categoria AS plataforma_categoria,
   CONVERT(varchar(10), r.data, 23) AS data,
   CONVERT(varchar(5), r.hora_inicio, 108) AS hora_inicio,
   CONVERT(varchar(5), r.hora_fim, 108) AS hora_fim,
@@ -88,6 +91,7 @@ export function mapReserva(row: ReservaRow) {
     solicitanteNome: row.solicitante_nome,
     plataformaId: row.plataforma_id,
     plataformaNome: row.plataforma_nome,
+    plataformaCategoria: row.plataforma_categoria,
     data: row.data,
     horaInicio: row.hora_inicio,
     horaFim: row.hora_fim,
@@ -131,6 +135,7 @@ interface ReservaContexto {
   solicitante_email: string;
   plataforma_nome: string;
   plataforma_risco: RiscoPlataforma;
+  plataforma_categoria: CategoriaPlataforma;
   prioridade: PrioridadeReserva;
   aprovado_por_id: string | null;
   data: string;
@@ -145,7 +150,7 @@ async function buscarContextoReserva(id: string): Promise<ReservaContexto | null
     .input("id", sql.UniqueIdentifier, id)
     .query<ReservaContexto>(
       `SELECT r.id, r.status, r.setor_id, r.solicitante_id, u.email AS solicitante_email,
-              p.nome AS plataforma_nome, p.risco AS plataforma_risco,
+              p.nome AS plataforma_nome, p.risco AS plataforma_risco, p.categoria AS plataforma_categoria,
               r.prioridade, r.aprovado_por_id,
               CONVERT(varchar(10), r.data, 23) AS data,
               CONVERT(varchar(5), r.hora_inicio, 108) AS hora_inicio,
@@ -606,6 +611,31 @@ export async function reservasRoutes(app: FastifyInstance): Promise<void> {
 
       if (!usuarioNoEscopoDaReserva(request.usuario!, contexto.setor_id)) {
         return reply.status(403).send({ erro: "Você só pode alterar reservas do seu próprio setor." });
+      }
+
+      // RF-RES-10/RN-RES-12: plataforma com checklist obrigatório (categoria elevatória
+      // ou andaime) só entra em uso com ChecklistPreenchido.todos_conformes = 1.
+      if (acao === "iniciar_uso" && requerChecklist(contexto.plataforma_categoria)) {
+        const pool = await getPool();
+        const checklist = await pool
+          .request()
+          .input("reserva_id", sql.UniqueIdentifier, id)
+          .query<{ todos_conformes: boolean }>(
+            "SELECT todos_conformes FROM ChecklistPreenchido WHERE reserva_id = @reserva_id"
+          );
+        const preenchido = checklist.recordset[0];
+        if (!preenchido) {
+          return reply.status(409).send({
+            erro:
+              "Esta plataforma exige checklist de segurança antes do início de uso (NR-18/NR-35) e ele ainda não foi preenchido.",
+          });
+        }
+        if (!preenchido.todos_conformes) {
+          return reply.status(409).send({
+            erro:
+              "O checklist de segurança desta reserva tem item obrigatório não conforme — início de uso bloqueado até revisão da plataforma (RN-CHK-02).",
+          });
+        }
       }
 
       let novoStatus: StatusReserva;

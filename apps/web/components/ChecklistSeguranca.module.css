@@ -1,0 +1,152 @@
+.wrap {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-light);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.statusBadge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+}
+
+.statusOk {
+  background: var(--green-light);
+  color: var(--green);
+}
+
+.statusBloqueado {
+  background: var(--red-light);
+  color: var(--red);
+}
+
+.statusPendente {
+  background: var(--gray-light);
+  color: var(--gray);
+}
+
+.itens {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.item {
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+}
+
+.itemHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.itemDescricao {
+  font-size: 0.82rem;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.itemObrigatorio {
+  color: var(--red);
+  margin-left: 3px;
+}
+
+.toggleGroup {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.toggleBtn {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.toggleBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.toggleConformeAtivo {
+  background: var(--green-light);
+  border-color: var(--green);
+  color: var(--green);
+}
+
+.toggleNaoConformeAtivo {
+  background: var(--red-light);
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.observacao {
+  margin-top: 8px;
+}
+
+.observacao textarea {
+  width: 100%;
+  font-size: 0.78rem;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.fotoRow {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+}
+
+.fotoPreview {
+  width: 44px;
+  height: 44px;
+  border-radius: 6px;
+  object-fit: cover;
+  border: 1px solid var(--border);
+}
+
+.footer {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.aviso {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 8px;
+}
+
+.avisoBloqueio {
+  color: var(--red);
+  font-weight: 600;
+}
