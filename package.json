@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
+    "dev": "pnpm run dev:web",
     "dev:web": "pnpm --filter @plataformares/web dev",
     "dev:api": "pnpm --filter @plataformares/api dev",
     "build": "pnpm -r --if-present build",

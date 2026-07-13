@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { CalendarioClient } from "../../../components/CalendarioClient";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3333";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3334";
 
 export default async function CalendarioPage() {
   const cookieStore = await cookies();

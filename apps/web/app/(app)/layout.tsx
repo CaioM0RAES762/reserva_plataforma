@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { Sidebar } from "../../components/Sidebar";
 import { AppShell } from "../../components/AppShell";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3333";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3334";
 
 interface ContaResponse {
   nome: string;

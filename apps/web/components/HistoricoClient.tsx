@@ -6,7 +6,7 @@ import { apiFetch } from "../lib/api";
 import { ReservaStatusBadge } from "./ReservaStatusBadge";
 import { ReservaDetalheModal, type ReservaDetalhe } from "./ReservaDetalheModal";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3333";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3334";
 
 interface Setor {
   id: string;
