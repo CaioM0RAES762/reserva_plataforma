@@ -30,6 +30,8 @@ export interface ReservaDetalhe {
   motivoRejeicao: string | null;
   horaInicioReal: string | null;
   horaFimReal: string | null;
+  // S9 (RF-RES-03): presente quando a reserva faz parte de uma série semanal.
+  recorrenciaId?: string | null;
   criadoEm: string;
 }
 
@@ -39,6 +41,7 @@ interface ReservaDetalheModalProps {
   setorId: string | null;
   onClose: () => void;
   onAtualizado: () => Promise<void>;
+  onCancelarSerie?: (recorrenciaId: string) => Promise<void>;
 }
 
 function formatarData(data: string): string {
@@ -46,7 +49,14 @@ function formatarData(data: string): string {
   return `${dia}/${mes}/${ano}`;
 }
 
-export function ReservaDetalheModal({ reserva, perfil, setorId, onClose, onAtualizado }: ReservaDetalheModalProps) {
+export function ReservaDetalheModal({
+  reserva,
+  perfil,
+  setorId,
+  onClose,
+  onAtualizado,
+  onCancelarSerie,
+}: ReservaDetalheModalProps) {
   const [executando, setExecutando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [mostrarFormRejeicao, setMostrarFormRejeicao] = useState(false);
@@ -71,6 +81,13 @@ export function ReservaDetalheModal({ reserva, perfil, setorId, onClose, onAtual
   const podeIniciarUso = ehAprovador && noEscopo && reserva.status === "agendada" && checklistLiberaUso;
   const podeConcluir = ehAprovador && noEscopo && reserva.status === "em_uso";
   const podeCancelar = ["pendente", "agendada", "em_uso"].includes(reserva.status) && noEscopo;
+  // S9 (RF-RES-03): "Cancelar série" só faz sentido enquanto a própria ocorrência ainda
+  // está pendente/agendada — em_uso/concluída/etc. já saíram do fluxo de agendamento.
+  const podeCancelarSerie =
+    Boolean(reserva.recorrenciaId) &&
+    Boolean(onCancelarSerie) &&
+    ["pendente", "agendada"].includes(reserva.status) &&
+    noEscopo;
   const checklistSomenteLeitura = !noEscopo || ["concluida", "cancelada", "rejeitada"].includes(reserva.status);
 
   async function executarAcao(fn: () => Promise<void>) {
@@ -128,6 +145,11 @@ export function ReservaDetalheModal({ reserva, perfil, setorId, onClose, onAtual
     return executarAcao(() =>
       apiFetch(`/api/v1/reservas/${reserva.id}/cancelar`, { method: "POST", body: JSON.stringify({}) })
     );
+  }
+
+  function cancelarSerie() {
+    if (!reserva.recorrenciaId || !onCancelarSerie) return;
+    return executarAcao(() => onCancelarSerie(reserva.recorrenciaId!));
   }
 
   return (
@@ -296,6 +318,11 @@ export function ReservaDetalheModal({ reserva, perfil, setorId, onClose, onAtual
           {podeCancelar && !mostrarFormRejeicao && (
             <button type="button" className={styles.btnDanger} disabled={executando} onClick={cancelar}>
               Cancelar Reserva
+            </button>
+          )}
+          {podeCancelarSerie && !mostrarFormRejeicao && (
+            <button type="button" className={styles.btnDanger} disabled={executando} onClick={cancelarSerie}>
+              Cancelar Série
             </button>
           )}
         </div>

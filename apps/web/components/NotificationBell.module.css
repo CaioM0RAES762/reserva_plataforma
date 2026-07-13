@@ -1,0 +1,102 @@
+.wrapper { position: relative; }
+
+.bellButton {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  transition: all 0.15s;
+}
+.bellButton:hover { background: var(--surface-2); color: var(--text); }
+
+.badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--red);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+}
+
+.dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 340px;
+  max-height: 420px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  z-index: 61;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.dropdownHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-light);
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+
+.marcarTodas {
+  background: transparent;
+  color: var(--primary);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.marcarTodas:hover { text-decoration: underline; }
+
+.list { overflow-y: auto; }
+
+.empty {
+  padding: 24px 14px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-light);
+  transition: background 0.15s;
+}
+.item:hover { background: var(--surface-2); }
+.item:last-child { border-bottom: none; }
+
+.unread { background: var(--primary-light); }
+.unread:hover { background: var(--primary-light); }
+
+.itemTitulo { font-size: 0.83rem; font-weight: 700; color: var(--text); }
+.itemMensagem { font-size: 0.78rem; color: var(--text-secondary); }
+.itemData { font-size: 0.7rem; color: var(--text-muted); margin-top: 2px; }

@@ -12,43 +12,13 @@ import { setoresRoutes } from "./routes/setores.js";
 import { usuariosRoutes } from "./routes/usuarios.js";
 import { checklistRoutes } from "./routes/checklist.js";
 import { uploadsRoutes } from "./routes/uploads.js";
+import { bloqueiosRoutes } from "./routes/bloqueios.js";
+import { eventosRoutes } from "./routes/eventos.js";
+import { notificacoesRoutes } from "./routes/notificacoes.js";
+import { painelRoutes } from "./routes/painel.js";
+import { isAllowedOrigin } from "./utils/cors.js";
 
 const isProduction = process.env.NODE_ENV === "production";
-
-const DEFAULT_DEV_ORIGINS = [
-  "http://localhost:3000",
-  "http://localhost:3001",
-  "http://localhost:3002",
-  "http://localhost:3003",
-  "http://127.0.0.1:3000",
-  "http://127.0.0.1:3001",
-  "http://127.0.0.1:3002",
-  "http://127.0.0.1:3003",
-];
-
-function getAllowedOrigins(): string[] {
-  const configuredOrigins = process.env.WEB_ALLOWED_ORIGINS ?? process.env.WEB_PUBLIC_API_URL;
-  const devOrigins = isProduction ? [] : DEFAULT_DEV_ORIGINS;
-
-  if (configuredOrigins) {
-    const origins = configuredOrigins
-      .split(",")
-      .map((origin) => origin.trim())
-      .filter(Boolean);
-
-    return Array.from(new Set([...origins, ...devOrigins]));
-  }
-
-  return devOrigins;
-}
-
-function isAllowedOrigin(origin: string | undefined): boolean {
-  if (!origin) {
-    return true;
-  }
-
-  return getAllowedOrigins().includes(origin);
-}
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({ logger: true });
@@ -81,6 +51,10 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(usuariosRoutes);
   await app.register(checklistRoutes);
   await app.register(uploadsRoutes);
+  await app.register(bloqueiosRoutes);
+  await app.register(eventosRoutes);
+  await app.register(notificacoesRoutes);
+  await app.register(painelRoutes);
 
   return app;
 }

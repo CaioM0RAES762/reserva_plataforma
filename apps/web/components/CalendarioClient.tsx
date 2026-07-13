@@ -14,6 +14,15 @@ interface Setor {
   corHex: string;
 }
 
+interface Bloqueio {
+  id: string;
+  plataformaId: string | null;
+  plataformaNome: string | null;
+  dataInicio: string;
+  dataFim: string;
+  motivo: string;
+}
+
 interface CalendarioClientProps {
   perfil: "admin" | "colaborador";
   setorId: string | null;
@@ -46,6 +55,7 @@ export function CalendarioClient({ perfil, setorId }: CalendarioClientProps) {
   const [weekOffset, setWeekOffset] = useState(0);
   const [reservas, setReservas] = useState<ReservaDetalhe[]>([]);
   const [setores, setSetores] = useState<Setor[]>([]);
+  const [bloqueios, setBloqueios] = useState<Bloqueio[]>([]);
   const [erro, setErro] = useState<string | null>(null);
   const [reservaSelecionada, setReservaSelecionada] = useState<ReservaDetalhe | null>(null);
 
@@ -58,12 +68,14 @@ export function CalendarioClient({ perfil, setorId }: CalendarioClientProps) {
     try {
       const dateFrom = toIsoDate(dias[0]);
       const dateTo = toIsoDate(dias[6]);
-      const [dadosReservas, dadosSetores] = await Promise.all([
+      const [dadosReservas, dadosSetores, dadosBloqueios] = await Promise.all([
         apiFetch<ReservaDetalhe[]>(`/api/v1/reservas?dateFrom=${dateFrom}&dateTo=${dateTo}`),
         apiFetch<Setor[]>("/api/v1/setores"),
+        apiFetch<Bloqueio[]>("/api/v1/bloqueios"),
       ]);
       setReservas(dadosReservas);
       setSetores(dadosSetores);
+      setBloqueios(dadosBloqueios);
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Erro ao carregar calendário.");
     }
@@ -119,6 +131,10 @@ export function CalendarioClient({ perfil, setorId }: CalendarioClientProps) {
             {s.nome}
           </div>
         ))}
+        <div className={styles.calLegendItem}>
+          <div className={`${styles.calLegendDot} ${styles.calCellBlocked}`} style={{ border: "1px solid var(--border)" }} />
+          Bloqueio de agenda
+        </div>
       </div>
 
       <div className={styles.calGridWrap}>
@@ -145,8 +161,30 @@ export function CalendarioClient({ perfil, setorId }: CalendarioClientProps) {
                   if (r.data !== dateStr) return false;
                   return r.horaInicio.slice(0, 2) === h;
                 });
+                // S9 (RF-CAL-01): bloqueio de agenda cobrindo esta célula (hora × dia).
+                const celulaInicio = new Date(`${dateStr}T${h}:00:00.000Z`).getTime();
+                const celulaFim = celulaInicio + 60 * 60 * 1000;
+                const bloqueiosAqui = bloqueios.filter((b) => {
+                  const bInicio = new Date(b.dataInicio).getTime();
+                  const bFim = new Date(b.dataFim).getTime();
+                  return celulaInicio < bFim && celulaFim > bInicio;
+                });
                 return (
-                  <div key={i} className={`${styles.calCell} ${isToday ? styles.today : ""}`}>
+                  <div
+                    key={i}
+                    className={`${styles.calCell} ${isToday ? styles.today : ""} ${
+                      bloqueiosAqui.length > 0 ? styles.calCellBlocked : ""
+                    }`}
+                  >
+                    {bloqueiosAqui.map((b) => (
+                      <div
+                        key={b.id}
+                        className={styles.calBlockLabel}
+                        title={`Bloqueio: ${b.motivo} (${b.plataformaNome ?? "Global"})`}
+                      >
+                        🚫 {b.plataformaNome ?? "Global"}
+                      </div>
+                    ))}
                     {eventosAqui.map((r) => {
                       const setor = setorPorId.get(r.setorId);
                       const cor = setor?.corHex ?? "#64748B";

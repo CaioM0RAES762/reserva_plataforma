@@ -11,6 +11,7 @@ export interface ReservaFormValues {
   horaFim: string;
   motivo: string;
   prioridade: "normal" | "alta" | "urgente";
+  recorrencia?: { quantidadeOcorrencias: number };
 }
 
 interface PlataformaOpcao {
@@ -21,6 +22,7 @@ interface PlataformaOpcao {
 
 interface ConflitoResposta {
   conflito: boolean;
+  motivo: string | null;
   reserva: { id: string; setorNome: string; horaInicio: string; horaFim: string } | null;
 }
 
@@ -45,8 +47,10 @@ export function ReservaModal({ solicitanteNome, setorNome, onClose, onSalvar }: 
   const [motivo, setMotivo] = useState("");
   const [erro, setErro] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
-  const [conflito, setConflito] = useState<ConflitoResposta["reserva"]>(null);
+  const [conflitoMotivo, setConflitoMotivo] = useState<string | null>(null);
   const [horarioInvalido, setHorarioInvalido] = useState(false);
+  const [repetirSemanalmente, setRepetirSemanalmente] = useState(false);
+  const [quantidadeOcorrencias, setQuantidadeOcorrencias] = useState(4);
 
   useEffect(() => {
     apiFetch<PlataformaOpcao[]>("/api/v1/plataformas")
@@ -56,13 +60,13 @@ export function ReservaModal({ solicitanteNome, setorNome, onClose, onSalvar }: 
 
   useEffect(() => {
     if (!plataformaId || !data || !horaInicio || !horaFim) {
-      setConflito(null);
+      setConflitoMotivo(null);
       setHorarioInvalido(false);
       return;
     }
     if (horaFim <= horaInicio) {
       setHorarioInvalido(true);
-      setConflito(null);
+      setConflitoMotivo(null);
       return;
     }
     setHorarioInvalido(false);
@@ -71,15 +75,15 @@ export function ReservaModal({ solicitanteNome, setorNome, onClose, onSalvar }: 
       try {
         const params = new URLSearchParams({ plataformaId, data, horaInicio, horaFim });
         const resposta = await apiFetch<ConflitoResposta>(`/api/v1/reservas/conflitos?${params}`);
-        setConflito(resposta.conflito ? resposta.reserva : null);
+        setConflitoMotivo(resposta.conflito ? resposta.motivo : null);
       } catch {
-        setConflito(null);
+        setConflitoMotivo(null);
       }
     }, 250);
     return () => clearTimeout(timer);
   }, [plataformaId, data, horaInicio, horaFim]);
 
-  const bloqueado = horarioInvalido || conflito !== null;
+  const bloqueado = horarioInvalido || conflitoMotivo !== null;
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -96,7 +100,15 @@ export function ReservaModal({ solicitanteNome, setorNome, onClose, onSalvar }: 
 
     setSalvando(true);
     try {
-      await onSalvar({ plataformaId, data, horaInicio, horaFim, motivo: motivo.trim(), prioridade });
+      await onSalvar({
+        plataformaId,
+        data,
+        horaInicio,
+        horaFim,
+        motivo: motivo.trim(),
+        prioridade,
+        recorrencia: repetirSemanalmente ? { quantidadeOcorrencias } : undefined,
+      });
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Erro ao criar reserva.");
     } finally {
@@ -200,6 +212,34 @@ export function ReservaModal({ solicitanteNome, setorNome, onClose, onSalvar }: 
                   required
                 />
               </div>
+              <div className={`${styles.formGroup} ${styles.formGroupFull}`}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <input
+                    type="checkbox"
+                    checked={repetirSemanalmente}
+                    onChange={(e) => setRepetirSemanalmente(e.target.checked)}
+                  />
+                  Repetir semanalmente
+                </label>
+                {repetirSemanalmente && (
+                  <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                    <label htmlFor="rf-ocorrencias" style={{ fontSize: "0.8rem" }}>
+                      Quantidade de ocorrências (2–12)
+                    </label>
+                    <input
+                      id="rf-ocorrencias"
+                      type="number"
+                      min={2}
+                      max={12}
+                      value={quantidadeOcorrencias}
+                      onChange={(e) =>
+                        setQuantidadeOcorrencias(Math.min(12, Math.max(2, Number(e.target.value) || 2)))
+                      }
+                      style={{ width: 70 }}
+                    />
+                  </div>
+                )}
+              </div>
             </div>
 
             {horarioInvalido && (
@@ -207,9 +247,9 @@ export function ReservaModal({ solicitanteNome, setorNome, onClose, onSalvar }: 
                 O horário final deve ser após o horário inicial.
               </div>
             )}
-            {!horarioInvalido && conflito && (
+            {!horarioInvalido && conflitoMotivo && (
               <div className={styles.conflictAlert} id="conflictAlert">
-                Conflito com reserva do setor {conflito.setorNome} ({conflito.horaInicio}–{conflito.horaFim}).
+                {conflitoMotivo}
               </div>
             )}
           </div>
@@ -218,7 +258,7 @@ export function ReservaModal({ solicitanteNome, setorNome, onClose, onSalvar }: 
               Cancelar
             </button>
             <button type="submit" className={styles.btnPrimary} disabled={salvando || bloqueado}>
-              {salvando ? "Criando..." : "Criar Reserva"}
+              {salvando ? "Criando..." : repetirSemanalmente ? "Criar Série" : "Criar Reserva"}
             </button>
           </div>
         </form>

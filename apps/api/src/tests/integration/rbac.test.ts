@@ -75,6 +75,11 @@ beforeAll(async () => {
     );
   await pool
     .request()
+    .query(
+      `DELETE FROM Notificacao WHERE usuario_id IN (SELECT id FROM Usuario WHERE email IN ('${EMAIL_COLABORADOR_TI}', '${EMAIL_COLABORADOR_MANUTENCAO}'))`
+    );
+  await pool
+    .request()
     .query(`DELETE FROM Usuario WHERE email IN ('${EMAIL_COLABORADOR_TI}', '${EMAIL_COLABORADOR_MANUTENCAO}')`);
 
   const setorTi = await pool.request().query("SELECT id FROM Setor WHERE nome = 'TI'");
@@ -164,6 +169,9 @@ afterAll(async () => {
     .query(
       `DELETE FROM CodigoVerificacao WHERE usuario_id IN ('${colaboradorTiId}', '${colaboradorManutencaoId}')`
     );
+  await pool
+    .request()
+    .query(`DELETE FROM Notificacao WHERE usuario_id IN ('${colaboradorTiId}', '${colaboradorManutencaoId}')`);
   await pool
     .request()
     .query(`DELETE FROM Usuario WHERE id IN ('${colaboradorTiId}', '${colaboradorManutencaoId}')`);

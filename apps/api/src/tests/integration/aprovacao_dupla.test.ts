@@ -81,6 +81,11 @@ beforeAll(async () => {
   await pool
     .request()
     .query(
+      `DELETE FROM Notificacao WHERE usuario_id IN (SELECT id FROM Usuario WHERE email IN ('${EMAIL_COLABORADOR}', '${EMAIL_GESTOR_TI}', '${EMAIL_GESTOR_MANUTENCAO}'))`
+    );
+  await pool
+    .request()
+    .query(
       `DELETE FROM Usuario WHERE email IN ('${EMAIL_COLABORADOR}', '${EMAIL_GESTOR_TI}', '${EMAIL_GESTOR_MANUTENCAO}')`
     );
 
@@ -200,6 +205,9 @@ afterAll(async () => {
     .query(
       `DELETE FROM LogAuditoria WHERE usuario_id IN ('${colaboradorId}', '${gestorTiId}', '${gestorManutencaoId}')`
     );
+  await pool
+    .request()
+    .query(`DELETE FROM Notificacao WHERE usuario_id IN ('${colaboradorId}', '${gestorTiId}', '${gestorManutencaoId}')`);
   await pool
     .request()
     .query(`DELETE FROM Usuario WHERE id IN ('${colaboradorId}', '${gestorTiId}', '${gestorManutencaoId}')`);

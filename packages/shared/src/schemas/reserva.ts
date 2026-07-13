@@ -26,10 +26,23 @@ export const reservaPublicaSchema = z.object({
   motivoRejeicao: z.string().nullable(),
   horaInicioReal: z.string().nullable(),
   horaFimReal: z.string().nullable(),
+  // S9 (RF-RES-03): presente quando a reserva faz parte de uma série semanal — usado
+  // pelo frontend para exibir a ação "Cancelar série" no Detalhe da Reserva.
+  recorrenciaId: z.string().uuid().nullable(),
   criadoEm: z.string(),
   atualizadoEm: z.string(),
 });
 export type ReservaPublica = z.infer<typeof reservaPublicaSchema>;
+
+// S9 (RF-RES-03): até 12 ocorrências semanais, começando na data da primeira reserva.
+export const recorrenciaInputSchema = z.object({
+  quantidadeOcorrencias: z
+    .number()
+    .int()
+    .min(2, "Uma série semanal exige ao menos 2 ocorrências.")
+    .max(12, "Máximo de 12 ocorrências semanais."),
+});
+export type RecorrenciaInput = z.infer<typeof recorrenciaInputSchema>;
 
 export const criarReservaSchema = z
   .object({
@@ -39,6 +52,7 @@ export const criarReservaSchema = z
     horaFim: z.string().regex(HORA_REGEX, "Horário final inválido."),
     motivo: z.string().trim().min(3, "Motivo deve ter no mínimo 3 caracteres.").max(300),
     prioridade: z.enum(PRIORIDADES_RESERVA).default("normal"),
+    recorrencia: recorrenciaInputSchema.optional(),
   })
   .refine((dados) => dados.horaFim > dados.horaInicio, {
     message: "O horário final deve ser após o horário inicial.",
@@ -83,6 +97,9 @@ export type HistoricoQueryInput = z.infer<typeof historicoQuerySchema>;
 
 export const conflitoRespostaSchema = z.object({
   conflito: z.boolean(),
+  // S9: mensagem pronta para exibição — cobre tanto conflito com outra reserva quanto
+  // bloqueio de agenda ativo (RN-RES-11), sem o frontend precisar montar o texto.
+  motivo: z.string().nullable(),
   reserva: z
     .object({
       id: z.string().uuid(),

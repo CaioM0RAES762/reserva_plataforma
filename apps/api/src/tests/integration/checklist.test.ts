@@ -105,6 +105,9 @@ beforeAll(async () => {
   await pool
     .request()
     .query(`DELETE FROM Plataforma WHERE codigo IN ('${CODIGO_PLATAFORMA_ELEVATORIA}', '${CODIGO_PLATAFORMA_SALA}')`);
+  await pool
+    .request()
+    .query(`DELETE FROM Notificacao WHERE usuario_id IN (SELECT id FROM Usuario WHERE email = '${EMAIL_COLABORADOR}')`);
   await pool.request().query(`DELETE FROM Usuario WHERE email = '${EMAIL_COLABORADOR}'`);
 
   const setorTi = await pool.request().query("SELECT id FROM Setor WHERE nome = 'TI'");
@@ -194,6 +197,7 @@ afterAll(async () => {
     .request()
     .query(`DELETE FROM Plataforma WHERE id IN ('${plataformaElevatoriaId}', '${plataformaSalaId}')`);
   await pool.request().query(`DELETE FROM LogAuditoria WHERE usuario_id = '${colaboradorId}'`);
+  await pool.request().query(`DELETE FROM Notificacao WHERE usuario_id = '${colaboradorId}'`);
   await pool.request().query(`DELETE FROM Usuario WHERE id = '${colaboradorId}'`);
   await app.close();
   await closePool();

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import styles from "../app/(app)/plataformas/page.module.css";
 import { apiFetch } from "../lib/api";
 import { StatusBadge } from "./StatusBadge";
@@ -93,15 +94,23 @@ export function PlataformasClient({ isAdmin }: { isAdmin: boolean }) {
           <p>Gerencie os equipamentos e espaços compartilhados</p>
         </div>
         {isAdmin && (
-          <button
-            className={styles.btnPrimary}
-            onClick={() => {
-              setEditando(null);
-              setModalAberto(true);
-            }}
-          >
-            Nova Plataforma
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <Link href="/plataformas/bloqueios" className={styles.btnGhost}>
+              Bloqueios de Agenda
+            </Link>
+            <Link href="/plataformas/painel-tv" className={styles.btnGhost}>
+              Painel TV
+            </Link>
+            <button
+              className={styles.btnPrimary}
+              onClick={() => {
+                setEditando(null);
+                setModalAberto(true);
+              }}
+            >
+              Nova Plataforma
+            </button>
+          </div>
         )}
       </div>
 

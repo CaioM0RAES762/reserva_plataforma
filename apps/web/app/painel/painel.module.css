@@ -1,0 +1,153 @@
+.kiosk {
+  min-height: 100vh;
+  background: #0B1220;
+  color: #F0F4FA;
+  font-family: var(--font);
+  padding: 28px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.loading,
+.erroBox {
+  margin: auto;
+  font-size: 1.6rem;
+  text-align: center;
+  color: #F0F4FA;
+  max-width: 60ch;
+}
+.erroBox { color: #FCA5A5; }
+
+.header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  border-bottom: 2px solid #1E293B;
+  padding-bottom: 16px;
+}
+.header h1 {
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+.relogio {
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: #94A3B8;
+  text-transform: capitalize;
+}
+
+.grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 36px;
+}
+
+.coluna h2 {
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin-bottom: 14px;
+  color: #93C5FD;
+}
+.subtitulo { margin-top: 28px; }
+
+.vazio {
+  font-size: 1.1rem;
+  color: #64748B;
+  padding: 16px 0;
+}
+
+.cardReserva {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  background: #111C31;
+  border: 1px solid #1E293B;
+  border-left: 6px solid #2563EB;
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 12px;
+  font-size: 1.15rem;
+}
+
+.cardReservaCompacto {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #0F1729;
+  border: 1px solid #1E293B;
+  border-radius: 10px;
+  padding: 10px 16px;
+  margin-bottom: 8px;
+  font-size: 0.95rem;
+  color: #CBD5E1;
+}
+
+.cardHora { font-weight: 800; font-variant-numeric: tabular-nums; min-width: 110px; }
+.cardPlataforma { font-weight: 700; flex: 1; }
+.cardSetor { color: #94A3B8; }
+
+.statusTag {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #1E293B;
+  color: #93C5FD;
+  text-transform: uppercase;
+}
+
+.plataformasGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 14px;
+}
+
+.plataformaCard {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-radius: 12px;
+  padding: 16px;
+  background: #111C31;
+  border: 2px solid #1E293B;
+}
+.plataformaCodigo { font-size: 0.8rem; color: #64748B; font-weight: 700; letter-spacing: 0.04em; }
+.plataformaNome { font-size: 1.05rem; font-weight: 700; }
+.plataformaStatus { font-size: 0.85rem; font-weight: 700; margin-top: 6px; }
+
+.disponivel { border-color: #16A34A; }
+.disponivel .plataformaStatus { color: #4ADE80; }
+.reservada { border-color: #D97706; }
+.reservada .plataformaStatus { color: #FBBF24; }
+.manutencao { border-color: #7C3AED; }
+.manutencao .plataformaStatus { color: #C4B5FD; }
+.inativa { border-color: #475569; opacity: 0.6; }
+.inativa .plataformaStatus { color: #94A3B8; }
+
+.footer {
+  text-align: center;
+  font-size: 0.85rem;
+  color: #475569;
+  border-top: 1px solid #1E293B;
+  padding-top: 14px;
+}
+
+/* RF-TV-01: tipografia ampliada proporcionalmente para telas de chão de fábrica */
+@media (min-width: 1920px) {
+  .kiosk { padding: 44px 64px; gap: 32px; }
+  .header h1 { font-size: 2.8rem; }
+  .relogio { font-size: 1.7rem; }
+  .coluna h2 { font-size: 1.9rem; }
+  .cardReserva { font-size: 1.5rem; padding: 22px 26px; border-radius: 16px; }
+  .cardHora { min-width: 150px; }
+  .cardReservaCompacto { font-size: 1.2rem; padding: 14px 20px; }
+  .statusTag { font-size: 0.95rem; padding: 5px 14px; }
+  .plataformasGrid { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 18px; }
+  .plataformaNome { font-size: 1.4rem; }
+  .plataformaStatus { font-size: 1.1rem; }
+  .plataformaCodigo { font-size: 1rem; }
+  .footer { font-size: 1.05rem; }
+}

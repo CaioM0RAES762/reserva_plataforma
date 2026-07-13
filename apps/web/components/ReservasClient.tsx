@@ -64,6 +64,16 @@ export function ReservasClient({ solicitanteNome, setorNome, perfil, setorId }: 
     await carregar();
   }
 
+  async function handleCancelarSerie(recorrenciaId: string) {
+    if (!confirm("Confirma o cancelamento de todas as ocorrências futuras desta série?")) return;
+    await apiFetch(`/api/v1/reservas/recorrencia/${recorrenciaId}/cancelar`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    setReservaSelecionada(null);
+    await carregar();
+  }
+
   return (
     <section>
       <div className={styles.header}>
@@ -168,6 +178,7 @@ export function ReservasClient({ solicitanteNome, setorNome, perfil, setorId }: 
             setReservaSelecionada(null);
             await carregar();
           }}
+          onCancelarSerie={handleCancelarSerie}
         />
       )}
     </section>

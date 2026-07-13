@@ -11,6 +11,7 @@ import {
   resolverRiscoPlataforma,
   sqlStatusPlataformaDerivado,
 } from "../services/plataforma.service.js";
+import { publicarEventoGlobal } from "../services/eventos.service.js";
 
 const CONFLITO_UNIQUE_SQL_ERROS = new Set([2601, 2627]);
 
@@ -296,6 +297,9 @@ export async function plataformasRoutes(app: FastifyInstance): Promise<void> {
         });
 
         await transaction.commit();
+        // S10 (SDD §3.4): plataforma.status_alterado — Dashboard, Painel TV e demais
+        // telas com a grade de status aberta atualizam sem F5.
+        publicarEventoGlobal("plataforma.status_alterado", { id, status });
         return reply.status(200).send(mapPlataforma(atualizada));
       } catch (err) {
         await transaction.rollback();

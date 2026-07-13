@@ -11,7 +11,13 @@ import {
 } from "@plataformares/shared";
 import { getPool, sql } from "../db/pool.js";
 import { autenticar, requireRole, usuarioNoEscopoDaReserva } from "../middlewares/rbac.js";
-import { encontrarConflito, type ReservaExistente } from "../services/conflito.service.js";
+import {
+  encontrarBloqueioConflitante,
+  encontrarConflito,
+  type BloqueioAtivo,
+  type ReservaExistente,
+} from "../services/conflito.service.js";
+import { diaSemanaDe, gerarDatasRecorrencia } from "../services/recorrencia.service.js";
 import { enfileirarEmail } from "../services/queue.js";
 import { requerChecklist } from "../services/checklist.service.js";
 import {
@@ -27,6 +33,8 @@ import {
   TransicaoInvalidaError,
   type PerfilAprovador,
 } from "../services/aprovacao.service.js";
+import { registrarNotificacao, type NotificacaoRegistrada } from "../services/notificacao.service.js";
+import { publicarEventoGlobal, publicarEventoUsuario } from "../services/eventos.service.js";
 
 interface ReservaConflitoRow {
   id: string;
@@ -55,6 +63,7 @@ export interface ReservaRow {
   motivo_rejeicao: string | null;
   hora_inicio_real: string | null;
   hora_fim_real: string | null;
+  recorrencia_id: string | null;
   criado_em: Date;
   atualizado_em: Date;
 }
@@ -72,6 +81,7 @@ export const SELECT_RESERVA = `
   r.motivo_rejeicao,
   CONVERT(varchar(5), r.hora_inicio_real, 108) AS hora_inicio_real,
   CONVERT(varchar(5), r.hora_fim_real, 108) AS hora_fim_real,
+  r.recorrencia_id,
   r.criado_em, r.atualizado_em`;
 
 export const FROM_RESERVA = `
@@ -103,6 +113,7 @@ export function mapReserva(row: ReservaRow) {
     motivoRejeicao: row.motivo_rejeicao,
     horaInicioReal: row.hora_inicio_real,
     horaFimReal: row.hora_fim_real,
+    recorrenciaId: row.recorrencia_id,
     criadoEm: row.criado_em,
     atualizadoEm: row.atualizado_em,
   };
@@ -189,6 +200,90 @@ async function buscarReservasConflitantes(
   return result.recordset;
 }
 
+interface BloqueioAtivoRow {
+  id: string;
+  plataforma_id: string | null;
+  data_inicio: Date;
+  data_fim: Date;
+  motivo: string;
+}
+
+// S9 (RN-RES-11): bloqueios (globais ou da própria plataforma) que tocam o dia da
+// reserva. A sobreposição exata contra o horário é decidida em conflito.service.ts.
+async function buscarBloqueiosAtivos(plataformaId: string, data: string): Promise<BloqueioAtivoRow[]> {
+  const pool = await getPool();
+  const result = await pool
+    .request()
+    .input("plataforma_id", sql.UniqueIdentifier, plataformaId)
+    .input("data", sql.Date, data)
+    .query<BloqueioAtivoRow>(
+      `SELECT id, plataforma_id, data_inicio, data_fim, motivo FROM BloqueioAgenda
+       WHERE (plataforma_id = @plataforma_id OR plataforma_id IS NULL)
+         AND data_inicio < DATEADD(DAY, 1, CAST(@data AS DATETIME2))
+         AND data_fim > CAST(@data AS DATETIME2)`
+    );
+  return result.recordset;
+}
+
+function mapBloqueioAtivo(row: BloqueioAtivoRow): BloqueioAtivo {
+  return { id: row.id, plataformaId: row.plataforma_id, dataInicio: row.data_inicio, dataFim: row.data_fim, motivo: row.motivo };
+}
+
+function formatarDataHora(data: Date): string {
+  return data.toISOString().slice(0, 16).replace("T", " ");
+}
+
+interface DisponibilidadeResultado {
+  ok: boolean;
+  erro?: string;
+  reservaConflitante?: { id: string; setorNome: string; horaInicio: string; horaFim: string };
+}
+
+// Reúne as duas checagens de RN-RES-02 (conflito com outra reserva) e RN-RES-11
+// (bloqueio de agenda ativo) — usada tanto na criação (única e recorrente) quanto na
+// checagem em tempo real do formulário (GET /reservas/conflitos).
+async function verificarDisponibilidade(dados: {
+  plataformaId: string;
+  data: string;
+  horaInicio: string;
+  horaFim: string;
+  ignorarReservaId?: string;
+}): Promise<DisponibilidadeResultado> {
+  const conflitantes = await buscarReservasConflitantes(dados.plataformaId, dados.data, dados.ignorarReservaId);
+  const conflito = encontrarConflito(
+    conflitantes.map<ReservaExistente>((r) => ({ id: r.id, horaInicio: r.hora_inicio, horaFim: r.hora_fim })),
+    { horaInicio: dados.horaInicio, horaFim: dados.horaFim, ignorarReservaId: dados.ignorarReservaId }
+  );
+  if (conflito) {
+    const detalhe = conflitantes.find((r) => r.id === conflito.id)!;
+    return {
+      ok: false,
+      erro: `Conflito de horário com reserva do setor ${detalhe.setor_nome} (${detalhe.hora_inicio}–${detalhe.hora_fim}).`,
+      reservaConflitante: {
+        id: detalhe.id,
+        setorNome: detalhe.setor_nome,
+        horaInicio: detalhe.hora_inicio,
+        horaFim: detalhe.hora_fim,
+      },
+    };
+  }
+
+  const bloqueiosAtivos = await buscarBloqueiosAtivos(dados.plataformaId, dados.data);
+  const bloqueio = encontrarBloqueioConflitante(bloqueiosAtivos.map(mapBloqueioAtivo), dados.plataformaId, {
+    data: dados.data,
+    horaInicio: dados.horaInicio,
+    horaFim: dados.horaFim,
+  });
+  if (bloqueio) {
+    return {
+      ok: false,
+      erro: `Reserva bloqueada pela agenda: ${bloqueio.motivo} (bloqueio de ${formatarDataHora(bloqueio.dataInicio)} a ${formatarDataHora(bloqueio.dataFim)}).`,
+    };
+  }
+
+  return { ok: true };
+}
+
 export async function reservasRoutes(app: FastifyInstance): Promise<void> {
   app.post("/api/v1/reservas", { preHandler: autenticar }, async (request, reply) => {
     const parsed = criarReservaSchema.safeParse(request.body);
@@ -204,7 +299,7 @@ export async function reservasRoutes(app: FastifyInstance): Promise<void> {
         .send({ erro: "Sua conta não está vinculada a um setor. Não é possível solicitar reservas." });
     }
 
-    const { plataformaId, data, horaInicio, horaFim, motivo, prioridade } = parsed.data;
+    const { plataformaId, data, horaInicio, horaFim, motivo, prioridade, recorrencia } = parsed.data;
     const pool = await getPool();
 
     const contexto = await pool
@@ -228,88 +323,236 @@ export async function reservasRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(409).send({ erro: "Esta plataforma está inativa e não pode ser reservada." });
     }
 
-    const conflitantes = await buscarReservasConflitantes(plataformaId, data);
-    const conflito = encontrarConflito(
-      conflitantes.map<ReservaExistente>((r) => ({ id: r.id, horaInicio: r.hora_inicio, horaFim: r.hora_fim })),
-      { horaInicio, horaFim }
-    );
-    if (conflito) {
-      const detalhe = conflitantes.find((r) => r.id === conflito.id)!;
-      return reply.status(409).send({
-        erro: `Conflito de horário com reserva do setor ${detalhe.setor_nome} (${detalhe.hora_inicio}–${detalhe.hora_fim}).`,
+    // S10 (RF-NOT-01 / RN-RES-07): aprovadores elegíveis para a notificação de reserva
+    // pendente — Admins ativos + Gestor(es) do setor solicitante.
+    const aprovadoresElegiveis = await pool
+      .request()
+      .input("setor_id", sql.UniqueIdentifier, setorId)
+      .query<{ id: string; email: string }>(
+        `SELECT id, email FROM Usuario
+         WHERE ativo = 1 AND (perfil = 'admin' OR (perfil = 'gestor_setor' AND setor_id = @setor_id))`
+      );
+
+    // S9 (RF-RES-03): sem recorrência, a "série" é só a própria data solicitada.
+    const datasOcorrencias = recorrencia
+      ? gerarDatasRecorrencia(data, diaSemanaDe(data), recorrencia.quantidadeOcorrencias)
+      : [data];
+
+    // RN-RES-02/RN-RES-11: checa disponibilidade de TODAS as ocorrências antes de
+    // inserir qualquer uma — série é tudo ou nada.
+    for (const dataOcorrencia of datasOcorrencias) {
+      const disponibilidade = await verificarDisponibilidade({
+        plataformaId,
+        data: dataOcorrencia,
+        horaInicio,
+        horaFim,
       });
+      if (!disponibilidade.ok) {
+        return reply.status(409).send({
+          erro: recorrencia
+            ? `Não foi possível criar a série semanal: ${disponibilidade.erro} (ocorrência de ${dataOcorrencia}).`
+            : disponibilidade.erro,
+        });
+      }
     }
 
     const transaction = pool.transaction();
     await transaction.begin();
+    const notificacoesCriadas: NotificacaoRegistrada[] = [];
     try {
-      const insercao = await transaction
-        .request()
-        .input("setor_id", sql.UniqueIdentifier, setorId)
-        .input("solicitante_id", sql.UniqueIdentifier, solicitanteId)
-        .input("plataforma_id", sql.UniqueIdentifier, plataformaId)
-        .input("data", sql.Date, data)
-        .input("hora_inicio", sql.VarChar, horaInicio)
-        .input("hora_fim", sql.VarChar, horaFim)
-        .input("motivo", sql.NVarChar, motivo)
-        .input("prioridade", sql.VarChar, prioridade)
-        .query<{ id: string }>(
-          `INSERT INTO Reserva (setor_id, solicitante_id, plataforma_id, data, hora_inicio, hora_fim, motivo, prioridade)
-           OUTPUT INSERTED.id
-           VALUES (@setor_id, @solicitante_id, @plataforma_id, @data, @hora_inicio, @hora_fim, @motivo, @prioridade)`
-        );
-      const novaId = insercao.recordset[0].id;
+      let recorrenciaId: string | null = null;
+      if (recorrencia) {
+        const insercaoRecorrencia = await transaction
+          .request()
+          .input("criado_por_id", sql.UniqueIdentifier, solicitanteId)
+          .input("dia_semana", sql.TinyInt, diaSemanaDe(data))
+          .input("quantidade_ocorrencias", sql.TinyInt, recorrencia.quantidadeOcorrencias)
+          .query<{ id: string }>(
+            `INSERT INTO ReservaRecorrencia (criado_por_id, dia_semana, quantidade_ocorrencias)
+             OUTPUT INSERTED.id
+             VALUES (@criado_por_id, @dia_semana, @quantidade_ocorrencias)`
+          );
+        recorrenciaId = insercaoRecorrencia.recordset[0].id;
+      }
 
-      await transaction
-        .request()
-        .input("usuario_id", sql.UniqueIdentifier, solicitanteId)
-        .input("acao", sql.VarChar, "criar_reserva")
-        .input("entidade", sql.VarChar, "Reserva")
-        .input("entidade_id", sql.UniqueIdentifier, novaId)
-        .input(
-          "detalhes",
-          sql.NVarChar,
-          JSON.stringify({ plataformaId, data, horaInicio, horaFim, prioridade })
-        )
-        .query(
-          `INSERT INTO LogAuditoria (usuario_id, acao, entidade, entidade_id, detalhes)
-           VALUES (@usuario_id, @acao, @entidade, @entidade_id, @detalhes)`
-        );
+      for (const dataOcorrencia of datasOcorrencias) {
+        const insercao = await transaction
+          .request()
+          .input("setor_id", sql.UniqueIdentifier, setorId)
+          .input("solicitante_id", sql.UniqueIdentifier, solicitanteId)
+          .input("plataforma_id", sql.UniqueIdentifier, plataformaId)
+          .input("data", sql.Date, dataOcorrencia)
+          .input("hora_inicio", sql.VarChar, horaInicio)
+          .input("hora_fim", sql.VarChar, horaFim)
+          .input("motivo", sql.NVarChar, motivo)
+          .input("prioridade", sql.VarChar, prioridade)
+          .input("recorrencia_id", sql.UniqueIdentifier, recorrenciaId)
+          .query<{ id: string }>(
+            `INSERT INTO Reserva (setor_id, solicitante_id, plataforma_id, data, hora_inicio, hora_fim, motivo, prioridade, recorrencia_id)
+             OUTPUT INSERTED.id
+             VALUES (@setor_id, @solicitante_id, @plataforma_id, @data, @hora_inicio, @hora_fim, @motivo, @prioridade, @recorrencia_id)`
+          );
+        const novaId = insercao.recordset[0].id;
+
+        await transaction
+          .request()
+          .input("usuario_id", sql.UniqueIdentifier, solicitanteId)
+          .input("acao", sql.VarChar, "criar_reserva")
+          .input("entidade", sql.VarChar, "Reserva")
+          .input("entidade_id", sql.UniqueIdentifier, novaId)
+          .input(
+            "detalhes",
+            sql.NVarChar,
+            JSON.stringify({ plataformaId, data: dataOcorrencia, horaInicio, horaFim, prioridade, recorrenciaId })
+          )
+          .query(
+            `INSERT INTO LogAuditoria (usuario_id, acao, entidade, entidade_id, detalhes)
+             VALUES (@usuario_id, @acao, @entidade, @entidade_id, @detalhes)`
+          );
+
+        // S10 (RF-NOT-01): notificação in-app persistida na mesma transação da criação —
+        // uma por aprovador elegível, por ocorrência (mesmo padrão de fan-out do e-mail).
+        for (const aprovador of aprovadoresElegiveis.recordset) {
+          notificacoesCriadas.push(
+            await registrarNotificacao(transaction, {
+              usuarioId: aprovador.id,
+              tipo: "reserva_pendente",
+              titulo: "Nova reserva pendente de aprovação",
+              mensagem: `${solicitante_nome} solicitou ${plataforma_nome} em ${dataOcorrencia} (${horaInicio}–${horaFim}).`,
+              link: "/reservas/aprovacoes",
+            })
+          );
+        }
+      }
 
       await transaction.commit();
 
-      const completa = await pool
-        .request()
-        .input("id", sql.UniqueIdentifier, novaId)
-        .query<ReservaRow>(`SELECT ${SELECT_RESERVA} ${FROM_RESERVA} WHERE r.id = @id`);
-      const nova = mapReserva(completa.recordset[0]);
+      let novas: ReturnType<typeof mapReserva>[];
+      if (recorrenciaId) {
+        const completas = await pool
+          .request()
+          .input("recorrencia_id", sql.UniqueIdentifier, recorrenciaId)
+          .query<ReservaRow>(
+            `SELECT ${SELECT_RESERVA} ${FROM_RESERVA} WHERE r.recorrencia_id = @recorrencia_id ORDER BY r.data ASC`
+          );
+        novas = completas.recordset.map(mapReserva);
+      } else {
+        const completa = await pool
+          .request()
+          .input("plataforma_id", sql.UniqueIdentifier, plataformaId)
+          .input("solicitante_id", sql.UniqueIdentifier, solicitanteId)
+          .input("data", sql.Date, data)
+          .input("hora_inicio", sql.VarChar, horaInicio)
+          .query<ReservaRow>(
+            `SELECT TOP 1 ${SELECT_RESERVA} ${FROM_RESERVA}
+             WHERE r.plataforma_id = @plataforma_id AND r.solicitante_id = @solicitante_id
+               AND r.data = @data AND r.hora_inicio = @hora_inicio
+             ORDER BY r.criado_em DESC`
+          );
+        novas = [mapReserva(completa.recordset[0])];
+      }
 
-      // Notificação ao(s) Admin(s) ativos — fila BullMQ, nunca síncrono bloqueando a resposta HTTP.
+      // S10 (SDD §3.4): publica reserva.criada (badge de aprovações) e notificacao.nova
+      // (sino) aos aprovadores elegíveis, via SSE, já fora da transação (best-effort —
+      // uma conexão SSE ausente não deve nunca reverter a criação da reserva).
+      for (const aprovador of aprovadoresElegiveis.recordset) {
+        for (const nova of novas) {
+          publicarEventoUsuario(aprovador.id, "reserva.criada", nova);
+        }
+      }
+      for (const notificacao of notificacoesCriadas) {
+        publicarEventoUsuario(notificacao.usuarioId, "notificacao.nova", notificacao);
+      }
+
+      // Notificação ao(s) Admin(s) ativos — uma por ocorrência, fila BullMQ, nunca
+      // síncrono bloqueando a resposta HTTP.
       const admins = await pool
         .request()
         .query<{ email: string }>("SELECT email FROM Usuario WHERE perfil = 'admin' AND ativo = 1");
-      const { assunto, corpoHtml } = templateNovaReservaPendente({
-        plataformaNome: plataforma_nome,
-        setorNome: setor_nome,
-        solicitanteNome: solicitante_nome,
-        data,
-        horaInicio,
-        horaFim,
-        motivo,
-        prioridade,
-      });
       await Promise.all(
-        admins.recordset.map((admin) =>
-          enfileirarEmail({ destinatario: admin.email, assunto, corpoHtml })
-        )
+        novas.map((nova) => {
+          const { assunto, corpoHtml } = templateNovaReservaPendente({
+            plataformaNome: plataforma_nome,
+            setorNome: setor_nome,
+            solicitanteNome: solicitante_nome,
+            data: nova.data,
+            horaInicio,
+            horaFim,
+            motivo,
+            prioridade,
+          });
+          return Promise.all(
+            admins.recordset.map((admin) => enfileirarEmail({ destinatario: admin.email, assunto, corpoHtml }))
+          );
+        })
       );
 
-      return reply.status(201).send(nova);
+      return reply.status(201).send(recorrenciaId ? { recorrenciaId, reservas: novas } : novas[0]);
     } catch (err) {
       await transaction.rollback();
       throw err;
     }
   });
+
+  // S9 (RF-RES-03): cancela todas as ocorrências futuras (pendente/agendada) de uma
+  // série semanal de uma vez. Escopo verificado pela primeira reserva da série — todas
+  // pertencem ao mesmo setor/solicitante, pois a série nasce de uma única submissão.
+  app.post(
+    "/api/v1/reservas/recorrencia/:recorrenciaId/cancelar",
+    { preHandler: autenticar },
+    async (request, reply) => {
+      const { recorrenciaId } = request.params as { recorrenciaId: string };
+      const pool = await getPool();
+
+      const ocorrencias = await pool
+        .request()
+        .input("recorrencia_id", sql.UniqueIdentifier, recorrenciaId)
+        .query<{ id: string; status: StatusReserva; setor_id: string }>(
+          `SELECT id, status, setor_id FROM Reserva
+           WHERE recorrencia_id = @recorrencia_id AND status IN ('pendente','agendada')`
+        );
+      if (ocorrencias.recordset.length === 0) {
+        return reply
+          .status(404)
+          .send({ erro: "Nenhuma ocorrência futura cancelável encontrada para esta série." });
+      }
+
+      const perfil = request.usuario!.perfil;
+      const setorSerie = ocorrencias.recordset[0].setor_id;
+      if (perfil !== "admin" && setorSerie !== request.usuario!.setorId) {
+        return reply.status(403).send({ erro: "Você só pode cancelar séries de reservas do seu próprio setor." });
+      }
+
+      const transaction = pool.transaction();
+      await transaction.begin();
+      const statusPorOcorrencia = new Map<string, StatusReserva>();
+      try {
+        for (const ocorrencia of ocorrencias.recordset) {
+          const novoStatus = transicionar(ocorrencia.status, "cancelar");
+          statusPorOcorrencia.set(ocorrencia.id, novoStatus);
+          await transaction
+            .request()
+            .input("id", sql.UniqueIdentifier, ocorrencia.id)
+            .input("status", sql.VarChar, novoStatus)
+            .query(`UPDATE Reserva SET status = @status, atualizado_em = SYSUTCDATETIME() WHERE id = @id`);
+          await registrarAuditoriaReserva(transaction, request.usuario!.sub, "cancelar_serie_reserva", ocorrencia.id, {
+            statusAnterior: ocorrencia.status,
+            statusNovo: novoStatus,
+            recorrenciaId,
+          });
+        }
+        await transaction.commit();
+      } catch (err) {
+        await transaction.rollback();
+        throw err;
+      }
+      for (const [ocorrenciaId, status] of statusPorOcorrencia) {
+        publicarEventoGlobal("reserva.status_alterado", { id: ocorrenciaId, status });
+      }
+
+      return reply.status(200).send({ ocorrenciasCanceladas: ocorrencias.recordset.length });
+    }
+  );
 
   app.get("/api/v1/reservas", { preHandler: autenticar }, async (request, reply) => {
     const { q, status, data, dateFrom, dateTo } = request.query as {
@@ -362,19 +605,16 @@ export async function reservasRoutes(app: FastifyInstance): Promise<void> {
     }
     const { plataformaId, data, horaInicio, horaFim, ignorarReservaId } = parsed.data;
 
-    const conflitantes = await buscarReservasConflitantes(plataformaId, data, ignorarReservaId);
-    const conflito = encontrarConflito(
-      conflitantes.map<ReservaExistente>((r) => ({ id: r.id, horaInicio: r.hora_inicio, horaFim: r.hora_fim })),
-      { horaInicio, horaFim }
-    );
-
-    if (!conflito) {
-      return reply.status(200).send({ conflito: false, reserva: null });
+    // S9: mesma checagem usada na criação (reserva-reserva + bloqueio de agenda), para
+    // o formulário de Nova Reserva bloquear o envio com a mesma regra do backend.
+    const disponibilidade = await verificarDisponibilidade({ plataformaId, data, horaInicio, horaFim, ignorarReservaId });
+    if (disponibilidade.ok) {
+      return reply.status(200).send({ conflito: false, motivo: null, reserva: null });
     }
-    const detalhe = conflitantes.find((r) => r.id === conflito.id)!;
     return reply.status(200).send({
       conflito: true,
-      reserva: { id: detalhe.id, setorNome: detalhe.setor_nome, horaInicio: detalhe.hora_inicio, horaFim: detalhe.hora_fim },
+      motivo: disponibilidade.erro ?? null,
+      reserva: disponibilidade.reservaConflitante ?? null,
     });
   });
 
@@ -457,8 +697,16 @@ export async function reservasRoutes(app: FastifyInstance): Promise<void> {
       }
 
       const pool = await getPool();
+      // S10: buscado antes da transação para poder gravar a Notificacao in-app na mesma
+      // transação da decisão de aprovação (invariante de auditoria, aplicada por analogia).
+      const admins = await pool
+        .request()
+        .query<{ id: string; email: string }>("SELECT id, email FROM Usuario WHERE perfil = 'admin' AND ativo = 1");
+
       const transaction = pool.transaction();
       await transaction.begin();
+      let notificacaoSolicitante: NotificacaoRegistrada | null = null;
+      const notificacoesAdmins: NotificacaoRegistrada[] = [];
       try {
         await transaction
           .request()
@@ -475,6 +723,31 @@ export async function reservasRoutes(app: FastifyInstance): Promise<void> {
           statusAnterior: contexto.status,
           statusNovo: resultado.novoStatus,
         });
+
+        if (resultado.novoStatus === "agendada") {
+          notificacaoSolicitante = await registrarNotificacao(transaction, {
+            usuarioId: contexto.solicitante_id,
+            tipo: "reserva_aprovada",
+            titulo: "Reserva aprovada",
+            mensagem: `Sua reserva de ${contexto.plataforma_nome} em ${contexto.data} (${contexto.hora_inicio}–${contexto.hora_fim}) foi aprovada.`,
+            link: `/reservas/${id}`,
+          });
+        } else {
+          // RN-RES-08 / UC-02: Gestor deu a primeira aprovação — reserva permanece
+          // pendente aguardando a segunda decisão do Admin.
+          for (const admin of admins.recordset) {
+            notificacoesAdmins.push(
+              await registrarNotificacao(transaction, {
+                usuarioId: admin.id,
+                tipo: "reserva_pendente",
+                titulo: "Aguarda segunda aprovação",
+                mensagem: `${contexto.plataforma_nome} em ${contexto.data} (${contexto.hora_inicio}–${contexto.hora_fim}) já foi aprovada pelo Gestor e aguarda sua decisão.`,
+                link: "/reservas/aprovacoes",
+              })
+            );
+          }
+        }
+
         await transaction.commit();
       } catch (err) {
         await transaction.rollback();
@@ -489,18 +762,17 @@ export async function reservasRoutes(app: FastifyInstance): Promise<void> {
           horaFim: contexto.hora_fim,
         });
         await enfileirarEmail({ destinatario: contexto.solicitante_email, assunto, corpoHtml });
+        publicarEventoUsuario(contexto.solicitante_id, "reserva.aprovada", { id, status: resultado.novoStatus });
+        if (notificacaoSolicitante) {
+          publicarEventoUsuario(contexto.solicitante_id, "notificacao.nova", notificacaoSolicitante);
+        }
       } else {
         // RN-RES-08 / UC-02: Gestor deu a primeira aprovação — reserva permanece
         // pendente aguardando a segunda decisão do Admin.
-        const [admins, gestorRow] = await Promise.all([
-          pool
-            .request()
-            .query<{ email: string }>("SELECT email FROM Usuario WHERE perfil = 'admin' AND ativo = 1"),
-          pool
-            .request()
-            .input("id", sql.UniqueIdentifier, usuario.sub)
-            .query<{ nome: string }>("SELECT nome FROM Usuario WHERE id = @id"),
-        ]);
+        const gestorRow = await pool
+          .request()
+          .input("id", sql.UniqueIdentifier, usuario.sub)
+          .query<{ nome: string }>("SELECT nome FROM Usuario WHERE id = @id");
         const { assunto, corpoHtml } = templateSegundaAprovacaoNecessaria({
           plataformaNome: contexto.plataforma_nome,
           data: contexto.data,
@@ -513,6 +785,12 @@ export async function reservasRoutes(app: FastifyInstance): Promise<void> {
             enfileirarEmail({ destinatario: admin.email, assunto, corpoHtml })
           )
         );
+        for (const admin of admins.recordset) {
+          publicarEventoUsuario(admin.id, "reserva.criada", { id, status: resultado.novoStatus });
+        }
+        for (const notificacao of notificacoesAdmins) {
+          publicarEventoUsuario(notificacao.usuarioId, "notificacao.nova", notificacao);
+        }
       }
 
       const completa = await pool
@@ -555,6 +833,7 @@ export async function reservasRoutes(app: FastifyInstance): Promise<void> {
       const pool = await getPool();
       const transaction = pool.transaction();
       await transaction.begin();
+      let notificacaoSolicitante: NotificacaoRegistrada;
       try {
         await transaction
           .request()
@@ -570,6 +849,13 @@ export async function reservasRoutes(app: FastifyInstance): Promise<void> {
           statusNovo: novoStatus,
           motivo: parsed.data.motivo,
         });
+        notificacaoSolicitante = await registrarNotificacao(transaction, {
+          usuarioId: contexto.solicitante_id,
+          tipo: "reserva_rejeitada",
+          titulo: "Reserva rejeitada",
+          mensagem: `Sua reserva de ${contexto.plataforma_nome} em ${contexto.data} (${contexto.hora_inicio}–${contexto.hora_fim}) foi rejeitada: ${parsed.data.motivo}`,
+          link: `/reservas/${id}`,
+        });
         await transaction.commit();
       } catch (err) {
         await transaction.rollback();
@@ -584,6 +870,8 @@ export async function reservasRoutes(app: FastifyInstance): Promise<void> {
         motivo: parsed.data.motivo,
       });
       await enfileirarEmail({ destinatario: contexto.solicitante_email, assunto, corpoHtml });
+      publicarEventoUsuario(contexto.solicitante_id, "reserva.rejeitada", { id, status: novoStatus });
+      publicarEventoUsuario(contexto.solicitante_id, "notificacao.nova", notificacaoSolicitante);
 
       const completa = await pool
         .request()
@@ -670,6 +958,9 @@ export async function reservasRoutes(app: FastifyInstance): Promise<void> {
         await transaction.rollback();
         throw err;
       }
+      // S10 (SDD §3.4): reserva.status_alterado — consumido por Dashboard, Painel TV e
+      // Calendário de qualquer usuário/dispositivo conectado, sem destinatário específico.
+      publicarEventoGlobal("reserva.status_alterado", { id, status: novoStatus });
 
       const completa = await pool
         .request()
@@ -720,6 +1011,7 @@ export async function reservasRoutes(app: FastifyInstance): Promise<void> {
       await transaction.rollback();
       throw err;
     }
+    publicarEventoGlobal("reserva.status_alterado", { id, status: novoStatus });
 
     const completa = await pool
       .request()

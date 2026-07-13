@@ -49,6 +49,12 @@ beforeAll(async () => {
     .request()
     .query(`DELETE FROM Reserva WHERE plataforma_id IN (SELECT id FROM Plataforma WHERE codigo = '${CODIGO_PLATAFORMA}')`);
   await pool.request().query(`DELETE FROM Plataforma WHERE codigo = '${CODIGO_PLATAFORMA}'`);
+  // S10: Notificacao.usuario_id referencia Usuario — precisa ser limpa antes (FK).
+  await pool
+    .request()
+    .query(
+      `DELETE FROM Notificacao WHERE usuario_id IN (SELECT id FROM Usuario WHERE email IN ('${EMAIL_COLABORADOR_TI}', '${EMAIL_COLABORADOR_MANUTENCAO}'))`
+    );
   await pool
     .request()
     .query(
@@ -138,6 +144,9 @@ afterAll(async () => {
     .query(
       `DELETE FROM LogAuditoria WHERE usuario_id IN ('${colaboradorTiId}', '${colaboradorManutencaoId}')`
     );
+  await pool
+    .request()
+    .query(`DELETE FROM Notificacao WHERE usuario_id IN ('${colaboradorTiId}', '${colaboradorManutencaoId}')`);
   await pool
     .request()
     .query(`DELETE FROM Usuario WHERE id IN ('${colaboradorTiId}', '${colaboradorManutencaoId}')`);

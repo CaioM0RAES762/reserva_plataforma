@@ -5,3 +5,6 @@ export * from "./schemas/plataforma.js";
 export * from "./schemas/reserva.js";
 export * from "./schemas/setor.js";
 export * from "./schemas/checklist.js";
+export * from "./schemas/bloqueio.js";
+export * from "./schemas/notificacao.js";
+export * from "./schemas/painel.js";

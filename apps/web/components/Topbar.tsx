@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import styles from "./Topbar.module.css";
 import { apiFetch } from "../lib/api";
+import { NotificationBell } from "./NotificationBell";
 
 export interface TopbarProps {
   titulo: string;
@@ -31,6 +32,7 @@ export function Topbar({ titulo }: TopbarProps) {
       <div className={styles.title}>{titulo}</div>
       <div className={styles.actions}>
         <span className={styles.date}>{dataAtual}</span>
+        <NotificationBell />
         <a className={styles.accountLink} href="/conta">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="12" cy="8" r="4" />
