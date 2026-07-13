@@ -6,6 +6,7 @@ import { apiFetch } from "../lib/api";
 import { ReservaStatusBadge } from "./ReservaStatusBadge";
 import { PriorityBadge } from "./PriorityBadge";
 import { ChecklistSeguranca } from "./ChecklistSeguranca";
+import { AnexosComentarios } from "./AnexosComentarios";
 
 // S8 (RN-RES-12): categorias de plataforma cujo checklist de segurança é obrigatório
 // antes de "em_uso" — mantido em espelho do backend (checklist.service.ts, requerChecklist)
@@ -17,6 +18,7 @@ export interface ReservaDetalhe {
   setorId: string;
   setorNome: string;
   solicitanteNome: string;
+  plataformaId: string;
   plataformaNome: string;
   plataformaCategoria: string;
   data: string;
@@ -42,7 +44,13 @@ interface ReservaDetalheModalProps {
   onClose: () => void;
   onAtualizado: () => Promise<void>;
   onCancelarSerie?: (recorrenciaId: string) => Promise<void>;
+  // RF-RES-13 ("Reservar novamente"): reservas concluídas/canceladas oferecem pré-preencher
+  // uma nova reserva com os mesmos dados (exceto data/status) — decisão de UI fica no pai
+  // (ReservasClient), que já controla a abertura do ReservaModal.
+  onReservarNovamente?: (reserva: ReservaDetalhe) => void;
 }
+
+type GravidadeOcorrencia = "baixa" | "media" | "alta";
 
 function formatarData(data: string): string {
   const [ano, mes, dia] = data.split("-");
@@ -56,12 +64,21 @@ export function ReservaDetalheModal({
   onClose,
   onAtualizado,
   onCancelarSerie,
+  onReservarNovamente,
 }: ReservaDetalheModalProps) {
   const [executando, setExecutando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [mostrarFormRejeicao, setMostrarFormRejeicao] = useState(false);
   const [motivoRejeicao, setMotivoRejeicao] = useState("");
   const [checklistTodosConformes, setChecklistTodosConformes] = useState<boolean | null>(null);
+  // RF-RES-16/UC-04: ao concluir o uso, pergunta se houve ocorrência/avaria antes de
+  // finalizar — "perguntando" não bloqueia estruturalmente a conclusão em duas chamadas
+  // (POST /ocorrencia, depois PATCH /status concluir), mas garante que a ocorrência fique
+  // registrada como parte do mesmo fluxo de conclusão.
+  const [etapaConcluir, setEtapaConcluir] = useState<"nenhuma" | "perguntar" | "formOcorrencia">("nenhuma");
+  const [ocorrenciaDescricao, setOcorrenciaDescricao] = useState("");
+  const [ocorrenciaGravidade, setOcorrenciaGravidade] = useState<GravidadeOcorrencia>("baixa");
+  const [ocorrenciaGeraManutencao, setOcorrenciaGeraManutencao] = useState(false);
 
   // S7 (RN-RES-07/08): Admin não tem restrição de escopo; Gestor de Setor só age em
   // reservas do próprio setor e, para aprovar, só quando ainda não deu sua própria
@@ -131,13 +148,45 @@ export function ReservaDetalheModal({
     );
   }
 
-  function concluir() {
+  function iniciarFluxoConcluir() {
+    setEtapaConcluir("perguntar");
+  }
+
+  function concluirSemOcorrencia() {
+    setEtapaConcluir("nenhuma");
     return executarAcao(() =>
       apiFetch(`/api/v1/reservas/${reserva.id}/status`, {
         method: "PATCH",
         body: JSON.stringify({ acao: "concluir" }),
       })
     );
+  }
+
+  function confirmarOcorrenciaEConcluir() {
+    if (ocorrenciaDescricao.trim().length < 5) {
+      setErro("Descreva a ocorrência com pelo menos 5 caracteres.");
+      return;
+    }
+    return executarAcao(async () => {
+      await apiFetch(`/api/v1/reservas/${reserva.id}/ocorrencia`, {
+        method: "POST",
+        body: JSON.stringify({
+          descricao: ocorrenciaDescricao.trim(),
+          gravidade: ocorrenciaGravidade,
+          geraManutencao: ocorrenciaGeraManutencao,
+        }),
+      });
+      await apiFetch(`/api/v1/reservas/${reserva.id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ acao: "concluir" }),
+      });
+      setEtapaConcluir("nenhuma");
+    });
+  }
+
+  function reservarNovamente() {
+    onReservarNovamente?.(reserva);
+    onClose();
   }
 
   function cancelar() {
@@ -270,6 +319,74 @@ export function ReservaDetalheModal({
               />
             </div>
           )}
+
+          {etapaConcluir === "perguntar" && (
+            <div className={styles.formGroup} style={{ marginTop: 14, gap: 10 }}>
+              <span style={{ fontSize: "0.85rem", fontWeight: 600 }}>
+                Houve alguma ocorrência ou avaria durante o uso? (RF-RES-16)
+              </span>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button type="button" className={styles.btnGhost} disabled={executando} onClick={concluirSemOcorrencia}>
+                  Não, concluir normalmente
+                </button>
+                <button
+                  type="button"
+                  className={styles.btnPrimary}
+                  disabled={executando}
+                  onClick={() => setEtapaConcluir("formOcorrencia")}
+                >
+                  Sim, reportar ocorrência
+                </button>
+              </div>
+            </div>
+          )}
+
+          {etapaConcluir === "formOcorrencia" && (
+            <div className={styles.formGrid} style={{ marginTop: 14 }}>
+              <div className={`${styles.formGroup} ${styles.formGroupFull}`}>
+                <label htmlFor="ocorrencia-descricao">Descrição da ocorrência *</label>
+                <textarea
+                  id="ocorrencia-descricao"
+                  rows={2}
+                  value={ocorrenciaDescricao}
+                  onChange={(e) => setOcorrenciaDescricao(e.target.value)}
+                  placeholder="Descreva a avaria ou ocorrência..."
+                />
+              </div>
+              <div className={styles.formGroup}>
+                <label htmlFor="ocorrencia-gravidade">Gravidade</label>
+                <select
+                  id="ocorrencia-gravidade"
+                  value={ocorrenciaGravidade}
+                  onChange={(e) => setOcorrenciaGravidade(e.target.value as GravidadeOcorrencia)}
+                >
+                  <option value="baixa">Baixa</option>
+                  <option value="media">Média</option>
+                  <option value="alta">Alta</option>
+                </select>
+              </div>
+              <div className={styles.formGroup} style={{ justifyContent: "flex-end" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, textTransform: "none" }}>
+                  <input
+                    type="checkbox"
+                    checked={ocorrenciaGeraManutencao}
+                    onChange={(e) => setOcorrenciaGeraManutencao(e.target.checked)}
+                  />
+                  Abrir manutenção automática (RN-PLAT-04 — bloqueia novas reservas na plataforma)
+                </label>
+              </div>
+              <div className={`${styles.formGroupFull}`} style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                <button type="button" className={styles.btnGhost} disabled={executando} onClick={() => setEtapaConcluir("perguntar")}>
+                  Voltar
+                </button>
+                <button type="button" className={styles.btnPrimary} disabled={executando} onClick={confirmarOcorrenciaEConcluir}>
+                  Registrar Ocorrência e Concluir
+                </button>
+              </div>
+            </div>
+          )}
+
+          {noEscopo && <AnexosComentarios reservaId={reserva.id} />}
         </div>
         <div className={styles.modalFooter}>
           <button type="button" className={styles.btnGhost} onClick={onClose}>
@@ -310,9 +427,14 @@ export function ReservaDetalheModal({
               Iniciar Uso
             </button>
           )}
-          {podeConcluir && (
-            <button type="button" className={styles.btnPrimary} disabled={executando} onClick={concluir}>
+          {podeConcluir && etapaConcluir === "nenhuma" && (
+            <button type="button" className={styles.btnPrimary} disabled={executando} onClick={iniciarFluxoConcluir}>
               Concluir
+            </button>
+          )}
+          {noEscopo && ["concluida", "cancelada"].includes(reserva.status) && onReservarNovamente && (
+            <button type="button" className={styles.btnPrimary} disabled={executando} onClick={reservarNovamente}>
+              Reservar Novamente
             </button>
           )}
           {podeCancelar && !mostrarFormRejeicao && (

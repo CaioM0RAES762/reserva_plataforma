@@ -319,8 +319,16 @@ export async function reservasRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(404).send({ erro: "Plataforma não encontrada." });
     }
     // RN-PLAT-01: plataforma só pode ser reservada se status diferente de "inativa".
-    if (plataforma_status === "inativa") {
-      return reply.status(409).send({ erro: "Esta plataforma está inativa e não pode ser reservada." });
+    // RN-PLAT-04 (S11): ocorrência com gera_manutencao=1 move a plataforma para
+    // "manutencao" e bloqueia novas reservas até reversão manual pelo Admin — mesmo
+    // tratamento de "inativa" aqui.
+    if (plataforma_status === "inativa" || plataforma_status === "manutencao") {
+      return reply.status(409).send({
+        erro:
+          plataforma_status === "inativa"
+            ? "Esta plataforma está inativa e não pode ser reservada."
+            : "Esta plataforma está em manutenção e não pode ser reservada (RN-PLAT-04).",
+      });
     }
 
     // S10 (RF-NOT-01 / RN-RES-07): aprovadores elegíveis para a notificação de reserva

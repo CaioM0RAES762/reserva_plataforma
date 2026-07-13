@@ -11,17 +11,22 @@ import { historicoRoutes } from "./routes/historico.js";
 import { setoresRoutes } from "./routes/setores.js";
 import { usuariosRoutes } from "./routes/usuarios.js";
 import { checklistRoutes } from "./routes/checklist.js";
-import { uploadsRoutes } from "./routes/uploads.js";
 import { bloqueiosRoutes } from "./routes/bloqueios.js";
 import { eventosRoutes } from "./routes/eventos.js";
 import { notificacoesRoutes } from "./routes/notificacoes.js";
 import { painelRoutes } from "./routes/painel.js";
+import { anexosRoutes } from "./routes/anexos.js";
+import { comentariosRoutes } from "./routes/comentarios.js";
+import { ocorrenciasRoutes } from "./routes/ocorrencias.js";
 import { isAllowedOrigin } from "./utils/cors.js";
 
 const isProduction = process.env.NODE_ENV === "production";
 
 export async function buildApp(): Promise<FastifyInstance> {
-  const app = Fastify({ logger: true });
+  // S11 (RF-RES-14): anexos até 10 MB trafegam como data URL base64 no corpo JSON (mesmo
+  // padrão de S8 para fotos de checklist) — base64 infla o payload em ~37%, então o limite
+  // padrão do Fastify (1 MB) precisa subir para acomodar um anexo de 10 MB + overhead do JSON.
+  const app = Fastify({ logger: true, bodyLimit: 15 * 1024 * 1024 });
 
   await app.register(cookie);
   await app.register(cors, {
@@ -50,11 +55,13 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(setoresRoutes);
   await app.register(usuariosRoutes);
   await app.register(checklistRoutes);
-  await app.register(uploadsRoutes);
   await app.register(bloqueiosRoutes);
   await app.register(eventosRoutes);
   await app.register(notificacoesRoutes);
   await app.register(painelRoutes);
+  await app.register(anexosRoutes);
+  await app.register(comentariosRoutes);
+  await app.register(ocorrenciasRoutes);
 
   return app;
 }

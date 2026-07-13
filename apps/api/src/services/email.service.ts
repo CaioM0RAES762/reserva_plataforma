@@ -216,6 +216,62 @@ export function templateChecklistNaoConforme(dados: DadosChecklistNaoConforme): 
   };
 }
 
+export interface DadosComentarioNovo {
+  plataformaNome: string;
+  autorNome: string;
+  mensagem: string;
+}
+
+// RF-RES-15 (S11): notifica o(s) outro(s) participante(s) da conversa quando alguém
+// comenta numa reserva.
+export function templateComentarioNovo(dados: DadosComentarioNovo): {
+  assunto: string;
+  corpoHtml: string;
+} {
+  return {
+    assunto: `PlataformaRes — Novo comentário (${dados.plataformaNome})`,
+    corpoHtml: `
+      <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
+        <h2>Novo comentário na reserva</h2>
+        <p><strong>${dados.autorNome}</strong> comentou na reserva de <strong>${dados.plataformaNome}</strong>:</p>
+        <p style="background:#f5f5f5; padding: 10px; border-radius: 4px; font-size: 14px;">${dados.mensagem}</p>
+        <p style="color: #666; font-size: 12px;">Acesse o PlataformaRes para responder.</p>
+      </div>
+    `,
+  };
+}
+
+export interface DadosOcorrenciaGrave {
+  plataformaNome: string;
+  setorNome: string;
+  descricao: string;
+  geraManutencao: boolean;
+}
+
+// RF-RES-16/RN-PLAT-04 (S11): ocorrência de gravidade alta sempre notifica o Admin,
+// independente de gerar manutenção automática ou não.
+export function templateOcorrenciaGrave(dados: DadosOcorrenciaGrave): {
+  assunto: string;
+  corpoHtml: string;
+} {
+  return {
+    assunto: `PlataformaRes — Ocorrência grave reportada (${dados.plataformaNome})`,
+    corpoHtml: `
+      <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
+        <h2 style="color:#DC2626;">Ocorrência de gravidade alta</h2>
+        <p>Uma ocorrência de gravidade <strong>alta</strong> foi reportada para <strong>${dados.plataformaNome}</strong> (setor ${dados.setorNome}).</p>
+        <p style="background:#f5f5f5; padding: 10px; border-radius: 4px; font-size: 14px;">${dados.descricao}</p>
+        ${
+          dados.geraManutencao
+            ? '<p style="color:#DC2626; font-size: 14px;"><strong>A plataforma foi movida automaticamente para manutenção e novas reservas estão bloqueadas (RN-PLAT-04).</strong></p>'
+            : ""
+        }
+        <p style="color: #666; font-size: 12px;">Acesse o PlataformaRes para revisar a plataforma.</p>
+      </div>
+    `,
+  };
+}
+
 export interface DadosRejeicaoReserva extends DadosDecisaoReserva {
   motivo: string;
 }

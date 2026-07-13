@@ -189,18 +189,23 @@ export async function checklistRoutes(app: FastifyInstance): Promise<void> {
         .map((l) => [l.item_id as string, l])
     );
 
-    const itens = templateResult.recordset.map((item) => {
-      const resposta = respostasPorItem.get(item.id);
-      return {
-        itemId: item.id,
-        descricao: item.descricao,
-        ordem: item.ordem,
-        obrigatorio: item.obrigatorio,
-        conforme: resposta?.conforme ?? null,
-        observacao: resposta?.observacao ?? null,
-        fotoUrl: resposta?.foto_url ?? null,
-      };
-    });
+    // S11 (RNF-09): foto_url guarda a CHAVE do blob no Azure Blob Storage, não uma URL
+    // pública — o SAS de leitura (curta duração) é gerado sob demanda a cada consulta,
+    // nunca persistido (evitaria um link "eterno" se vazado).
+    const itens = await Promise.all(
+      templateResult.recordset.map(async (item) => {
+        const resposta = respostasPorItem.get(item.id);
+        return {
+          itemId: item.id,
+          descricao: item.descricao,
+          ordem: item.ordem,
+          obrigatorio: item.obrigatorio,
+          conforme: resposta?.conforme ?? null,
+          observacao: resposta?.observacao ?? null,
+          fotoUrl: resposta?.foto_url ? await armazenamentoService.gerarUrlAcesso(resposta.foto_url) : null,
+        };
+      })
+    );
 
     return reply.status(200).send({
       requerChecklist: true,

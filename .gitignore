@@ -10,3 +10,5 @@ coverage/
 .turbo/
 SDD.md
 MASTER.md
+apps/api/uploads/
+apps/api/.azurite/

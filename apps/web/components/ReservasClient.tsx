@@ -5,7 +5,7 @@ import styles from "../app/(app)/reservas/page.module.css";
 import { apiFetch } from "../lib/api";
 import { ReservaStatusBadge } from "./ReservaStatusBadge";
 import { PriorityBadge } from "./PriorityBadge";
-import { ReservaModal, type ReservaFormValues } from "./ReservaModal";
+import { ReservaModal, type ReservaFormValues, type ReservaValoresIniciais } from "./ReservaModal";
 import { ReservaDetalheModal, type ReservaDetalhe } from "./ReservaDetalheModal";
 
 type Reserva = ReservaDetalhe;
@@ -31,6 +31,7 @@ export function ReservasClient({ solicitanteNome, setorNome, perfil, setorId }: 
   const [dataFiltro, setDataFiltro] = useState("");
   const [modalAberto, setModalAberto] = useState(false);
   const [reservaSelecionada, setReservaSelecionada] = useState<Reserva | null>(null);
+  const [valoresIniciais, setValoresIniciais] = useState<ReservaValoresIniciais | undefined>(undefined);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -61,7 +62,15 @@ export function ReservasClient({ solicitanteNome, setorNome, perfil, setorId }: 
       body: JSON.stringify(valores),
     });
     setModalAberto(false);
+    setValoresIniciais(undefined);
     await carregar();
+  }
+
+  // RF-RES-13: pré-preenche plataforma/motivo/prioridade (nunca data/status) de uma
+  // reserva concluída/cancelada e abre o mesmo modal de criação.
+  function handleReservarNovamente(reserva: Reserva) {
+    setValoresIniciais({ plataformaId: reserva.plataformaId, motivo: reserva.motivo, prioridade: reserva.prioridade });
+    setModalAberto(true);
   }
 
   async function handleCancelarSerie(recorrenciaId: string) {
@@ -81,7 +90,13 @@ export function ReservasClient({ solicitanteNome, setorNome, perfil, setorId }: 
           <h1>Reservas</h1>
           <p>Agende e gerencie o uso das plataformas</p>
         </div>
-        <button className={styles.btnPrimary} onClick={() => setModalAberto(true)}>
+        <button
+          className={styles.btnPrimary}
+          onClick={() => {
+            setValoresIniciais(undefined);
+            setModalAberto(true);
+          }}
+        >
           Nova Reserva
         </button>
       </div>
@@ -163,8 +178,12 @@ export function ReservasClient({ solicitanteNome, setorNome, perfil, setorId }: 
         <ReservaModal
           solicitanteNome={solicitanteNome}
           setorNome={setorNome}
-          onClose={() => setModalAberto(false)}
+          onClose={() => {
+            setModalAberto(false);
+            setValoresIniciais(undefined);
+          }}
           onSalvar={handleSalvar}
+          valoresIniciais={valoresIniciais}
         />
       )}
 
@@ -179,6 +198,7 @@ export function ReservasClient({ solicitanteNome, setorNome, perfil, setorId }: 
             await carregar();
           }}
           onCancelarSerie={handleCancelarSerie}
+          onReservarNovamente={handleReservarNovamente}
         />
       )}
     </section>

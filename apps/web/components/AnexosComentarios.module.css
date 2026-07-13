@@ -1,0 +1,219 @@
+.wrap {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-light);
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.tabBtn {
+  background: none;
+  border: none;
+  padding: 8px 12px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  border-bottom: 2px solid transparent;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tabAtiva {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+
+.count {
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 999px;
+}
+
+.tabAtiva .count {
+  background: var(--primary-light, rgba(37, 99, 235, 0.12));
+  color: var(--primary);
+}
+
+.erro {
+  background: var(--red-light);
+  color: var(--red);
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  margin-bottom: 10px;
+}
+
+.vazio {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  padding: 10px 0;
+}
+
+/* ---------- Anexos ---------- */
+
+.dropzone {
+  border: 1.5px dashed var(--border);
+  border-radius: 8px;
+  padding: 18px 12px;
+  text-align: center;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  margin-bottom: 12px;
+}
+
+.dropzone:hover {
+  border-color: var(--primary);
+  color: var(--text-secondary);
+}
+
+.dropzoneAtiva {
+  border-color: var(--primary);
+  background: var(--surface-2);
+  color: var(--primary);
+}
+
+.listaAnexos {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.itemAnexo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--surface-2);
+}
+
+.anexoThumb {
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  object-fit: cover;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.anexoPreviewLink,
+.anexoIcone {
+  flex-shrink: 0;
+}
+
+.anexoIcone {
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.anexoInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.anexoNome {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.anexoMeta {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+/* ---------- Comentários ---------- */
+
+.thread {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 220px;
+  overflow-y: auto;
+  margin-bottom: 10px;
+}
+
+.itemComentario {
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--surface-2);
+}
+
+.comentarioHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.comentarioHeader strong {
+  color: var(--text);
+  font-size: 0.78rem;
+}
+
+.itemComentario p {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
+.novoComentario {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.novoComentario textarea {
+  width: 100%;
+  font-size: 0.82rem;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.btnEnviar {
+  align-self: flex-end;
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 7px 14px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.btnEnviar:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

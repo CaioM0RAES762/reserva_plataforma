@@ -26,25 +26,35 @@ interface ConflitoResposta {
   reserva: { id: string; setorNome: string; horaInicio: string; horaFim: string } | null;
 }
 
+// RF-RES-13 ("Reservar novamente"): pré-preenche plataforma/motivo/prioridade de uma
+// reserva concluída/cancelada — deliberadamente SEM data/horário/status, que o usuário
+// deve escolher de novo (a data antiga quase sempre já passou).
+export interface ReservaValoresIniciais {
+  plataformaId: string;
+  motivo: string;
+  prioridade: "normal" | "alta" | "urgente";
+}
+
 interface ReservaModalProps {
   solicitanteNome: string;
   setorNome: string | null;
   onClose: () => void;
   onSalvar: (valores: ReservaFormValues) => Promise<void>;
+  valoresIniciais?: ReservaValoresIniciais;
 }
 
 function hojeStr(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-export function ReservaModal({ solicitanteNome, setorNome, onClose, onSalvar }: ReservaModalProps) {
+export function ReservaModal({ solicitanteNome, setorNome, onClose, onSalvar, valoresIniciais }: ReservaModalProps) {
   const [plataformas, setPlataformas] = useState<PlataformaOpcao[]>([]);
-  const [plataformaId, setPlataformaId] = useState("");
-  const [prioridade, setPrioridade] = useState<"normal" | "alta" | "urgente">("normal");
+  const [plataformaId, setPlataformaId] = useState(valoresIniciais?.plataformaId ?? "");
+  const [prioridade, setPrioridade] = useState<"normal" | "alta" | "urgente">(valoresIniciais?.prioridade ?? "normal");
   const [data, setData] = useState(hojeStr());
   const [horaInicio, setHoraInicio] = useState("");
   const [horaFim, setHoraFim] = useState("");
-  const [motivo, setMotivo] = useState("");
+  const [motivo, setMotivo] = useState(valoresIniciais?.motivo ?? "");
   const [erro, setErro] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [conflitoMotivo, setConflitoMotivo] = useState<string | null>(null);
@@ -125,7 +135,7 @@ export function ReservaModal({ solicitanteNome, setorNome, onClose, onSalvar }: 
     >
       <div className={styles.modal}>
         <div className={styles.modalHeader}>
-          <h3>Nova Reserva</h3>
+          <h3>{valoresIniciais ? "Reservar Novamente" : "Nova Reserva"}</h3>
           <button type="button" className={styles.modalClose} onClick={onClose}>
             ✕
           </button>
