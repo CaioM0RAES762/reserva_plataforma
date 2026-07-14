@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import styles from "../app/(app)/reservas/page.module.css";
 import { apiFetch } from "../lib/api";
 import { ReservaStatusBadge } from "./ReservaStatusBadge";
@@ -23,12 +24,16 @@ function formatarData(data: string): string {
 }
 
 export function ReservasClient({ solicitanteNome, setorNome, perfil, setorId }: ReservasClientProps) {
+  // Atalhos do Dashboard chegam aqui como ?status=agendada / ?data=AAAA-MM-DD (SDD §10 —
+  // "atalho para checklist pendente" etc.); lidos só na montagem, o usuário continua livre
+  // para trocar os filtros normalmente depois.
+  const searchParams = useSearchParams();
   const [reservas, setReservas] = useState<Reserva[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
-  const [statusFiltro, setStatusFiltro] = useState("");
-  const [dataFiltro, setDataFiltro] = useState("");
+  const [statusFiltro, setStatusFiltro] = useState(() => searchParams.get("status") ?? "");
+  const [dataFiltro, setDataFiltro] = useState(() => searchParams.get("data") ?? "");
   const [modalAberto, setModalAberto] = useState(false);
   const [reservaSelecionada, setReservaSelecionada] = useState<Reserva | null>(null);
   const [valoresIniciais, setValoresIniciais] = useState<ReservaValoresIniciais | undefined>(undefined);

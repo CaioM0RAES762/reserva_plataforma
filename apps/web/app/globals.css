@@ -36,8 +36,8 @@
   --sector-rh: #BE185D;
   --sector-qualidade: #065F46;
 
-  --sidebar-width: 240px;
-  --topbar-h: 60px;
+  --sidebar-width: 288px;
+  --topbar-h: 64px;
   --radius: 10px;
   --radius-sm: 6px;
   --shadow: 0 1px 3px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.05);
@@ -45,15 +45,49 @@
   --shadow-lg: 0 10px 30px rgba(0,0,0,0.12), 0 4px 10px rgba(0,0,0,0.06);
 
   --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+
+  /* Design system industrial — especificacao.md — usado no Dashboard, Sidebar e Header */
+  --paper: oklch(0.982 0.004 85);
+  --paper-elev: oklch(0.995 0.003 85);
+  --ink: oklch(0.19 0.012 65);
+  --ink-muted: oklch(0.48 0.014 65);
+  --ink-soft: oklch(0.35 0.013 65);
+  --hairline: oklch(0.88 0.008 75);
+
+  --safety: oklch(0.68 0.16 55);
+  --safety-soft: oklch(0.94 0.06 70);
+  --hazard: oklch(0.58 0.21 27);
+  --signal: oklch(0.62 0.14 155);
+  --caution: oklch(0.75 0.14 90);
+
+  --chart-1: var(--safety);
+  --chart-2: var(--signal);
+  --chart-3: oklch(0.5 0.09 240);
+  --chart-4: var(--caution);
+  --chart-5: var(--hazard);
+
+  --ind-sidebar: oklch(0.16 0.01 65);
+  --ind-sidebar-foreground: oklch(0.86 0.008 75);
+  --ind-sidebar-accent: oklch(0.22 0.012 65);
+  --ind-sidebar-border: oklch(0.26 0.012 65);
+  --ind-sidebar-primary: var(--safety);
+
+  --ind-radius-sm: 2px;
+  --ind-radius-md: 4px;
+  --ind-radius-lg: 6px;
 }
 
+/* --font-sans / --font-mono / --font-display são injetadas pelo next/font/google
+   via className no <html> (ver app/layout.tsx) — não redefinir aqui para não
+   sobrescrever o font-family gerado (:root tem especificidade maior que html). */
 html { font-size: 15px; }
 body {
-  font-family: var(--font);
-  background: var(--bg);
+  font-family: var(--font-sans, var(--font));
+  background: var(--paper);
   color: var(--text);
   min-height: 100vh;
   overflow-x: hidden;
+  font-feature-settings: "ss01", "cv11";
 }
 
 a { cursor: pointer; text-decoration: none; color: inherit; }
@@ -63,3 +97,5 @@ input, select, textarea {
   font-size: 0.9rem;
   color: var(--text);
 }
+
+.tabular-nums { font-variant-numeric: tabular-nums; }

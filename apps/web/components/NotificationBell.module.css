@@ -8,12 +8,12 @@
   width: 34px;
   height: 34px;
   background: transparent;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-sm);
+  color: var(--ink-muted);
   transition: all 0.15s;
 }
-.bellButton:hover { background: var(--surface-2); color: var(--text); }
+.bellButton:hover { background: color-mix(in oklch, var(--ink) 5%, transparent); color: var(--ink); }
 
 .badge {
   position: absolute;
@@ -23,10 +23,11 @@
   height: 18px;
   padding: 0 4px;
   border-radius: 999px;
-  background: var(--red);
+  background: var(--hazard);
   color: #fff;
-  font-size: 0.68rem;
-  font-weight: 700;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 500;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -45,10 +46,9 @@
   right: 0;
   width: 340px;
   max-height: 420px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-lg);
+  background: var(--paper-elev);
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-md);
   z-index: 61;
   display: flex;
   flex-direction: column;
@@ -60,17 +60,17 @@
   align-items: center;
   justify-content: space-between;
   padding: 12px 14px;
-  border-bottom: 1px solid var(--border-light);
-  font-weight: 700;
+  border-bottom: 1px solid var(--hairline);
+  font-weight: 600;
   font-size: 0.85rem;
-  color: var(--text);
+  color: var(--ink);
 }
 
 .marcarTodas {
   background: transparent;
-  color: var(--primary);
+  color: var(--safety);
   font-size: 0.75rem;
-  font-weight: 600;
+  font-weight: 500;
 }
 .marcarTodas:hover { text-decoration: underline; }
 
@@ -79,7 +79,7 @@
 .empty {
   padding: 24px 14px;
   text-align: center;
-  color: var(--text-muted);
+  color: var(--ink-muted);
   font-size: 0.85rem;
 }
 
@@ -88,15 +88,15 @@
   flex-direction: column;
   gap: 2px;
   padding: 10px 14px;
-  border-bottom: 1px solid var(--border-light);
+  border-bottom: 1px solid var(--hairline);
   transition: background 0.15s;
 }
-.item:hover { background: var(--surface-2); }
+.item:hover { background: color-mix(in oklch, var(--ink) 4%, transparent); }
 .item:last-child { border-bottom: none; }
 
-.unread { background: var(--primary-light); }
-.unread:hover { background: var(--primary-light); }
+.unread { background: var(--safety-soft); }
+.unread:hover { background: var(--safety-soft); }
 
-.itemTitulo { font-size: 0.83rem; font-weight: 700; color: var(--text); }
-.itemMensagem { font-size: 0.78rem; color: var(--text-secondary); }
-.itemData { font-size: 0.7rem; color: var(--text-muted); margin-top: 2px; }
+.itemTitulo { font-size: 0.83rem; font-weight: 600; color: var(--ink); }
+.itemMensagem { font-size: 0.78rem; color: var(--ink-soft); }
+.itemData { font-family: var(--font-mono); font-size: 0.68rem; color: var(--ink-muted); margin-top: 2px; }

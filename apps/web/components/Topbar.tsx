@@ -1,21 +1,42 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Search, User, Radio } from "lucide-react";
 import styles from "./Topbar.module.css";
 import { apiFetch } from "../lib/api";
 import { NotificationBell } from "./NotificationBell";
 
 export interface TopbarProps {
   titulo: string;
+  nome?: string;
+  perfilLabel?: string;
 }
 
-export function Topbar({ titulo }: TopbarProps) {
+function formatarRelogio(data: Date): string {
+  const dia = data.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" }).replace(".", "");
+  const hora = data.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  return `${dia.toUpperCase()} · ${hora} BRT`;
+}
+
+export function Topbar({ titulo, nome, perfilLabel }: TopbarProps) {
   const router = useRouter();
-  const dataAtual = new Date().toLocaleDateString("pt-BR", {
-    weekday: "long",
-    day: "2-digit",
-    month: "long",
-  });
+  const [agora, setAgora] = useState<Date | null>(null);
+
+  useEffect(() => {
+    setAgora(new Date());
+    const id = setInterval(() => setAgora(new Date()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const iniciais = nome
+    ? nome
+        .split(" ")
+        .map((parte) => parte[0])
+        .slice(0, 2)
+        .join("")
+        .toUpperCase()
+    : undefined;
 
   async function handleLogout() {
     try {
@@ -36,20 +57,34 @@ export function Topbar({ titulo }: TopbarProps) {
           <path d="M3 6h18M3 12h18M3 18h18" />
         </svg>
       </label>
-      <div className={styles.title}>{titulo}</div>
+
+      <div className={styles.left}>
+        <div className={styles.breadcrumb}>
+          <span>CENTRAL</span>
+          <span className={styles.breadcrumbSep}>›</span>
+          <span className={styles.breadcrumbCurrent}>{titulo}</span>
+        </div>
+        <div className={styles.search}>
+          <Search size={15} strokeWidth={1.75} className={styles.searchIcon} />
+          <input type="text" placeholder="Buscar reserva, plataforma, colaborador..." className={styles.searchInput} />
+          <kbd className={styles.kbd}>⌘K</kbd>
+        </div>
+      </div>
+
       <div className={styles.actions}>
-        <span className={styles.date}>{dataAtual}</span>
+        {agora && (
+          <span className={styles.clock}>
+            <Radio size={13} strokeWidth={1.75} className={styles.clockIcon} />
+            {formatarRelogio(agora)}
+          </span>
+        )}
+        <span className={styles.divider} aria-hidden="true" />
         <NotificationBell />
-        <a className={styles.accountLink} href="/conta">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="8" r="4" />
-            <path d="M4 21c0-4 4-6 8-6s8 2 8 6" />
-          </svg>
-          <span className={styles.accountLabel}>Minha Conta</span>
-        </a>
-        <button className={styles.logoutBtn} onClick={handleLogout}>
-          Sair
-        </button>
+        <span className={styles.divider} aria-hidden="true" />
+        {nome && (
+          <div className={styles.userBlock}>
+          </div>
+        )}
       </div>
     </header>
   );
