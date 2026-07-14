@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import styles from "./page.module.css";
 import { TrocarSenhaForm } from "../../../components/TrocarSenhaForm";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3334";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3335";
 
 export default async function ContaPage() {
   const cookieStore = await cookies();

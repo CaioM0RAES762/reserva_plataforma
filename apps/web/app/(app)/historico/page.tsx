@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { HistoricoClient } from "../../../components/HistoricoClient";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3334";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3335";
 
 export default async function HistoricoPage() {
   const cookieStore = await cookies();

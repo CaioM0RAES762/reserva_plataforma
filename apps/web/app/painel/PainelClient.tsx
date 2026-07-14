@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import styles from "./painel.module.css";
 import { useEventosSSE } from "../../lib/useEventosSSE";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3334";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3335";
 const POLLING_FALLBACK_MS = 30000;
 
 interface PainelReserva {

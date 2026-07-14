@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { AuditoriaClient } from "../../../../components/AuditoriaClient";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3334";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3335";
 
 export default async function AuditoriaAdminPage() {
   const cookieStore = await cookies();

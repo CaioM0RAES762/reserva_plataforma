@@ -1,4 +1,4 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3334";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3335";
 
 export interface ApiError {
   erro: string;

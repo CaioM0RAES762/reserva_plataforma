@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3334";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3335";
 
 // SDD §3.4: mesmos seis tipos de evento emitidos pelo backend em GET /api/v1/eventos.
 const TIPOS_EVENTO = [

@@ -5,6 +5,7 @@ allowBuilds:
   bcrypt: true
   esbuild: true
   msgpackr-extract: true
+  puppeteer: true
   sharp: true
 overrides:
   "tar@<7.5.16": ">=7.5.16"

@@ -107,6 +107,18 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
+    href: "/relatorios",
+    label: "Relatórios",
+    disponivel: true,
+    perfis: ["admin", "gestor_setor"],
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M3 3v18h18" />
+        <path d="M18 17V9M13 17V5M8 17v-4" />
+      </svg>
+    ),
+  },
+  {
     href: "/administracao/usuarios",
     label: "Usuários",
     disponivel: true,

@@ -1,0 +1,149 @@
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.header h1 { font-size: 1.5rem; font-weight: 700; color: var(--text); letter-spacing: -0.02em; }
+.header p { font-size: 0.85rem; color: var(--text-muted); margin-top: 2px; }
+
+.periodBar {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.periodField { display: flex; flex-direction: column; gap: 4px; }
+.periodField label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.periodField input {
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-size: 0.85rem;
+}
+.periodField input:focus { outline: none; border-color: var(--primary); }
+
+.btnPrimary {
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 8px 16px;
+  font-size: 0.83rem;
+  font-weight: 600;
+  height: 34px;
+}
+.btnPrimary:hover { background: var(--primary-dark); }
+.btnPrimary:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.error {
+  background: var(--red-light);
+  color: var(--red);
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 0.82rem;
+  margin-bottom: 16px;
+}
+
+.kpiGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+  margin-bottom: 20px;
+}
+.kpiCard {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  box-shadow: var(--shadow);
+}
+.kpiValue { display: block; font-size: 1.6rem; font-weight: 800; color: var(--text); letter-spacing: -0.03em; }
+.kpiLabel { display: block; font-size: 0.74rem; color: var(--text-muted); margin-top: 2px; }
+
+.panelGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.panelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--border-light);
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.panelHeader h2 { font-size: 0.88rem; font-weight: 700; color: var(--text); }
+.panelBody { padding: 14px 16px; }
+
+.exportGroup { display: flex; gap: 6px; }
+.btnExport {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+.btnExport:hover { border-color: var(--primary); color: var(--primary); }
+.btnExport:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.miniTable { width: 100%; border-collapse: collapse; font-size: 0.78rem; margin-top: 10px; }
+.miniTable th {
+  text-align: left;
+  padding: 6px 8px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+.miniTable td { padding: 6px 8px; border-bottom: 1px solid var(--border-light); color: var(--text-secondary); }
+.miniTable tbody tr:last-child td { border-bottom: none; }
+
+.setorSwatch { display: inline-flex; align-items: center; gap: 8px; }
+.setorSwatch span {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  display: inline-block;
+  border: 1px solid var(--border);
+}
+
+.empty { padding: 24px; text-align: center; color: var(--text-muted); font-size: 0.83rem; }
+.loading { padding: 24px; text-align: center; color: var(--text-muted); font-size: 0.83rem; }
+
+.legendRow { display: flex; gap: 14px; flex-wrap: wrap; padding: 0 16px 12px; font-size: 0.74rem; color: var(--text-secondary); }
+.legendDot { width: 10px; height: 10px; border-radius: 2px; display: inline-block; margin-right: 5px; vertical-align: -1px; }
+
+@media (max-width: 900px) {
+  .panelGrid { grid-template-columns: 1fr; }
+}

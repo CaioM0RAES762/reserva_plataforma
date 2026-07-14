@@ -13,3 +13,4 @@ export * from "./schemas/comentario.js";
 export * from "./schemas/ocorrencia.js";
 export * from "./schemas/configuracao.js";
 export * from "./schemas/auditoria.js";
+export * from "./schemas/relatorio.js";

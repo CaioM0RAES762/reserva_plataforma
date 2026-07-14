@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import styles from "./Admin.module.css";
 import { apiFetch } from "../lib/api";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3334";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3335";
 
 interface Auditoria {
   id: string;
