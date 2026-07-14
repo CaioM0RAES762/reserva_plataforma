@@ -14,9 +14,11 @@ import { autenticar, requireRole, usuarioNoEscopoDaReserva } from "../middleware
 import {
   encontrarBloqueioConflitante,
   encontrarConflito,
+  validarJanelaReserva,
   type BloqueioAtivo,
   type ReservaExistente,
 } from "../services/conflito.service.js";
+import { obterRegrasReservaConfiguraveis, obterSlaAprovacaoUrgenteHoras } from "../services/configuracao.service.js";
 import { diaSemanaDe, gerarDatasRecorrencia } from "../services/recorrencia.service.js";
 import { enfileirarEmail } from "../services/queue.js";
 import { requerChecklist } from "../services/checklist.service.js";
@@ -328,6 +330,33 @@ export async function reservasRoutes(app: FastifyInstance): Promise<void> {
           plataforma_status === "inativa"
             ? "Esta plataforma está inativa e não pode ser reservada."
             : "Esta plataforma está em manutenção e não pode ser reservada (RN-PLAT-04).",
+      });
+    }
+
+    // S12 (RF-CFG-01/02): antecedência mínima, duração máxima e horário de expediente —
+    // lidos de ConfiguracaoSistema (com cache leve), nunca hardcoded. A recorrência usa a
+    // mesma janela (horaInicio/horaFim) em toda ocorrência, então validar uma vez com a
+    // data-base já cobre a antecedência mínima de toda a série (ocorrências seguintes são
+    // sempre mais distantes no tempo).
+    const regrasReserva = await obterRegrasReservaConfiguraveis();
+    const janela = validarJanelaReserva({ data, horaInicio, horaFim, prioridade }, regrasReserva);
+    if (!janela.ok) {
+      return reply.status(409).send({ erro: janela.erro });
+    }
+
+    // RN-RES-05: um setor não pode ter mais que max_pendentes_por_setor reservas
+    // simultaneamente em status "pendente" — checado antes de criar qualquer ocorrência
+    // (uma série "tudo ou nada" não pode furar o limite parcialmente).
+    const pendentesAtuais = await pool
+      .request()
+      .input("setor_id", sql.UniqueIdentifier, setorId)
+      .query<{ total: number }>(
+        "SELECT COUNT(*) AS total FROM Reserva WHERE setor_id = @setor_id AND status = 'pendente'"
+      );
+    const totalPendentesApos = pendentesAtuais.recordset[0].total + (recorrencia ? recorrencia.quantidadeOcorrencias : 1);
+    if (totalPendentesApos > regrasReserva.maxPendentesPorSetor) {
+      return reply.status(409).send({
+        erro: `Seu setor já atingiu o limite de ${regrasReserva.maxPendentesPorSetor} reserva(s) pendente(s) simultânea(s) (RN-RES-05). Aguarde uma decisão antes de solicitar novas reservas.`,
       });
     }
 
@@ -645,28 +674,28 @@ export async function reservasRoutes(app: FastifyInstance): Promise<void> {
         where += " AND r.setor_id = @setor_id AND r.aprovado_por_id IS NULL";
       }
 
-      const result = await dbRequest.query<
-        ReservaRow & { sla_horas: number; sla_estourado: boolean }
-      >(
-        `SELECT ${SELECT_RESERVA},
-                CAST((SELECT valor FROM ConfiguracaoSistema WHERE chave = 'sla_aprovacao_urgente_horas') AS INT) AS sla_horas,
-                CASE
-                  WHEN r.prioridade = 'urgente'
-                   AND DATEDIFF(MINUTE, r.criado_em, SYSUTCDATETIME()) >=
-                       CAST((SELECT valor FROM ConfiguracaoSistema WHERE chave = 'sla_aprovacao_urgente_horas') AS INT) * 60
-                  THEN CAST(1 AS BIT) ELSE CAST(0 AS BIT)
-                END AS sla_estourado
-         ${FROM_RESERVA} ${where}
-         ORDER BY CASE WHEN r.prioridade = 'urgente' THEN 0 WHEN r.prioridade = 'alta' THEN 1 ELSE 2 END, r.criado_em ASC`
-      );
+      // S12: sla_aprovacao_urgente_horas agora lido via configuracao.service.ts (cache
+      // leve, invalidado ao salvar em PUT /configuracoes) em vez da subquery SQL
+      // duplicada que existia aqui desde S7 — slaEstourado é calculado em JS, não em SQL.
+      const [result, slaHoras] = await Promise.all([
+        dbRequest.query<ReservaRow>(
+          `SELECT ${SELECT_RESERVA} ${FROM_RESERVA} ${where}
+           ORDER BY CASE WHEN r.prioridade = 'urgente' THEN 0 WHEN r.prioridade = 'alta' THEN 1 ELSE 2 END, r.criado_em ASC`
+        ),
+        obterSlaAprovacaoUrgenteHoras(),
+      ]);
 
       return reply.status(200).send(
-        result.recordset.map((row) => ({
-          ...mapReserva(row),
-          aguardaSegundaAprovacao: row.aprovado_por_nome !== null,
-          slaHoras: row.sla_horas,
-          slaEstourado: Boolean(row.sla_estourado),
-        }))
+        result.recordset.map((row) => {
+          const minutosDesdeACriacao = (Date.now() - new Date(row.criado_em).getTime()) / 60000;
+          const slaEstourado = row.prioridade === "urgente" && minutosDesdeACriacao >= slaHoras * 60;
+          return {
+            ...mapReserva(row),
+            aguardaSegundaAprovacao: row.aprovado_por_nome !== null,
+            slaHoras,
+            slaEstourado,
+          };
+        })
       );
     }
   );

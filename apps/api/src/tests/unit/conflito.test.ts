@@ -5,7 +5,9 @@ import {
   encontrarConflito,
   horarioValido,
   reservasDentroDoIntervalo,
+  validarJanelaReserva,
   type BloqueioAtivo,
+  type RegrasJanelaReserva,
   type ReservaExistente,
 } from "../../services/conflito.service.js";
 
@@ -186,5 +188,83 @@ describe("reservasDentroDoIntervalo", () => {
       dataFim: combinarDataHora("2026-08-10", "09:30"),
     });
     expect(resultado.map((r) => r.id)).toEqual(["RES-1"]);
+  });
+});
+
+// S12 (RF-CFG-01/02): validarJanelaReserva cobre as 3 regras de agendamento antes
+// hardcoded/inexistentes (RN-RES-03/06), agora configuráveis via ConfiguracaoSistema.
+describe("validarJanelaReserva", () => {
+  const regras: RegrasJanelaReserva = {
+    antecedenciaMinimaHoras: 2,
+    duracaoMaximaHoras: 12,
+    horarioExpedienteInicio: "06:00",
+    horarioExpedienteFim: "22:00",
+  };
+  const agora = combinarDataHora("2026-08-10", "08:00");
+
+  it("aceita reserva dentro da duração máxima, do expediente e com antecedência suficiente", () => {
+    const resultado = validarJanelaReserva(
+      { data: "2026-08-11", horaInicio: "09:00", horaFim: "11:00", prioridade: "normal" },
+      regras,
+      agora
+    );
+    expect(resultado.ok).toBe(true);
+  });
+
+  it("rejeita duração acima de duracao_maxima_horas (RN-RES-03)", () => {
+    const resultado = validarJanelaReserva(
+      { data: "2026-08-11", horaInicio: "08:00", horaFim: "21:00", prioridade: "normal" },
+      regras,
+      agora
+    );
+    expect(resultado.ok).toBe(false);
+    if (!resultado.ok) expect(resultado.erro).toContain("12 hora(s)");
+  });
+
+  it("aceita duração exatamente igual a duracao_maxima_horas (limite, não excedente)", () => {
+    const resultado = validarJanelaReserva(
+      { data: "2026-08-11", horaInicio: "06:00", horaFim: "18:00", prioridade: "normal" },
+      regras,
+      agora
+    );
+    expect(resultado.ok).toBe(true);
+  });
+
+  it("rejeita reserva normal fora do horário de expediente (RN-RES-06)", () => {
+    const resultado = validarJanelaReserva(
+      { data: "2026-08-11", horaInicio: "23:00", horaFim: "23:30", prioridade: "normal" },
+      regras,
+      agora
+    );
+    expect(resultado.ok).toBe(false);
+    if (!resultado.ok) expect(resultado.erro).toContain("horário de expediente");
+  });
+
+  it("aceita reserva urgente fora do horário de expediente (exceção da RN-RES-06)", () => {
+    const resultado = validarJanelaReserva(
+      { data: "2026-08-11", horaInicio: "23:00", horaFim: "23:30", prioridade: "urgente" },
+      regras,
+      agora
+    );
+    expect(resultado.ok).toBe(true);
+  });
+
+  it("rejeita reserva com antecedência menor que a mínima configurada (RN-RES-03)", () => {
+    const resultado = validarJanelaReserva(
+      { data: "2026-08-10", horaInicio: "09:00", horaFim: "10:00", prioridade: "normal" },
+      regras,
+      agora // agora = 2026-08-10 08:00 — só 1h de antecedência, mínimo configurado é 2h
+    );
+    expect(resultado.ok).toBe(false);
+    if (!resultado.ok) expect(resultado.erro).toContain("antecedência mínima");
+  });
+
+  it("aceita reserva com antecedência exatamente igual ao mínimo configurado", () => {
+    const resultado = validarJanelaReserva(
+      { data: "2026-08-10", horaInicio: "10:00", horaFim: "11:00", prioridade: "normal" },
+      regras,
+      agora // agora = 2026-08-10 08:00 — exatamente 2h de antecedência
+    );
+    expect(resultado.ok).toBe(true);
   });
 });

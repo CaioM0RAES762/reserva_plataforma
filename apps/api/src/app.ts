@@ -18,6 +18,8 @@ import { painelRoutes } from "./routes/painel.js";
 import { anexosRoutes } from "./routes/anexos.js";
 import { comentariosRoutes } from "./routes/comentarios.js";
 import { ocorrenciasRoutes } from "./routes/ocorrencias.js";
+import { configuracoesRoutes } from "./routes/configuracoes.js";
+import { auditoriaRoutes } from "./routes/auditoria.js";
 import { isAllowedOrigin } from "./utils/cors.js";
 
 const isProduction = process.env.NODE_ENV === "production";
@@ -62,6 +64,8 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(anexosRoutes);
   await app.register(comentariosRoutes);
   await app.register(ocorrenciasRoutes);
+  await app.register(configuracoesRoutes);
+  await app.register(auditoriaRoutes);
 
   return app;
 }

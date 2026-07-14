@@ -11,3 +11,5 @@ export * from "./schemas/painel.js";
 export * from "./schemas/anexo.js";
 export * from "./schemas/comentario.js";
 export * from "./schemas/ocorrencia.js";
+export * from "./schemas/configuracao.js";
+export * from "./schemas/auditoria.js";

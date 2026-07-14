@@ -315,6 +315,32 @@ describe("Bloqueios de Agenda (S9) — RN-BLK-01: confirmação dupla sobre rese
 describe("Reservas recorrentes (S9 — RF-RES-03)", () => {
   const DATA_BASE = "2026-09-07"; // segunda-feira
 
+  // S12 (RN-RES-05): max_pendentes_por_setor tem default 5, mas uma série semanal (RF-RES-03)
+  // nasce inteira como pendente (até 12 ocorrências) — eleva o limite via PUT /configuracoes
+  // antes da série e restaura o padrão ao final, mesmo mecanismo validado no Gate de S12.
+  // 50 (não 20) porque este describe tenta criar a série 12x duas vezes (a segunda tentativa,
+  // ainda que rejeitada por conflito de horário, precisa primeiro passar pela checagem de
+  // max_pendentes_por_setor, que conta a série já criada pela primeira tentativa).
+  beforeAll(async () => {
+    const resposta = await app.inject({
+      method: "PUT",
+      url: "/api/v1/configuracoes",
+      headers: { cookie: cookieAdmin },
+      payload: { maxPendentesPorSetor: 50 },
+    });
+    expect(resposta.statusCode).toBe(200);
+  });
+
+  afterAll(async () => {
+    const resposta = await app.inject({
+      method: "PUT",
+      url: "/api/v1/configuracoes",
+      headers: { cookie: cookieAdmin },
+      payload: { maxPendentesPorSetor: 5 },
+    });
+    expect(resposta.statusCode).toBe(200);
+  });
+
   it("POST /reservas com recorrencia cria 12 ocorrências semanais vinculadas pelo mesmo recorrenciaId", async () => {
     const response = await app.inject({
       method: "POST",

@@ -1,6 +1,7 @@
 import { getPool, sql } from "../db/pool.js";
 import { enfileirarEmail } from "./queue.js";
 import { templateEscalonamentoSla } from "./email.service.js";
+import { obterSlaAprovacaoUrgenteHoras } from "./configuracao.service.js";
 
 const ACAO_ESCALONAMENTO = "escalonar_sla_urgente";
 
@@ -12,14 +13,6 @@ interface ReservaCandidataRow {
   hora_fim: string;
 }
 
-async function buscarSlaHoras(pool: Awaited<ReturnType<typeof getPool>>): Promise<number> {
-  const result = await pool
-    .request()
-    .query<{ valor: string }>("SELECT valor FROM ConfiguracaoSistema WHERE chave = 'sla_aprovacao_urgente_horas'");
-  const valor = result.recordset[0]?.valor;
-  return valor ? Number(valor) : 2;
-}
-
 // RN-RES-09: verifica reservas `urgente` ainda `pendente` (sem decisão final) há mais
 // tempo que `sla_aprovacao_urgente_horas` e escala ao(s) Admin(s) — uma única vez por
 // reserva, usando LogAuditoria como marcador de idempotência (nenhuma coluna nova
@@ -27,7 +20,9 @@ async function buscarSlaHoras(pool: Awaited<ReturnType<typeof getPool>>): Promis
 // asserção direta em testes de integração sem depender do agendamento real do BullMQ.
 export async function verificarEscalonamentoSla(): Promise<string[]> {
   const pool = await getPool();
-  const slaHoras = await buscarSlaHoras(pool);
+  // S12: leitura centralizada em configuracao.service.ts (cache leve) em vez da query
+  // inline duplicada que existia aqui desde S7.
+  const slaHoras = await obterSlaAprovacaoUrgenteHoras();
 
   const candidatas = await pool.request().input("sla_minutos", sql.Int, slaHoras * 60).query<ReservaCandidataRow>(
     `SELECT r.id, p.nome AS plataforma_nome,

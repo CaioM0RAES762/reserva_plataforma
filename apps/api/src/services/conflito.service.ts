@@ -10,7 +10,7 @@ export interface NovoHorario {
   ignorarReservaId?: string;
 }
 
-function horaParaMinutos(hora: string): number {
+export function horaParaMinutos(hora: string): number {
   const [horas, minutos] = hora.split(":").map(Number);
   return horas * 60 + minutos;
 }
@@ -113,4 +113,64 @@ export function reservasDentroDoIntervalo<T extends ReservaComData>(
     const fimReserva = combinarDataHora(reserva.data, reserva.horaFim).getTime();
     return intervalosSeSobrepoe(inicioReserva, fimReserva, inicioBloqueio, fimBloqueio);
   });
+}
+
+// S12 (RF-CFG-01/02) — regras de agendamento antes inexistentes no código, agora
+// configuráveis via ConfiguracaoSistema (configuracao.service.ts busca os valores;
+// esta função permanece pura/testável, sem acesso a banco, recebendo os valores já
+// resolvidos). `agora` é parametrizável para permitir teste determinístico.
+export interface RegrasJanelaReserva {
+  antecedenciaMinimaHoras: number;
+  duracaoMaximaHoras: number;
+  horarioExpedienteInicio: string;
+  horarioExpedienteFim: string;
+}
+
+export interface DadosJanelaReserva {
+  data: string;
+  horaInicio: string;
+  horaFim: string;
+  prioridade: string;
+}
+
+export type ValidacaoJanelaResultado = { ok: true } | { ok: false; erro: string };
+
+export function validarJanelaReserva(
+  dados: DadosJanelaReserva,
+  regras: RegrasJanelaReserva,
+  agora: Date = new Date()
+): ValidacaoJanelaResultado {
+  // RN-RES-03: duração não pode exceder duracao_maxima_horas.
+  const duracaoMinutos = horaParaMinutos(dados.horaFim) - horaParaMinutos(dados.horaInicio);
+  if (duracaoMinutos > regras.duracaoMaximaHoras * 60) {
+    return {
+      ok: false,
+      erro: `A duração da reserva não pode exceder ${regras.duracaoMaximaHoras} hora(s) (configuração do sistema).`,
+    };
+  }
+
+  // RN-RES-06: fora do horário de expediente exige prioridade urgente.
+  if (dados.prioridade !== "urgente") {
+    const foraDoExpediente =
+      horaParaMinutos(dados.horaInicio) < horaParaMinutos(regras.horarioExpedienteInicio) ||
+      horaParaMinutos(dados.horaFim) > horaParaMinutos(regras.horarioExpedienteFim);
+    if (foraDoExpediente) {
+      return {
+        ok: false,
+        erro: `Reservas fora do horário de expediente (${regras.horarioExpedienteInicio}–${regras.horarioExpedienteFim}) exigem prioridade urgente.`,
+      };
+    }
+  }
+
+  // RN-RES-03: antecedência mínima para solicitar a reserva.
+  const inicioReserva = combinarDataHora(dados.data, dados.horaInicio).getTime();
+  const antecedenciaMinimaMs = regras.antecedenciaMinimaHoras * 60 * 60 * 1000;
+  if (inicioReserva - agora.getTime() < antecedenciaMinimaMs) {
+    return {
+      ok: false,
+      erro: `Reservas exigem antecedência mínima de ${regras.antecedenciaMinimaHoras} hora(s).`,
+    };
+  }
+
+  return { ok: true };
 }
