@@ -9,6 +9,9 @@
     "build": "pnpm -r --if-present build",
     "lint": "pnpm -r --if-present lint",
     "test": "pnpm -r --if-present test",
+    "test:e2e": "pnpm --filter @plataformares/e2e test",
+    "test:e2e:seed": "pnpm --filter @plataformares/e2e seed",
+    "test:load": "node apps/e2e/load/run-load-test.mjs",
     "migrate:up": "pnpm --filter @plataformares/api migrate:up",
     "migrate:down": "pnpm --filter @plataformares/api migrate:down",
     "seed": "pnpm --filter @plataformares/api seed"

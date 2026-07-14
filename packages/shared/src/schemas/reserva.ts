@@ -53,6 +53,10 @@ export const criarReservaSchema = z
     motivo: z.string().trim().min(3, "Motivo deve ter no mínimo 3 caracteres.").max(300),
     prioridade: z.enum(PRIORIDADES_RESERVA).default("normal"),
     recorrencia: recorrenciaInputSchema.optional(),
+    // S14 (RF-RES-01): Admin não tem setor_id próprio (RN-USR-01) — precisa informar para
+    // qual setor está solicitando. Ignorado pelo backend para Gestor/Colaborador, que
+    // sempre usam o setor da própria sessão (nunca confiam no body para esses perfis).
+    setorId: z.string().uuid("Selecione um setor válido.").optional(),
   })
   .refine((dados) => dados.horaFim > dados.horaInicio, {
     message: "O horário final deve ser após o horário inicial.",

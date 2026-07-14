@@ -115,7 +115,10 @@
   border: 2px solid #1E293B;
 }
 .plataformaCodigo { font-size: 0.8rem; color: #64748B; font-weight: 700; letter-spacing: 0.04em; }
-.plataformaNome { font-size: 1.05rem; font-weight: 700; }
+/* S14 (RF-TV-01, 1920px): nomes com trechos sem espaço (ex.: "(Anexos/Comentários/
+   Ocorrência)") não quebravam linha e vazavam o card — achado real testando a matriz de
+   responsividade do Painel TV. */
+.plataformaNome { font-size: 1.05rem; font-weight: 700; overflow-wrap: break-word; }
 .plataformaStatus { font-size: 0.85rem; font-weight: 700; margin-top: 6px; }
 
 .disponivel { border-color: #16A34A; }

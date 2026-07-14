@@ -253,3 +253,63 @@ describe("Reservas (S3) — criação, conflito e escopo por setor", () => {
     expect(body.some((r) => r.id === reservaAId)).toBe(true);
   });
 });
+
+// S14 (bug real encontrado via E2E — RF-RES-01 lista Admin entre quem pode solicitar
+// reserva, mas RN-USR-01 diz que Admin não possui setor_id próprio; antes desta sprint
+// POST /reservas sempre derivava o setor da sessão, então todo Admin recebia 422
+// ("Sua conta não está vinculada a um setor") ao tentar solicitar — Admin literalmente
+// não conseguia usar UC-01. Corrigido: Admin agora informa `setorId` no body.
+describe("Reservas (S14) — Admin solicita reserva escolhendo o setor de destino (RF-RES-01, RN-USR-01)", () => {
+  it("Admin sem setorId no body recebe 422 pedindo para selecionar o setor", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/reservas",
+      headers: { cookie: cookieAdmin },
+      payload: {
+        plataformaId,
+        data: DATA_RESERVA,
+        horaInicio: "14:00",
+        horaFim: "15:00",
+        motivo: "Reserva de Admin sem setor informado",
+      },
+    });
+    expect(response.statusCode).toBe(422);
+    expect(response.json().erro).toMatch(/selecione o setor/i);
+  });
+
+  it("Admin com setorId no body cria a reserva vinculada a esse setor", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/reservas",
+      headers: { cookie: cookieAdmin },
+      payload: {
+        plataformaId,
+        data: DATA_RESERVA,
+        horaInicio: "15:00",
+        horaFim: "16:00",
+        motivo: "Reserva de Admin para o setor TI",
+        setorId: setorTiId,
+      },
+    });
+    expect(response.statusCode).toBe(201);
+    expect(response.json().setorId).toBe(setorTiId);
+  });
+
+  it("setorId informado no body é ignorado para perfil Colaborador (sempre usa o setor da sessão)", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/reservas",
+      headers: { cookie: cookieColaboradorTi },
+      payload: {
+        plataformaId,
+        data: DATA_RESERVA,
+        horaInicio: "16:00",
+        horaFim: "17:00",
+        motivo: "Colaborador tentando forjar outro setor",
+        setorId: setorManutencaoId,
+      },
+    });
+    expect(response.statusCode).toBe(201);
+    expect(response.json().setorId).toBe(setorTiId);
+  });
+});

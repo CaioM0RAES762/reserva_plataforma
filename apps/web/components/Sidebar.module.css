@@ -11,6 +11,45 @@
   z-index: 100;
 }
 
+/* S14 (RNF-04, 360-900px): sidebar off-canvas, sem JS — o checkbox/backdrop e o botão ☰
+   (label[for="sidebar-toggle"] no Topbar) fazem toda a alternância via CSS puro. */
+.sidebarToggleInput {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.sidebarBackdrop {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .sidebar {
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+  }
+
+  #sidebar-toggle:checked ~ .sidebar {
+    transform: translateX(0);
+  }
+
+  .sidebarBackdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 99;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+  }
+
+  #sidebar-toggle:checked ~ .sidebarBackdrop {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
 .brand {
   display: flex;
   align-items: center;

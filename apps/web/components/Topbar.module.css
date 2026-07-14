@@ -5,6 +5,60 @@
   min-height: 100vh;
 }
 
+/* S14 (RNF-04): abaixo de 900px a sidebar é off-canvas (ver Sidebar.module.css) — o
+   conteúdo ocupa a largura toda em vez de reservar espaço para ela. */
+@media (max-width: 900px) {
+  .wrapper {
+    margin-left: 0;
+  }
+}
+
+.hamburger {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.hamburger:hover { background: var(--surface-2); }
+
+@media (max-width: 900px) {
+  .hamburger {
+    display: flex;
+  }
+}
+
+/* S14 (RNF-04, 360px): em telas de celular estreitas, `.actions` (data + sino + Minha
+   Conta + Sair) não cabe ao lado do hamburger + título — esconde o texto redundante
+   (a data já aparece no Dashboard) e reduz a ação "Minha Conta" a apenas o ícone. */
+@media (max-width: 480px) {
+  .topbar {
+    padding: 0 12px;
+    gap: 8px;
+  }
+  .actions {
+    gap: 6px;
+  }
+  .date {
+    display: none;
+  }
+  .accountLabel {
+    display: none;
+  }
+  .accountLink {
+    padding: 6px 8px;
+  }
+  .logoutBtn {
+    padding: 7px 9px;
+  }
+}
+
 .topbar {
   height: var(--topbar-h);
   background: var(--surface);

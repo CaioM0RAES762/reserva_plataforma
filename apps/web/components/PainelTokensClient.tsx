@@ -189,12 +189,18 @@ export function PainelTokensClient() {
                   <strong>Copie o token agora — ele não será exibido novamente.</strong>
                 </div>
                 <div className={styles.formGroup} style={{ marginTop: 12 }}>
-                  <label>Token</label>
-                  <input readOnly value={tokenCriado.token} onFocus={(e) => e.currentTarget.select()} />
+                  <label htmlFor="pt-token-valor">Token</label>
+                  <input
+                    id="pt-token-valor"
+                    readOnly
+                    value={tokenCriado.token}
+                    onFocus={(e) => e.currentTarget.select()}
+                  />
                 </div>
                 <div className={styles.formGroup} style={{ marginTop: 12 }}>
-                  <label>URL do Painel</label>
+                  <label htmlFor="pt-url-painel">URL do Painel</label>
                   <input
+                    id="pt-url-painel"
                     readOnly
                     value={`${WEB_URL}/painel?token=${tokenCriado.token}`}
                     onFocus={(e) => e.currentTarget.select()}

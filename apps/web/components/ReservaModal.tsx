@@ -12,12 +12,20 @@ export interface ReservaFormValues {
   motivo: string;
   prioridade: "normal" | "alta" | "urgente";
   recorrencia?: { quantidadeOcorrencias: number };
+  // S14 (RF-RES-01): só preenchido quando quem solicita é Admin (sem setor_id próprio,
+  // RN-USR-01) — ver seletor de "Setor Solicitante" mais abaixo.
+  setorId?: string;
 }
 
 interface PlataformaOpcao {
   id: string;
   nome: string;
   status: string;
+}
+
+interface SetorOpcao {
+  id: string;
+  nome: string;
 }
 
 interface ConflitoResposta {
@@ -61,12 +69,25 @@ export function ReservaModal({ solicitanteNome, setorNome, onClose, onSalvar, va
   const [horarioInvalido, setHorarioInvalido] = useState(false);
   const [repetirSemanalmente, setRepetirSemanalmente] = useState(false);
   const [quantidadeOcorrencias, setQuantidadeOcorrencias] = useState(4);
+  // S14 (RF-RES-01): Admin não tem setor_id de sessão (RN-USR-01) — precisa escolher o
+  // setor de destino da reserva. `setorNome === null` é como o resto do app já identifica
+  // "sou Admin" nesta tela (ver Sidebar/Topbar).
+  const exigeSelecaoDeSetor = setorNome === null;
+  const [setores, setSetores] = useState<SetorOpcao[]>([]);
+  const [setorSelecionadoId, setSetorSelecionadoId] = useState("");
 
   useEffect(() => {
     apiFetch<PlataformaOpcao[]>("/api/v1/plataformas")
       .then((lista) => setPlataformas(lista.filter((p) => p.status !== "inativa")))
       .catch(() => setPlataformas([]));
   }, []);
+
+  useEffect(() => {
+    if (!exigeSelecaoDeSetor) return;
+    apiFetch<SetorOpcao[]>("/api/v1/setores")
+      .then(setSetores)
+      .catch(() => setSetores([]));
+  }, [exigeSelecaoDeSetor]);
 
   useEffect(() => {
     if (!plataformaId || !data || !horaInicio || !horaFim) {
@@ -103,6 +124,10 @@ export function ReservaModal({ solicitanteNome, setorNome, onClose, onSalvar, va
       setErro("Preencha todos os campos obrigatórios.");
       return;
     }
+    if (exigeSelecaoDeSetor && !setorSelecionadoId) {
+      setErro("Selecione o setor para o qual a reserva está sendo solicitada.");
+      return;
+    }
     if (bloqueado) {
       setErro("Não é possível salvar: conflito de horário detectado.");
       return;
@@ -118,6 +143,7 @@ export function ReservaModal({ solicitanteNome, setorNome, onClose, onSalvar, va
         motivo: motivo.trim(),
         prioridade,
         recorrencia: repetirSemanalmente ? { quantidadeOcorrencias } : undefined,
+        setorId: exigeSelecaoDeSetor ? setorSelecionadoId : undefined,
       });
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Erro ao criar reserva.");
@@ -145,8 +171,24 @@ export function ReservaModal({ solicitanteNome, setorNome, onClose, onSalvar, va
             {erro && <div className={styles.error}>{erro}</div>}
             <div className={styles.formGrid}>
               <div className={styles.formGroup}>
-                <label htmlFor="rf-sector">Setor Solicitante</label>
-                <input id="rf-sector" value={setorNome ?? "—"} disabled />
+                <label htmlFor="rf-sector">Setor Solicitante {exigeSelecaoDeSetor && "*"}</label>
+                {exigeSelecaoDeSetor ? (
+                  <select
+                    id="rf-sector"
+                    value={setorSelecionadoId}
+                    onChange={(e) => setSetorSelecionadoId(e.target.value)}
+                    required
+                  >
+                    <option value="">Selecione o setor</option>
+                    {setores.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.nome}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input id="rf-sector" value={setorNome ?? "—"} disabled />
+                )}
               </div>
               <div className={styles.formGroup}>
                 <label htmlFor="rf-responsible">Responsável</label>

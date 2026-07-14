@@ -293,8 +293,20 @@ export async function reservasRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(422).send({ erro: "Dados inválidos.", detalhes: parsed.error.flatten() });
     }
 
-    const setorId = request.usuario!.setorId;
+    // RF-RES-01: setor/solicitante vêm da sessão para Gestor/Colaborador (nunca do body,
+    // por segurança). Admin é a exceção estrutural: RN-USR-01 diz que Admin não possui
+    // setor_id próprio, mas RF-RES-01 o lista entre quem pode solicitar reserva — por
+    // isso, exclusivamente para o perfil admin, o setor de destino vem do body.
     const solicitanteId = request.usuario!.sub;
+    let setorId = request.usuario!.setorId;
+    if (request.usuario!.perfil === "admin") {
+      if (!parsed.data.setorId) {
+        return reply
+          .status(422)
+          .send({ erro: "Selecione o setor para o qual a reserva está sendo solicitada." });
+      }
+      setorId = parsed.data.setorId;
+    }
     if (!setorId) {
       return reply
         .status(422)
