@@ -17,6 +17,122 @@ const TIPOS_EVENTO = [
 const BACKOFF_INICIAL_MS = 1000;
 const BACKOFF_MAXIMO_MS = 30000;
 
+type Ouvinte = (tipo: string, dados: unknown) => void;
+
+// ---------------------------------------------------------------------------
+// Conexão SSE compartilhada por processo (uma por token), não por componente.
+//
+// Cada uso do hook abria seu próprio EventSource. Com o sino de notificações sempre
+// montado no Topbar, mais o Dashboard, a lista de Reservas, a Fila de Aprovações e a
+// Frota consumindo eventos, uma única aba manteria 2–3 conexões permanentes abertas.
+// Navegadores limitam ~6 conexões simultâneas por origem em HTTP/1.1, e conexões SSE
+// nunca terminam: bastariam algumas abas do sistema para consumir todo o orçamento e
+// travar as requisições comuns da API. No servidor, o efeito é o mesmo multiplicado —
+// cada conexão é uma entrada viva no Map de clientes e um timer de heartbeat.
+//
+// Agora existe UMA conexão por token: os componentes apenas assinam e desassinam dela.
+// ---------------------------------------------------------------------------
+interface Canal {
+  eventSource: EventSource | null;
+  ouvintes: Set<Ouvinte>;
+  ouvintesDeEstado: Set<(conectado: boolean) => void>;
+  conectado: boolean;
+  tentativa: number;
+  timer: ReturnType<typeof setTimeout> | null;
+}
+
+const canais = new Map<string, Canal>();
+
+function obterCanal(chave: string): Canal {
+  let canal = canais.get(chave);
+  if (!canal) {
+    canal = {
+      eventSource: null,
+      ouvintes: new Set(),
+      ouvintesDeEstado: new Set(),
+      conectado: false,
+      tentativa: 0,
+      timer: null,
+    };
+    canais.set(chave, canal);
+  }
+  return canal;
+}
+
+function definirEstado(canal: Canal, conectado: boolean): void {
+  canal.conectado = conectado;
+  for (const ouvinte of canal.ouvintesDeEstado) {
+    ouvinte(conectado);
+  }
+}
+
+function conectar(chave: string, token?: string): void {
+  const canal = obterCanal(chave);
+  if (canal.eventSource || canal.ouvintes.size === 0) {
+    return;
+  }
+
+  const url = new URL(`${API_URL}/api/v1/eventos`);
+  if (token) {
+    url.searchParams.set("token", token);
+  }
+  const eventSource = new EventSource(url.toString(), { withCredentials: !token });
+  canal.eventSource = eventSource;
+
+  eventSource.onopen = () => {
+    canal.tentativa = 0;
+    definirEstado(canal, true);
+  };
+
+  for (const tipo of TIPOS_EVENTO) {
+    eventSource.addEventListener(tipo, (evento) => {
+      let dados: unknown;
+      try {
+        dados = JSON.parse((evento as MessageEvent).data);
+      } catch {
+        // payload malformado — ignora este evento, mantém a conexão
+        return;
+      }
+      // Cópia da lista: um ouvinte pode desassinar durante a entrega.
+      for (const ouvinte of [...canal.ouvintes]) {
+        try {
+          ouvinte(tipo, dados);
+        } catch {
+          // Um consumidor que lança não pode impedir a entrega aos demais.
+        }
+      }
+    });
+  }
+
+  eventSource.onerror = () => {
+    definirEstado(canal, false);
+    eventSource.close();
+    canal.eventSource = null;
+    if (canal.ouvintes.size === 0) {
+      return;
+    }
+    // RNF-10: reconexão automática com backoff exponencial.
+    const atraso = Math.min(BACKOFF_INICIAL_MS * 2 ** canal.tentativa, BACKOFF_MAXIMO_MS);
+    canal.tentativa += 1;
+    canal.timer = setTimeout(() => conectar(chave, token), atraso);
+  };
+}
+
+function desconectarSeOcioso(chave: string): void {
+  const canal = canais.get(chave);
+  if (!canal || canal.ouvintes.size > 0) {
+    return;
+  }
+  if (canal.timer) {
+    clearTimeout(canal.timer);
+    canal.timer = null;
+  }
+  canal.eventSource?.close();
+  canal.eventSource = null;
+  canal.conectado = false;
+  canais.delete(chave);
+}
+
 export interface UseEventosSSEOptions {
   // Painel TV (dispositivo, sem sessão de usuário) — quando ausente, usa cookie JWT.
   token?: string;
@@ -24,71 +140,42 @@ export interface UseEventosSSEOptions {
   onEvento: (tipo: string, dados: unknown) => void;
 }
 
-// RNF-10: reconexão automática com backoff exponencial. O consumidor decide o que fazer
-// quando `conectado` fica false por tempo prolongado (ex.: cair para polling — ver
-// NotificationBell.tsx e app/(painel)/painel/PainelClient.tsx).
+// O consumidor decide o que fazer quando `conectado` fica false por tempo prolongado
+// (ex.: cair para polling — ver NotificationBell.tsx e app/painel/PainelClient.tsx).
 export function useEventosSSE({ token, ativo = true, onEvento }: UseEventosSSEOptions): { conectado: boolean } {
   const [conectado, setConectado] = useState(false);
   const onEventoRef = useRef(onEvento);
-  onEventoRef.current = onEvento;
+
+  // Atribuição feita num efeito, não durante a renderização: escrever numa ref no corpo
+  // do componente é um efeito colateral em render, o que o React 19 em modo estrito pode
+  // executar mais de uma vez.
+  useEffect(() => {
+    onEventoRef.current = onEvento;
+  });
 
   useEffect(() => {
     if (!ativo) {
+      setConectado(false);
       return;
     }
 
-    let fechado = false;
-    let es: EventSource | null = null;
-    let tentativa = 0;
-    let timer: ReturnType<typeof setTimeout> | null = null;
+    const chave = token ?? "sessao";
+    const canal = obterCanal(chave);
 
-    function conectar() {
-      if (fechado) {
-        return;
-      }
-      const url = new URL(`${API_URL}/api/v1/eventos`);
-      if (token) {
-        url.searchParams.set("token", token);
-      }
-      es = new EventSource(url.toString(), { withCredentials: !token });
+    const ouvinte: Ouvinte = (tipo, dados) => onEventoRef.current(tipo, dados);
+    canal.ouvintes.add(ouvinte);
+    canal.ouvintesDeEstado.add(setConectado);
+    // Assinantes que chegam depois da conexão já estabelecida precisam do estado atual.
+    setConectado(canal.conectado);
 
-      es.onopen = () => {
-        tentativa = 0;
-        setConectado(true);
-      };
-
-      for (const tipo of TIPOS_EVENTO) {
-        es.addEventListener(tipo, (evento) => {
-          try {
-            const dados = JSON.parse((evento as MessageEvent).data);
-            onEventoRef.current(tipo, dados);
-          } catch {
-            // payload malformado — ignora este evento, mantém a conexão
-          }
-        });
-      }
-
-      es.onerror = () => {
-        setConectado(false);
-        es?.close();
-        if (fechado) {
-          return;
-        }
-        const atraso = Math.min(BACKOFF_INICIAL_MS * 2 ** tentativa, BACKOFF_MAXIMO_MS);
-        tentativa += 1;
-        timer = setTimeout(conectar, atraso);
-      };
-    }
-
-    conectar();
+    conectar(chave, token);
 
     return () => {
-      fechado = true;
-      if (timer) {
-        clearTimeout(timer);
-      }
-      es?.close();
-      setConectado(false);
+      canal.ouvintes.delete(ouvinte);
+      canal.ouvintesDeEstado.delete(setConectado);
+      // A conexão só é encerrada quando o ÚLTIMO consumidor sai — navegar entre telas não
+      // derruba e reabre o canal a cada troca de página.
+      desconectarSeOcioso(chave);
     };
   }, [ativo, token]);
 

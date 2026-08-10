@@ -15,7 +15,7 @@ import {
   validarRespostasChecklist,
 } from "../services/checklist.service.js";
 import { estadoFinal } from "../services/aprovacao.service.js";
-import { armazenamentoService } from "../services/storage.service.js";
+import { armazenamentoService, gerarUrlAcessoOuNulo } from "../services/storage.service.js";
 import { enfileirarEmail } from "../services/queue.js";
 import { templateChecklistNaoConforme } from "../services/email.service.js";
 
@@ -202,7 +202,9 @@ export async function checklistRoutes(app: FastifyInstance): Promise<void> {
           obrigatorio: item.obrigatorio,
           conforme: resposta?.conforme ?? null,
           observacao: resposta?.observacao ?? null,
-          fotoUrl: resposta?.foto_url ? await armazenamentoService.gerarUrlAcesso(resposta.foto_url) : null,
+          // Foto indisponível não pode impedir a leitura do checklist (que decide se a
+          // reserva entra em uso) — degrada para `null`. Ver plataformas.ts.
+          fotoUrl: await gerarUrlAcessoOuNulo(resposta?.foto_url),
         };
       })
     );

@@ -2,7 +2,8 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import styles from "../app/(app)/reservas/page.module.css";
-import { apiFetch } from "../lib/api";
+import { apiFetch, mensagemDeErro } from "../lib/api";
+import { useModalAcessivel } from "../lib/useModalAcessivel";
 
 export interface ReservaFormValues {
   plataformaId: string;
@@ -41,6 +42,11 @@ export interface ReservaValoresIniciais {
   plataformaId: string;
   motivo: string;
   prioridade: "normal" | "alta" | "urgente";
+  // Preenchidos ao criar a partir de um clique num horário vazio do Calendário — nunca
+  // presentes no fluxo "Reservar novamente" (RF-RES-13), que deliberadamente não herda data/hora.
+  data?: string;
+  horaInicio?: string;
+  horaFim?: string;
 }
 
 interface ReservaModalProps {
@@ -59,9 +65,9 @@ export function ReservaModal({ solicitanteNome, setorNome, onClose, onSalvar, va
   const [plataformas, setPlataformas] = useState<PlataformaOpcao[]>([]);
   const [plataformaId, setPlataformaId] = useState(valoresIniciais?.plataformaId ?? "");
   const [prioridade, setPrioridade] = useState<"normal" | "alta" | "urgente">(valoresIniciais?.prioridade ?? "normal");
-  const [data, setData] = useState(hojeStr());
-  const [horaInicio, setHoraInicio] = useState("");
-  const [horaFim, setHoraFim] = useState("");
+  const [data, setData] = useState(valoresIniciais?.data ?? hojeStr());
+  const [horaInicio, setHoraInicio] = useState(valoresIniciais?.horaInicio ?? "");
+  const [horaFim, setHoraFim] = useState(valoresIniciais?.horaFim ?? "");
   const [motivo, setMotivo] = useState(valoresIniciais?.motivo ?? "");
   const [erro, setErro] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
@@ -76,9 +82,16 @@ export function ReservaModal({ solicitanteNome, setorNome, onClose, onSalvar, va
   const [setores, setSetores] = useState<SetorOpcao[]>([]);
   const [setorSelecionadoId, setSetorSelecionadoId] = useState("");
 
+  const { refDialogo, propsDialogo, idTitulo, aoClicarNoOverlay } = useModalAcessivel(onClose, "reserva-modal");
+
   useEffect(() => {
     apiFetch<PlataformaOpcao[]>("/api/v1/plataformas")
-      .then((lista) => setPlataformas(lista.filter((p) => p.status !== "inativa")))
+      .then((lista) =>
+        // Além de inativas, plataformas em manutenção também não podem ser reservadas
+        // (RN-PLAT-04, desde S11): elas apareciam no seletor e o usuário só descobria a
+        // recusa depois de preencher o formulário inteiro e receber 409 do backend.
+        setPlataformas(lista.filter((p) => p.status !== "inativa" && p.status !== "manutencao"))
+      )
       .catch(() => setPlataformas([]));
   }, []);
 
@@ -146,29 +159,32 @@ export function ReservaModal({ solicitanteNome, setorNome, onClose, onSalvar, va
         setorId: exigeSelecaoDeSetor ? setorSelecionadoId : undefined,
       });
     } catch (err) {
-      setErro(err instanceof Error ? err.message : "Erro ao criar reserva.");
+      setErro(mensagemDeErro(err, "Erro ao criar reserva."));
     } finally {
       setSalvando(false);
     }
   }
 
   return (
-    <div
-      className={styles.modalOverlay}
-      onClick={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-    >
-      <div className={styles.modal}>
+    <div className={styles.modalOverlay} onClick={aoClicarNoOverlay}>
+      <div className={styles.modal} ref={refDialogo} {...propsDialogo}>
         <div className={styles.modalHeader}>
-          <h3>{valoresIniciais ? "Reservar Novamente" : "Nova Reserva"}</h3>
-          <button type="button" className={styles.modalClose} onClick={onClose}>
+          {/* "Reservar novamente" sempre chega com plataformaId pré-preenchido; a criação
+              rápida a partir de um clique no Calendário só preenche data/horário, com
+              plataforma em branco — por isso o título distingue pelos dois primeiros,
+              não pela mera presença de valoresIniciais. */}
+          <h3 id={idTitulo}>{valoresIniciais?.plataformaId ? "Reservar Novamente" : "Nova Reserva"}</h3>
+          <button type="button" className={styles.modalClose} onClick={onClose} aria-label="Fechar">
             ✕
           </button>
         </div>
         <form onSubmit={handleSubmit}>
           <div className={styles.modalBody}>
-            {erro && <div className={styles.error}>{erro}</div>}
+            {erro && (
+              <div className={styles.error} role="alert">
+                {erro}
+              </div>
+            )}
             <div className={styles.formGrid}>
               <div className={styles.formGroup}>
                 <label htmlFor="rf-sector">Setor Solicitante {exigeSelecaoDeSetor && "*"}</label>
@@ -294,16 +310,27 @@ export function ReservaModal({ solicitanteNome, setorNome, onClose, onSalvar, va
               </div>
             </div>
 
-            {horarioInvalido && (
-              <div className={styles.conflictAlert} id="conflictAlert">
-                O horário final deve ser após o horário inicial.
-              </div>
-            )}
-            {!horarioInvalido && conflitoMotivo && (
-              <div className={styles.conflictAlert} id="conflictAlert">
-                {conflitoMotivo}
-              </div>
-            )}
+            {/* aria-live: o alerta de conflito aparece sozinho, depois do debounce, sem
+                nenhuma ação do usuário — sem isto, quem usa leitor de tela só descobria o
+                bloqueio ao tentar enviar e ver o botão desabilitado. */}
+            <div aria-live="polite">
+              {horarioInvalido && (
+                <div className={styles.conflictAlert} id="conflictAlert">
+                  O horário final deve ser após o horário inicial.
+                </div>
+              )}
+              {!horarioInvalido && conflitoMotivo && (
+                <div className={styles.conflictAlert} id="conflictAlert">
+                  {conflitoMotivo}
+                </div>
+              )}
+              {repetirSemanalmente && !bloqueado && (
+                <p className={styles.hint}>
+                  A checagem de conflito acima vale para a primeira data. As {quantidadeOcorrencias} ocorrências são
+                  criadas em bloco: se qualquer uma delas colidir, nenhuma é criada.
+                </p>
+              )}
+            </div>
           </div>
           <div className={styles.modalFooter}>
             <button type="button" className={styles.btnGhost} onClick={onClose}>

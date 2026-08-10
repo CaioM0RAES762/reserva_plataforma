@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import styles from "./Admin.module.css";
+import { useModalAcessivel } from "../lib/useModalAcessivel";
 
 type Perfil = "admin" | "gestor_setor" | "colaborador";
 
@@ -39,6 +40,7 @@ const PERFIL_LABEL: Record<Perfil, string> = {
 };
 
 export function UsuarioModal({ usuario, setores, onClose, onSalvar }: UsuarioModalProps) {
+  const { refDialogo, propsDialogo, idTitulo, aoClicarNoOverlay } = useModalAcessivel(onClose, "usuario-modal");
   const [nome, setNome] = useState(usuario?.nome ?? "");
   const [email, setEmail] = useState(usuario?.email ?? "");
   const [perfil, setPerfil] = useState<Perfil>(usuario?.perfil ?? "colaborador");
@@ -77,20 +79,22 @@ export function UsuarioModal({ usuario, setores, onClose, onSalvar }: UsuarioMod
   return (
     <div
       className={styles.modalOverlay}
-      onClick={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
+      onClick={aoClicarNoOverlay}
     >
-      <div className={styles.modal}>
+      <div className={styles.modal} ref={refDialogo} {...propsDialogo}>
         <div className={styles.modalHeader}>
-          <h3>{usuario ? "Editar Usuário" : "Novo Usuário"}</h3>
-          <button type="button" className={styles.modalClose} onClick={onClose}>
+          <h3 id={idTitulo}>{usuario ? "Editar Usuário" : "Novo Usuário"}</h3>
+          <button type="button" className={styles.modalClose} onClick={onClose} aria-label="Fechar">
             ✕
           </button>
         </div>
         <form onSubmit={handleSubmit}>
           <div className={styles.modalBody}>
-            {erro && <div className={styles.error}>{erro}</div>}
+            {erro && (
+              <div className={styles.error} role="alert">
+                {erro}
+              </div>
+            )}
             <div className={styles.formGrid}>
               <div className={styles.formGroup}>
                 <label htmlFor="us-nome">Nome *</label>

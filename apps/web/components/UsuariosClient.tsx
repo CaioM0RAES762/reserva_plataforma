@@ -68,6 +68,8 @@ export function UsuariosClient() {
   }, [carregar]);
 
   async function handleSalvar(valores: UsuarioFormValues) {
+    setErro(null);
+    setMensagem(null);
     if (editando) {
       await apiFetch(`/api/v1/usuarios/${editando.id}`, {
         method: "PATCH",
@@ -80,10 +82,16 @@ export function UsuariosClient() {
         });
       }
     } else {
-      await apiFetch("/api/v1/usuarios", {
+      // A conta é criada mesmo que o e-mail de ativação falhe (ver comentário em
+      // usuarios.ts) — `codigoEnviado: false` é o sinal real de que o código não saiu.
+      // Sem checar isto, o Admin via "sucesso" e achava que o convite tinha sido enviado.
+      const criado = await apiFetch<{ codigoEnviado: boolean; avisoEnvio?: string }>("/api/v1/usuarios", {
         method: "POST",
         body: JSON.stringify(valores),
       });
+      if (!criado.codigoEnviado && criado.avisoEnvio) {
+        setErro(criado.avisoEnvio);
+      }
     }
     setModalAberto(false);
     setEditando(null);
@@ -167,7 +175,11 @@ export function UsuariosClient() {
         </select>
       </div>
 
-      {erro && <div className={styles.error}>{erro}</div>}
+      {erro && (
+              <div className={styles.error} role="alert">
+                {erro}
+              </div>
+            )}
       {mensagem && <div className={styles.success}>{mensagem}</div>}
 
       <div className={styles.tableWrap}>

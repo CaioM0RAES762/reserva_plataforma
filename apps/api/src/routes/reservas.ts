@@ -3,7 +3,9 @@ import {
   alterarStatusReservaSchema,
   conflitoQuerySchema,
   criarReservaSchema,
+  listarReservasQuerySchema,
   rejeitarReservaSchema,
+  resolverPaginacao,
   type CategoriaPlataforma,
   type PrioridadeReserva,
   type RiscoPlataforma,
@@ -54,6 +56,7 @@ export interface ReservaRow {
   plataforma_id: string;
   plataforma_nome: string;
   plataforma_categoria: string;
+  plataforma_localizacao: string | null;
   data: string;
   hora_inicio: string;
   hora_fim: string;
@@ -74,6 +77,7 @@ export const SELECT_RESERVA = `
   r.id, r.setor_id, s.nome AS setor_nome,
   r.solicitante_id, u.nome AS solicitante_nome,
   r.plataforma_id, p.nome AS plataforma_nome, p.categoria AS plataforma_categoria,
+  p.localizacao AS plataforma_localizacao,
   CONVERT(varchar(10), r.data, 23) AS data,
   CONVERT(varchar(5), r.hora_inicio, 108) AS hora_inicio,
   CONVERT(varchar(5), r.hora_fim, 108) AS hora_fim,
@@ -104,6 +108,9 @@ export function mapReserva(row: ReservaRow) {
     plataformaId: row.plataforma_id,
     plataformaNome: row.plataforma_nome,
     plataformaCategoria: row.plataforma_categoria,
+    // Exibido na coluna "Recurso" da listagem de Reservas ("Fachada Leste · motivo") —
+    // sem isto, a linha não dizia ONDE a plataforma fica.
+    plataformaLocalizacao: row.plataforma_localizacao,
     data: row.data,
     horaInicio: row.hora_inicio,
     horaFim: row.hora_fim,
@@ -176,13 +183,19 @@ async function buscarContextoReserva(id: string): Promise<ReservaContexto | null
   return result.recordset[0] ?? null;
 }
 
+// Pool e Transaction expõem a mesma fábrica de Request — tipar por essa capacidade
+// permite rodar a checagem de disponibilidade tanto fora (leitura rápida do formulário)
+// quanto dentro de uma transação (criação, onde ela precisa ser atômica).
+type ExecutorSql = { request(): sql.Request };
+
 async function buscarReservasConflitantes(
+  executor: ExecutorSql,
   plataformaId: string,
   data: string,
-  ignorarReservaId?: string
+  ignorarReservaId?: string,
+  bloquearIntervalo = false
 ): Promise<ReservaConflitoRow[]> {
-  const pool = await getPool();
-  const dbRequest = pool
+  const dbRequest = executor
     .request()
     .input("plataforma_id", sql.UniqueIdentifier, plataformaId)
     .input("data", sql.Date, data);
@@ -193,10 +206,17 @@ async function buscarReservasConflitantes(
     where += " AND r.id <> @ignorar_id";
   }
 
+  // RN-RES-02 sob concorrência: UPDLOCK+HOLDLOCK toma um key-range lock em
+  // (plataforma_id, data) até o fim da transação, de modo que uma segunda requisição
+  // simultânea para a mesma plataforma/dia espera a primeira concluir em vez de ler o
+  // estado antigo e inserir uma reserva sobreposta. O lock cobre exatamente o intervalo
+  // consultado, não a tabela — reservas de outra plataforma/dia não são afetadas.
+  const hints = bloquearIntervalo ? " WITH (UPDLOCK, HOLDLOCK)" : "";
+
   const result = await dbRequest.query<ReservaConflitoRow>(
     `SELECT r.id, CONVERT(varchar(5), r.hora_inicio, 108) AS hora_inicio,
             CONVERT(varchar(5), r.hora_fim, 108) AS hora_fim, s.nome AS setor_nome
-     FROM Reserva r JOIN Setor s ON s.id = r.setor_id
+     FROM Reserva r${hints} JOIN Setor s ON s.id = r.setor_id
      WHERE ${where}`
   );
   return result.recordset;
@@ -212,9 +232,12 @@ interface BloqueioAtivoRow {
 
 // S9 (RN-RES-11): bloqueios (globais ou da própria plataforma) que tocam o dia da
 // reserva. A sobreposição exata contra o horário é decidida em conflito.service.ts.
-async function buscarBloqueiosAtivos(plataformaId: string, data: string): Promise<BloqueioAtivoRow[]> {
-  const pool = await getPool();
-  const result = await pool
+async function buscarBloqueiosAtivos(
+  executor: ExecutorSql,
+  plataformaId: string,
+  data: string
+): Promise<BloqueioAtivoRow[]> {
+  const result = await executor
     .request()
     .input("plataforma_id", sql.UniqueIdentifier, plataformaId)
     .input("data", sql.Date, data)
@@ -244,14 +267,24 @@ interface DisponibilidadeResultado {
 // Reúne as duas checagens de RN-RES-02 (conflito com outra reserva) e RN-RES-11
 // (bloqueio de agenda ativo) — usada tanto na criação (única e recorrente) quanto na
 // checagem em tempo real do formulário (GET /reservas/conflitos).
-async function verificarDisponibilidade(dados: {
-  plataformaId: string;
-  data: string;
-  horaInicio: string;
-  horaFim: string;
-  ignorarReservaId?: string;
-}): Promise<DisponibilidadeResultado> {
-  const conflitantes = await buscarReservasConflitantes(dados.plataformaId, dados.data, dados.ignorarReservaId);
+async function verificarDisponibilidade(
+  dados: {
+    plataformaId: string;
+    data: string;
+    horaInicio: string;
+    horaFim: string;
+    ignorarReservaId?: string;
+  },
+  executor: ExecutorSql,
+  bloquearIntervalo = false
+): Promise<DisponibilidadeResultado> {
+  const conflitantes = await buscarReservasConflitantes(
+    executor,
+    dados.plataformaId,
+    dados.data,
+    dados.ignorarReservaId,
+    bloquearIntervalo
+  );
   const conflito = encontrarConflito(
     conflitantes.map<ReservaExistente>((r) => ({ id: r.id, horaInicio: r.hora_inicio, horaFim: r.hora_fim })),
     { horaInicio: dados.horaInicio, horaFim: dados.horaFim, ignorarReservaId: dados.ignorarReservaId }
@@ -270,7 +303,7 @@ async function verificarDisponibilidade(dados: {
     };
   }
 
-  const bloqueiosAtivos = await buscarBloqueiosAtivos(dados.plataformaId, dados.data);
+  const bloqueiosAtivos = await buscarBloqueiosAtivos(executor, dados.plataformaId, dados.data);
   const bloqueio = encontrarBloqueioConflitante(bloqueiosAtivos.map(mapBloqueioAtivo), dados.plataformaId, {
     data: dados.data,
     horaInicio: dados.horaInicio,
@@ -373,42 +406,50 @@ export async function reservasRoutes(app: FastifyInstance): Promise<void> {
     }
 
     // S10 (RF-NOT-01 / RN-RES-07): aprovadores elegíveis para a notificação de reserva
-    // pendente — Admins ativos + Gestor(es) do setor solicitante.
+    // pendente — Admins ativos + Gestor(es) do setor solicitante. O `perfil` vem junto
+    // para separar os Admins (destinatários do e-mail) sem uma segunda consulta.
     const aprovadoresElegiveis = await pool
       .request()
       .input("setor_id", sql.UniqueIdentifier, setorId)
-      .query<{ id: string; email: string }>(
-        `SELECT id, email FROM Usuario
+      .query<{ id: string; email: string; perfil: string }>(
+        `SELECT id, email, perfil FROM Usuario
          WHERE ativo = 1 AND (perfil = 'admin' OR (perfil = 'gestor_setor' AND setor_id = @setor_id))`
       );
+    const emailsAdmins = aprovadoresElegiveis.recordset
+      .filter((aprovador) => aprovador.perfil === "admin")
+      .map((aprovador) => aprovador.email);
 
     // S9 (RF-RES-03): sem recorrência, a "série" é só a própria data solicitada.
     const datasOcorrencias = recorrencia
       ? gerarDatasRecorrencia(data, diaSemanaDe(data), recorrencia.quantidadeOcorrencias)
       : [data];
 
-    // RN-RES-02/RN-RES-11: checa disponibilidade de TODAS as ocorrências antes de
-    // inserir qualquer uma — série é tudo ou nada.
-    for (const dataOcorrencia of datasOcorrencias) {
-      const disponibilidade = await verificarDisponibilidade({
-        plataformaId,
-        data: dataOcorrencia,
-        horaInicio,
-        horaFim,
-      });
-      if (!disponibilidade.ok) {
-        return reply.status(409).send({
-          erro: recorrencia
-            ? `Não foi possível criar a série semanal: ${disponibilidade.erro} (ocorrência de ${dataOcorrencia}).`
-            : disponibilidade.erro,
-        });
-      }
-    }
-
     const transaction = pool.transaction();
     await transaction.begin();
     const notificacoesCriadas: NotificacaoRegistrada[] = [];
+    const idsCriados: string[] = [];
     try {
+      // RN-RES-02/RN-RES-11: a disponibilidade de TODAS as ocorrências é checada dentro
+      // da mesma transação do INSERT, com lock de intervalo (ver buscarReservasConflitantes).
+      // Antes a checagem rodava antes de `begin()`: duas requisições concorrentes para a
+      // mesma plataforma/horário liam "livre" ao mesmo tempo e ambas inseriam, violando
+      // RN-RES-02 — a janela era pequena, mas real, e nenhum teste a cobria.
+      for (const dataOcorrencia of datasOcorrencias) {
+        const disponibilidade = await verificarDisponibilidade(
+          { plataformaId, data: dataOcorrencia, horaInicio, horaFim },
+          transaction,
+          true
+        );
+        if (!disponibilidade.ok) {
+          await transaction.rollback();
+          return reply.status(409).send({
+            erro: recorrencia
+              ? `Não foi possível criar a série semanal: ${disponibilidade.erro} (ocorrência de ${dataOcorrencia}).`
+              : disponibilidade.erro,
+          });
+        }
+      }
+
       let recorrenciaId: string | null = null;
       if (recorrencia) {
         const insercaoRecorrencia = await transaction
@@ -442,6 +483,7 @@ export async function reservasRoutes(app: FastifyInstance): Promise<void> {
              VALUES (@setor_id, @solicitante_id, @plataforma_id, @data, @hora_inicio, @hora_fim, @motivo, @prioridade, @recorrencia_id)`
           );
         const novaId = insercao.recordset[0].id;
+        idsCriados.push(novaId);
 
         await transaction
           .request()
@@ -476,30 +518,18 @@ export async function reservasRoutes(app: FastifyInstance): Promise<void> {
 
       await transaction.commit();
 
-      let novas: ReturnType<typeof mapReserva>[];
-      if (recorrenciaId) {
-        const completas = await pool
-          .request()
-          .input("recorrencia_id", sql.UniqueIdentifier, recorrenciaId)
-          .query<ReservaRow>(
-            `SELECT ${SELECT_RESERVA} ${FROM_RESERVA} WHERE r.recorrencia_id = @recorrencia_id ORDER BY r.data ASC`
-          );
-        novas = completas.recordset.map(mapReserva);
-      } else {
-        const completa = await pool
-          .request()
-          .input("plataforma_id", sql.UniqueIdentifier, plataformaId)
-          .input("solicitante_id", sql.UniqueIdentifier, solicitanteId)
-          .input("data", sql.Date, data)
-          .input("hora_inicio", sql.VarChar, horaInicio)
-          .query<ReservaRow>(
-            `SELECT TOP 1 ${SELECT_RESERVA} ${FROM_RESERVA}
-             WHERE r.plataforma_id = @plataforma_id AND r.solicitante_id = @solicitante_id
-               AND r.data = @data AND r.hora_inicio = @hora_inicio
-             ORDER BY r.criado_em DESC`
-          );
-        novas = [mapReserva(completa.recordset[0])];
-      }
+      // Recarrega exatamente as linhas inseridas pelos IDs devolvidos por OUTPUT.INSERTED.
+      // A versão anterior reencontrava a reserva única por (plataforma, solicitante, data,
+      // hora_inicio) + `ORDER BY criado_em DESC`, uma heurística que podia devolver a
+      // reserva errada quando duas eram criadas no mesmo milissegundo.
+      const listaIds = await pool.request();
+      idsCriados.forEach((valor, indice) => listaIds.input(`id${indice}`, sql.UniqueIdentifier, valor));
+      const completas = await listaIds.query<ReservaRow>(
+        `SELECT ${SELECT_RESERVA} ${FROM_RESERVA}
+         WHERE r.id IN (${idsCriados.map((_, indice) => `@id${indice}`).join(", ")})
+         ORDER BY r.data ASC`
+      );
+      const novas = completas.recordset.map(mapReserva);
 
       // S10 (SDD §3.4): publica reserva.criada (badge de aprovações) e notificacao.nova
       // (sino) aos aprovadores elegíveis, via SSE, já fora da transação (best-effort —
@@ -514,12 +544,10 @@ export async function reservasRoutes(app: FastifyInstance): Promise<void> {
       }
 
       // Notificação ao(s) Admin(s) ativos — uma por ocorrência, fila BullMQ, nunca
-      // síncrono bloqueando a resposta HTTP.
-      const admins = await pool
-        .request()
-        .query<{ email: string }>("SELECT email FROM Usuario WHERE perfil = 'admin' AND ativo = 1");
+      // síncrono bloqueando a resposta HTTP. Os e-mails saem da mesma consulta de
+      // aprovadores já feita acima (antes havia uma segunda query só para isto).
       await Promise.all(
-        novas.map((nova) => {
+        novas.flatMap((nova) => {
           const { assunto, corpoHtml } = templateNovaReservaPendente({
             plataformaNome: plataforma_nome,
             setorNome: setor_nome,
@@ -530,15 +558,15 @@ export async function reservasRoutes(app: FastifyInstance): Promise<void> {
             motivo,
             prioridade,
           });
-          return Promise.all(
-            admins.recordset.map((admin) => enfileirarEmail({ destinatario: admin.email, assunto, corpoHtml }))
-          );
+          return emailsAdmins.map((destinatario) => enfileirarEmail({ destinatario, assunto, corpoHtml }));
         })
       );
 
       return reply.status(201).send(recorrenciaId ? { recorrenciaId, reservas: novas } : novas[0]);
     } catch (err) {
-      await transaction.rollback();
+      // A transação pode já ter sido revertida no caminho de conflito acima; `rollback()`
+      // numa transação encerrada lança um erro que mascararia a causa original.
+      await transaction.rollback().catch(() => undefined);
       throw err;
     }
   });
@@ -604,13 +632,12 @@ export async function reservasRoutes(app: FastifyInstance): Promise<void> {
   );
 
   app.get("/api/v1/reservas", { preHandler: autenticar }, async (request, reply) => {
-    const { q, status, data, dateFrom, dateTo } = request.query as {
-      q?: string;
-      status?: string;
-      data?: string;
-      dateFrom?: string;
-      dateTo?: string;
-    };
+    const parsed = listarReservasQuerySchema.safeParse(request.query);
+    if (!parsed.success) {
+      return reply.status(422).send({ erro: "Parâmetros inválidos.", detalhes: parsed.error.flatten() });
+    }
+    const { q, status, data, dateFrom, dateTo } = parsed.data;
+    const { limit, offset } = resolverPaginacao(parsed.data);
     const pool = await getPool();
     const dbRequest = pool.request();
 
@@ -621,7 +648,9 @@ export async function reservasRoutes(app: FastifyInstance): Promise<void> {
     }
     if (q) {
       dbRequest.input("q", sql.NVarChar, `%${q}%`);
-      where += " AND (s.nome LIKE @q OR u.nome LIKE @q OR p.nome LIKE @q)";
+      // `motivo` incluído na busca livre para igualar o comportamento de /historico —
+      // digitar um trecho do motivo na tela de Reservas não encontrava nada.
+      where += " AND (s.nome LIKE @q OR u.nome LIKE @q OR p.nome LIKE @q OR r.motivo LIKE @q)";
     }
     if (status) {
       dbRequest.input("status", sql.VarChar, status);
@@ -641,10 +670,21 @@ export async function reservasRoutes(app: FastifyInstance): Promise<void> {
       where += " AND r.data <= @date_to";
     }
 
-    const result = await dbRequest.query<ReservaRow>(
-      `SELECT ${SELECT_RESERVA} ${FROM_RESERVA} ${where} ORDER BY r.data DESC, r.hora_inicio DESC`
+    dbRequest.input("limit", sql.Int, limit).input("offset", sql.Int, offset);
+    const result = await dbRequest.query<ReservaRow & { total_geral: number }>(
+      `SELECT ${SELECT_RESERVA}, COUNT(*) OVER() AS total_geral ${FROM_RESERVA} ${where}
+       ORDER BY r.data DESC, r.hora_inicio DESC, r.id
+       OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY`
     );
-    return reply.status(200).send(result.recordset.map(mapReserva));
+    // COUNT(*) OVER() devolve o total do filtro na mesma varredura — evita a segunda
+    // query de contagem que uma paginação ingênua faria.
+    const total = result.recordset[0]?.total_geral ?? 0;
+    return reply
+      .header("X-Total-Count", String(total))
+      .header("X-Limit", String(limit))
+      .header("X-Offset", String(offset))
+      .status(200)
+      .send(result.recordset.map(mapReserva));
   });
 
   app.get("/api/v1/reservas/conflitos", { preHandler: autenticar }, async (request, reply) => {
@@ -655,8 +695,14 @@ export async function reservasRoutes(app: FastifyInstance): Promise<void> {
     const { plataformaId, data, horaInicio, horaFim, ignorarReservaId } = parsed.data;
 
     // S9: mesma checagem usada na criação (reserva-reserva + bloqueio de agenda), para
-    // o formulário de Nova Reserva bloquear o envio com a mesma regra do backend.
-    const disponibilidade = await verificarDisponibilidade({ plataformaId, data, horaInicio, horaFim, ignorarReservaId });
+    // o formulário de Nova Reserva bloquear o envio com a mesma regra do backend. Aqui é
+    // só leitura para feedback em tempo real — sem lock de intervalo, que serializaria
+    // requisições a cada tecla digitada no formulário.
+    const pool = await getPool();
+    const disponibilidade = await verificarDisponibilidade(
+      { plataformaId, data, horaInicio, horaFim, ignorarReservaId },
+      pool
+    );
     if (disponibilidade.ok) {
       return reply.status(200).send({ conflito: false, motivo: null, reserva: null });
     }

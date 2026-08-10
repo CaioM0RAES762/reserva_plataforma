@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { verificarToken } from "../utils/jwt.js";
-import { registrarClienteSSE, removerClienteSSE } from "../services/eventos.service.js";
+import { enviarHeartbeat, registrarClienteSSE, removerClienteSSE } from "../services/eventos.service.js";
 import { validarTokenDispositivo } from "../services/painelToken.service.js";
 import { isAllowedOrigin } from "../utils/cors.js";
 
@@ -51,17 +51,27 @@ export async function eventosRoutes(app: FastifyInstance): Promise<void> {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
       Connection: "keep-alive",
+      // Proxies corporativos com buffer (nginx e afins) só entregam o stream em blocos —
+      // e o Painel TV parece congelado até o buffer encher. Este header desliga o buffer.
+      "X-Accel-Buffering": "no",
     });
+    // Sem Nagle, cada evento sai imediatamente em vez de esperar acumular no socket.
+    reply.raw.socket?.setNoDelay(true);
     reply.raw.write(": conectado\n\n");
 
     const clienteId = registrarClienteSSE(usuarioId, reply);
-    const heartbeat = setInterval(() => {
-      reply.raw.write(": heartbeat\n\n");
-    }, HEARTBEAT_MS);
+    const heartbeat = setInterval(() => enviarHeartbeat(clienteId), HEARTBEAT_MS);
 
-    request.raw.on("close", () => {
+    const encerrar = () => {
       clearInterval(heartbeat);
       removerClienteSSE(clienteId);
-    });
+    };
+    request.raw.on("close", encerrar);
+    // 'close' do request não dispara para todo tipo de queda (reset de TCP pelo proxy,
+    // erro de escrita no socket) — sem estes dois, o intervalo de heartbeat continuaria
+    // rodando para sempre num cliente que já não existe (vazamento de timer e de entrada
+    // no Map, acumulando a cada reconexão do backoff exponencial do frontend).
+    reply.raw.on("close", encerrar);
+    reply.raw.on("error", encerrar);
   });
 }

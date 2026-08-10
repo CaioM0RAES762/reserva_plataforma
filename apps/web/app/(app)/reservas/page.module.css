@@ -1,130 +1,619 @@
+/* ==========================================================================
+   Tela de Reservas — cabeçalho, filtros e agrupamento por dia
+   ========================================================================== */
+
+/* Hierarquia tipográfica em três degraus claros:
+   1. Título da página  — display serif, ~2rem, peso normal (a "voz" da tela)
+   2. Título do dia     — display serif, ~1.05rem (divide a lista em blocos legíveis)
+   3. Nome do responsável / recurso — sans 0.86rem, peso 500 (o dado que se lê)
+   Tudo abaixo disso (setor, código, local, motivo, cabeçalho de coluna) é 0.72–0.76rem
+   em --ink-muted, para não competir com o dado principal. */
+
+.pageHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 26px;
+}
+.pageHeaderTexto { min-width: 0; }
+
+.pageTitulo {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: clamp(1.75rem, 2.6vw, 2.15rem);
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+}
+.pageSubtitulo {
+  margin-top: 6px;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: var(--ink-muted);
+}
+
+.btnNovaReserva {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 11px 20px;
+  border: 1px solid var(--ink);
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: inherit;
+  font-size: 0.86rem;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+}
+.btnNovaReserva:hover { background: var(--ink-soft); }
+.btnNovaReserva:active { transform: scale(0.985); }
+
+/* ---------- Barra de filtros ---------- */
+
+.barraFiltros {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.campoBusca {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1 1 320px;
+  min-width: 240px;
+  max-width: 460px;
+}
+.campoBuscaIcone {
+  position: absolute;
+  left: 14px;
+  color: var(--ink-muted);
+  pointer-events: none;
+}
+.campoBusca input {
+  width: 100%;
+  padding: 10px 14px 10px 38px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: var(--paper-elev);
+  font-size: 0.85rem;
+  color: var(--ink);
+  transition: border-color 0.15s;
+}
+.campoBusca input::placeholder { color: var(--ink-muted); }
+.campoBusca input:focus { outline: none; border-color: var(--ink-muted); }
+.campoBusca input:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+.chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* Chips substituem a combobox de status: um clique em vez de abrir a lista, e o filtro
+   ativo fica visível o tempo todo em vez de escondido dentro do <select>. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 15px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: var(--paper-elev);
+  color: var(--ink-soft);
+  font-family: inherit;
+  font-size: 0.79rem;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.chip:hover { border-color: var(--ink-muted); color: var(--ink); }
+.chipAtivo {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+.chipAtivo:hover { background: var(--ink-soft); color: var(--paper); }
+.chipChevron { font-size: 0.6rem; line-height: 1; }
+.chipMaisFiltros { padding-left: 13px; }
+
+.painelMaisFiltros {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-md);
+  background: var(--paper-elev);
+}
+.campoData { display: flex; flex-direction: column; gap: 6px; }
+.campoData label {
+  font-size: 0.68rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ink-muted);
+}
+.campoData input {
+  padding: 8px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-sm);
+  background: var(--paper);
+  font-size: 0.82rem;
+  color: var(--ink);
+}
+
+.btnLimpar {
+  padding: 8px 14px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-sm);
+  background: transparent;
+  color: var(--ink-soft);
+  font-family: inherit;
+  font-size: 0.79rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.btnLimpar:hover { border-color: var(--hazard); color: var(--hazard); }
+
+.resultadoContagem {
+  font-size: 0.78rem;
+  color: var(--ink-muted);
+  margin-bottom: 18px;
+}
+
+/* ---------- Agrupamento por dia ---------- */
+
+.diaGrupo { margin-bottom: 28px; }
+
+.diaCabecalho {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.diaTitulo {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 1.05rem;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.diaData {
+  font-size: 0.76rem;
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+/* Régua que preenche o espaço entre a data e a contagem, ancorando visualmente o bloco. */
+.diaLinha {
+  flex: 1;
+  height: 1px;
+  background: var(--hairline);
+  transform: translateY(-3px);
+}
+.diaContagem {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+.tabelaCartao {
+  background: var(--paper-elev);
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-md);
+  overflow: hidden;
+  overflow-x: auto;
+}
+
+.tabela {
+  width: 100%;
+  min-width: 620px;
+  border-collapse: collapse;
+}
+.tabela thead th {
+  text-align: left;
+  padding: 11px 18px;
+  font-size: 0.62rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--ink-muted);
+  background: color-mix(in oklch, var(--ink) 2.5%, transparent);
+  border-bottom: 1px solid var(--hairline);
+  white-space: nowrap;
+}
+.tabela td {
+  padding: 13px 18px;
+  border-bottom: 1px solid var(--hairline);
+  vertical-align: middle;
+}
+.tabela tbody tr:last-child td { border-bottom: none; }
+
+.linha { cursor: pointer; transition: background 0.12s; }
+.linha:hover { background: color-mix(in oklch, var(--ink) 3.5%, transparent); }
+.linha:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
+  background: color-mix(in oklch, var(--ink) 5%, transparent);
+}
+
+/* ---------- Coluna Responsável ---------- */
+
+.responsavel { display: flex; align-items: center; gap: 11px; }
+.avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--safety) 16%, transparent);
+  color: color-mix(in oklch, var(--safety) 72%, var(--ink));
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.responsavelTexto { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.responsavelNome {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.86rem;
+  font-weight: 500;
+  color: var(--ink);
+  line-height: 1.25;
+}
+.responsavelMeta {
+  font-size: 0.72rem;
+  color: var(--ink-muted);
+  line-height: 1.3;
+}
+
+.seloUrgente,
+.seloAlta {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+.seloUrgente {
+  color: var(--hazard);
+  background: color-mix(in oklch, var(--hazard) 11%, transparent);
+  border: 1px solid color-mix(in oklch, var(--hazard) 28%, transparent);
+}
+.seloAlta {
+  color: color-mix(in oklch, var(--caution) 65%, var(--ink));
+  background: color-mix(in oklch, var(--caution) 18%, transparent);
+  border: 1px solid color-mix(in oklch, var(--caution) 35%, transparent);
+}
+
+/* ---------- Coluna Recurso ---------- */
+
+.recursoNome {
+  display: block;
+  font-size: 0.86rem;
+  font-weight: 500;
+  color: var(--ink);
+  line-height: 1.25;
+}
+.recursoMeta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 3px;
+  max-width: 42ch;
+  font-size: 0.72rem;
+  color: var(--ink-muted);
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.recursoMeta svg { flex-shrink: 0; }
+
+/* ---------- Coluna Horário ---------- */
+
+.horario {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.horario svg { color: var(--ink-muted); flex-shrink: 0; }
+
+/* ---------- Estados vazio / carregando ---------- */
+
+.vazio {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 56px 24px;
+  text-align: center;
+  background: var(--paper-elev);
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-md);
+}
+.vazioTitulo {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 400;
+  color: var(--ink);
+}
+.vazioTexto {
+  font-size: 0.83rem;
+  color: var(--ink-muted);
+  max-width: 42ch;
+  line-height: 1.5;
+}
+.vazio .btnLimpar { margin-top: 10px; }
+
+.linhaEsqueleto {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--hairline);
+}
+.linhaEsqueleto:last-child { border-bottom: none; }
+.skeletonAvatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: color-mix(in oklch, var(--ink) 8%, transparent);
+}
+
+@media (max-width: 640px) {
+  .barraFiltros {
+    flex-direction: column;
+    align-items: stretch;
+    /* `flex-wrap: wrap` (regra base) + `flex-direction: column` faz os itens quebrarem em
+       COLUNAS novas, e a largura de cada coluna passa a ser a do conteúdo mais largo —
+       os 7 chips somavam 660px e arrastavam a página junto (324px de estouro a 360px).
+       Empilhado de verdade, sem wrap, cada item herda a largura do container. */
+    flex-wrap: nowrap;
+  }
+  .campoBusca {
+    max-width: none;
+    /* `min-width` de um item flex é `auto` por padrão: ele se recusa a encolher abaixo da
+       largura do próprio conteúdo e empurra o container inteiro para além da viewport
+       (medidos 324px de estouro a 360px). `min-width: 0` devolve o direito de encolher. */
+    min-width: 0;
+    flex-basis: auto;
+  }
+  /* Os chips rolam horizontalmente em vez de quebrar em quatro linhas — e, pelo mesmo
+     motivo acima, precisam de min-width: 0 para que o overflow-x tenha efeito. */
+  .chips {
+    min-width: 0;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .chips::-webkit-scrollbar { display: none; }
+  .chip { flex-shrink: 0; }
+  .btnNovaReserva { width: 100%; justify-content: center; }
+  .pageHeader { gap: 14px; }
+  .tabela { min-width: 560px; }
+  .tabela thead th, .tabela td { padding-left: 14px; padding-right: 14px; }
+  .recursoMeta { max-width: 30ch; }
+}
+
+/* ==========================================================================
+   Estilos compartilhados (Fila de Aprovações, modais de Reserva/Detalhe)
+   ========================================================================== */
+
 .header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  margin-bottom: 24px;
+  margin-bottom: 28px;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 16px;
 }
-.header h1 { font-size: 1.5rem; font-weight: 700; color: var(--text); letter-spacing: -0.02em; }
-.header p { font-size: 0.85rem; color: var(--text-muted); margin-top: 2px; }
-
-.filterBar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
+.header h1 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: clamp(1.6rem, 2.4vw, 2rem);
+  letter-spacing: -0.01em;
+  color: var(--ink);
 }
-
-.search {
-  flex: 1;
-  min-width: 180px;
-  padding: 8px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  font-size: 0.85rem;
-}
-.search:focus { outline: none; border-color: var(--primary); }
-
-.filterBar select,
-.filterBar input[type="date"] {
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  font-size: 0.82rem;
-  color: var(--text-secondary);
-}
-.filterBar select:focus,
-.filterBar input[type="date"]:focus { outline: none; border-color: var(--primary); }
+.header p { font-size: 0.85rem; color: var(--ink-muted); margin-top: 4px; }
 
 .error {
-  background: var(--red-light);
-  color: var(--red);
+  background: var(--safety-soft);
+  color: var(--hazard);
   padding: 10px 12px;
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-sm);
   font-size: 0.82rem;
   margin-bottom: 12px;
 }
 
 .tableWrap {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
+  background: var(--paper-elev);
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-md);
   overflow: hidden;
   overflow-x: auto;
 }
 
-.table { width: 100%; border-collapse: collapse; }
-.table thead { background: var(--surface-2); }
+.table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
 .table th {
   text-align: left;
-  padding: 11px 14px;
-  font-size: 0.73rem;
-  font-weight: 700;
+  padding: 10px 16px;
+  font-size: 0.62rem;
+  font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-muted);
-  border-bottom: 1px solid var(--border);
+  letter-spacing: 0.16em;
+  color: var(--ink-muted);
+  border-bottom: 1px solid var(--hairline);
   white-space: nowrap;
 }
+.table th:first-child, .table td:first-child { padding-left: 20px; }
+.table th:last-child, .table td:last-child { padding-right: 20px; }
 .table td {
-  padding: 12px 14px;
-  font-size: 0.84rem;
-  color: var(--text-secondary);
-  border-bottom: 1px solid var(--border-light);
+  padding: 12px 16px;
+  color: var(--ink-soft);
+  border-bottom: 1px solid var(--hairline);
   vertical-align: middle;
 }
 .table tbody tr:last-child td { border-bottom: none; }
-.table tbody tr:hover { background: var(--surface-2); }
-.table td strong { color: var(--text); font-weight: 600; }
+.table tbody tr:hover { background: color-mix(in oklch, var(--ink) 4%, transparent); }
+.table td strong { color: var(--ink); font-weight: 500; }
 
-.empty { text-align: center; padding: 32px; color: var(--text-muted); }
+.empty { text-align: center; padding: 32px; color: var(--ink-muted); font-size: 0.83rem; }
+
+/* Linha da tabela que abre o detalhe. Antes o cursor de mão era aplicado inline e não
+   havia estado de foco — quem navega por teclado não tinha como saber em que linha
+   estava. */
+.rowClickable { cursor: pointer; }
+.rowClickable:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
+  background: color-mix(in oklch, var(--ink) 5%, transparent);
+}
+
+/* Esqueleto de carregamento: mantém a altura da lista estável entre buscas em vez de
+   colapsar para uma linha de texto e voltar (deslocamento de layout a cada filtro). */
+.skeletonBar {
+  display: block;
+  height: 10px;
+  border-radius: 3px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklch, var(--ink) 7%, transparent) 25%,
+    color-mix(in oklch, var(--ink) 12%, transparent) 37%,
+    color-mix(in oklch, var(--ink) 7%, transparent) 63%
+  );
+  background-size: 400% 100%;
+  animation: skeletonPulse 1.4s ease infinite;
+}
+@keyframes skeletonPulse {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+/* Respeita quem configurou o sistema para reduzir animações. */
+@media (prefers-reduced-motion: reduce) {
+  .skeletonBar { animation: none; }
+}
+
+/* Selos da Fila de Aprovações (SLA estourado / aguarda 2ª aprovação). */
+.selo {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+.selo + .selo { margin-left: 6px; }
+.seloSla {
+  background: var(--safety-soft);
+  color: var(--hazard);
+}
+.seloSegundaAprovacao {
+  background: color-mix(in oklch, var(--caution) 22%, transparent);
+  color: color-mix(in oklch, var(--caution) 70%, var(--ink));
+}
+
+/* Texto de apoio dentro de formulários (explica uma regra sem parecer erro). */
+.hint {
+  font-size: 0.76rem;
+  color: var(--ink-muted);
+  line-height: 1.5;
+  margin-top: 8px;
+}
+
+/* Rótulo acessível para campos cuja função já é óbvia visualmente (placeholder/ícone),
+   mas que ficavam sem <label> associado para leitores de tela. */
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 
 .btnPrimary {
-  background: var(--primary);
-  color: #fff;
-  border: none;
-  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--ink);
+  color: var(--paper);
+  border: 1px solid var(--ink);
+  border-radius: var(--ind-radius-sm);
   padding: 9px 16px;
   font-size: 0.83rem;
-  font-weight: 600;
+  font-weight: 500;
 }
-.btnPrimary:hover { background: var(--primary-dark); }
-.btnPrimary:disabled { opacity: 0.6; cursor: not-allowed; }
+.btnPrimary:hover { background: var(--ink-soft); }
+.btnPrimary:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .btnGhost {
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--ink-soft);
   border: none;
   padding: 8px 14px;
   font-size: 0.85rem;
   font-weight: 500;
-  border-radius: var(--radius-sm);
+  border-radius: var(--ind-radius-sm);
 }
-.btnGhost:hover { background: var(--surface-2); }
-.btnGhost:disabled { opacity: 0.6; cursor: not-allowed; }
+.btnGhost:hover { background: color-mix(in oklch, var(--ink) 5%, transparent); color: var(--ink); }
+.btnGhost:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .btnDanger {
-  background: var(--red);
+  background: var(--hazard);
   color: #fff;
-  border: none;
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--hazard);
+  border-radius: var(--ind-radius-sm);
   padding: 8px 14px;
   font-size: 0.85rem;
-  font-weight: 600;
+  font-weight: 500;
 }
-.btnDanger:hover { opacity: 0.9; }
-.btnDanger:disabled { opacity: 0.6; cursor: not-allowed; }
+.btnDanger:hover { opacity: 0.88; }
+.btnDanger:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ---------- Modal ---------- */
 .modalOverlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 20, 35, 0.5);
+  background: color-mix(in oklch, var(--ink) 45%, transparent);
   z-index: 200;
   display: flex;
   align-items: center;
@@ -133,9 +622,9 @@
 }
 
 .modal {
-  background: var(--surface);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-lg);
+  background: var(--paper-elev);
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-md);
   width: 100%;
   max-width: 600px;
   max-height: 90vh;
@@ -148,31 +637,31 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 18px 20px;
-  border-bottom: 1px solid var(--border);
+  padding: 18px 22px;
+  border-bottom: 1px solid var(--hairline);
 }
-.modalHeader h3 { font-size: 1rem; font-weight: 700; color: var(--text); }
+.modalHeader h3 { font-family: var(--font-display); font-weight: 400; font-size: 1.15rem; color: var(--ink); }
 
 .modalClose {
   background: none;
   border: none;
-  color: var(--text-muted);
+  color: var(--ink-muted);
   font-size: 1.1rem;
   width: 28px;
   height: 28px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--ind-radius-sm);
 }
-.modalClose:hover { background: var(--surface-2); color: var(--text); }
+.modalClose:hover { background: color-mix(in oklch, var(--ink) 6%, transparent); color: var(--ink); }
 
-.modalBody { padding: 20px; overflow-y: auto; flex: 1; }
+.modalBody { padding: 20px 22px; overflow-y: auto; flex: 1; }
 .modalFooter {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  padding: 14px 20px;
-  border-top: 1px solid var(--border);
-  background: var(--surface-2);
+  padding: 14px 22px;
+  border-top: 1px solid var(--hairline);
+  background: color-mix(in oklch, var(--ink) 2%, transparent);
 }
 
 .formGrid {
@@ -180,48 +669,48 @@
   grid-template-columns: 1fr 1fr;
   gap: 14px;
 }
-.formGroup { display: flex; flex-direction: column; gap: 5px; }
+.formGroup { display: flex; flex-direction: column; gap: 6px; }
 .formGroupFull { grid-column: 1 / -1; }
 .formGroupHalf { grid-column: span 1; }
 
 .formGroup label {
-  font-size: 0.78rem;
-  font-weight: 700;
-  color: var(--text-secondary);
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: var(--ink-muted);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.1em;
 }
 
 .formGroup input,
 .formGroup select,
 .formGroup textarea {
   padding: 9px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-sm);
+  background: var(--paper-elev);
   font-size: 0.88rem;
+  color: var(--ink);
   resize: vertical;
 }
 .formGroup input:focus,
 .formGroup select:focus,
 .formGroup textarea:focus {
   outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  border-color: var(--ink-muted);
 }
 .formGroup input:disabled {
-  background: var(--surface-2);
-  color: var(--text-muted);
+  background: color-mix(in oklch, var(--ink) 4%, transparent);
+  color: var(--ink-muted);
 }
 
 .conflictAlert {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: var(--red-light);
-  color: var(--red);
-  border: 1px solid #FECACA;
-  border-radius: var(--radius-sm);
+  background: var(--safety-soft);
+  color: var(--hazard);
+  border: 1px solid color-mix(in oklch, var(--hazard) 35%, var(--hairline));
+  border-radius: var(--ind-radius-sm);
   padding: 10px 14px;
   font-size: 0.83rem;
   font-weight: 500;

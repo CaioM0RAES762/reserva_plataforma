@@ -1,0 +1,291 @@
+.panel {
+  position: relative;
+  height: 100%;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: 48px 56px;
+  background: var(--panel);
+  color: var(--panel-foreground);
+  overflow: hidden;
+}
+
+/* Glow do canto superior direito: um orbe difuso mais um lavado radial, ambos em ember.
+   Mesma construção da referência (h-72 w-72 blur-3xl + radial-gradient 120% 80%). */
+.glowOrb {
+  position: absolute;
+  top: -96px;
+  right: -96px;
+  width: 288px;
+  height: 288px;
+  border-radius: 50%;
+  opacity: 0.6;
+  filter: blur(64px);
+  background: color-mix(in oklab, var(--ember) 22%, transparent);
+  pointer-events: none;
+}
+
+.glowWash {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 80% at 100% 0%, color-mix(in oklab, var(--ember) 8%, transparent) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+.edge {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 1px;
+  background: var(--panel-line);
+  pointer-events: none;
+}
+
+.content {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+/* ── Eyebrows ─────────────────────────────────────────────────────────────── */
+.eyebrow55,
+.eyebrow45,
+.eyebrow30 {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.eyebrow55 { color: color-mix(in oklab, var(--panel-foreground) 55%, transparent); }
+.eyebrow45 { color: color-mix(in oklab, var(--panel-foreground) 45%, transparent); }
+.eyebrow30 { color: color-mix(in oklab, var(--panel-foreground) 30%, transparent); }
+
+/* ── Kicker ───────────────────────────────────────────────────────────────── */
+.kicker {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.kickerLeft {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pulseDot {
+  position: relative;
+  display: flex;
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+}
+.pulseRing {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--ember);
+  opacity: 0.6;
+  animation: ping 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+.pulseCore {
+  position: relative;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ember);
+}
+@keyframes ping {
+  75%, 100% { transform: scale(2.2); opacity: 0; }
+}
+
+/* ── Headline ─────────────────────────────────────────────────────────────── */
+/* margin-top:auto empurra o bloco para baixo do kicker, deixando o espaço negativo no
+   topo — é o `mt-auto pt-16` da referência. */
+.headlineBlock {
+  margin-top: auto;
+  padding-top: 64px;
+}
+
+/* px em vez de rem: globals.css usa root de 15px e a referência, 16px. */
+.headline {
+  font-family: var(--font-auth-display), "Times New Roman", serif;
+  font-size: 32.8px;
+  font-weight: 500;
+  line-height: 1.18;
+  letter-spacing: -0.328px;
+  color: var(--panel-foreground);
+  max-width: 19ch;
+}
+
+/* ── Frota ────────────────────────────────────────────────────────────────── */
+.frotaBlock {
+  margin-top: 48px;
+}
+
+.frotaTopo {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+
+.contador {
+  font-family: var(--font-auth-display), "Times New Roman", serif;
+  font-size: 48px;
+  font-weight: 400;
+  line-height: 1;
+  color: var(--panel-foreground);
+  font-variant-numeric: tabular-nums;
+}
+.contadorTotal {
+  color: color-mix(in oklab, var(--panel-foreground) 25%, transparent);
+}
+
+.frotaTopo .eyebrow45 {
+  padding-bottom: 6px;
+}
+
+.blocos {
+  display: flex;
+  gap: 4px;
+  margin-top: 20px;
+}
+
+.blocoAtivo,
+.blocoInativo {
+  height: 32px;
+  flex: 1;
+  border-radius: 2px;
+}
+.blocoAtivo {
+  background: color-mix(in oklab, var(--ember) 85%, transparent);
+}
+.blocoInativo {
+  background: color-mix(in oklab, var(--panel-foreground) 8%, transparent);
+  box-shadow: inset 0 0 0 1px var(--panel-line);
+}
+
+/* ── Turnos ───────────────────────────────────────────────────────────────── */
+.turnosBlock {
+  margin-top: 48px;
+}
+
+.turnosCabecalho {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.linhaFina {
+  height: 1px;
+  flex: 1;
+  background: var(--panel-line);
+}
+
+.turnosLista {
+  position: relative;
+  margin-top: 20px;
+  padding-left: 20px;
+  list-style: none;
+}
+
+.turnosTrilho {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 3px;
+  width: 1px;
+  background: var(--panel-line);
+}
+
+.turnoItem {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+}
+
+.turnoDot,
+.turnoDotSoft {
+  position: absolute;
+  left: -20px;
+  top: 0.65rem;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  /* O anel na cor do painel "recorta" o trilho vertical atrás do marcador. */
+  box-shadow: 0 0 0 4px var(--panel);
+}
+.turnoDot { background: var(--ember); }
+.turnoDotSoft { background: var(--ember-soft); }
+
+.turnoInfo {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.turnoSetor {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--panel-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Mono do sistema, como na referência — não a IBM Plex Mono usada nas telas internas. */
+.turnoCodigo {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 10.4px;
+  line-height: 1.5;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: color-mix(in oklab, var(--panel-foreground) 35%, transparent);
+  flex-shrink: 0;
+}
+
+.turnoHora {
+  flex-shrink: 0;
+  font-size: 12px;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in oklab, var(--panel-foreground) 50%, transparent);
+}
+
+/* ── Rodapé ───────────────────────────────────────────────────────────────── */
+/* Duas margens automáticas (esta e a da headline) dividem a folga vertical do painel em
+   partes iguais; o padding-top soma os 48px de respiro fixo acima do divisor. */
+.rodapeWrap {
+  position: relative;
+  margin-top: auto;
+  padding-top: 48px;
+}
+
+.rodapeLinha {
+  height: 1px;
+  width: 100%;
+  background: var(--panel-line);
+}
+
+.rodapeTexto {
+  margin-top: 20px;
+  font-size: 11.2px;
+  line-height: 1.625;
+  color: color-mix(in oklab, var(--panel-foreground) 35%, transparent);
+}
+
+@media (max-width: 1279px) {
+  .panel {
+    padding: 48px 40px;
+  }
+  .headline {
+    font-size: 28px;
+  }
+}

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { paginacaoQuerySchema } from "./paginacao.js";
 
 export const auditoriaPublicaSchema = z.object({
   id: z.string().uuid(),
@@ -25,5 +26,6 @@ export const auditoriaQuerySchema = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, "Data final inválida.")
     .optional(),
+  ...paginacaoQuerySchema.shape,
 });
 export type AuditoriaQueryInput = z.infer<typeof auditoriaQuerySchema>;

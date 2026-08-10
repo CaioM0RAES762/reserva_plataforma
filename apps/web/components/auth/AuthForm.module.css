@@ -1,0 +1,341 @@
+/* ── Cabeçalho do bloco ───────────────────────────────────────────────────── */
+.header {
+  max-width: 512px;
+}
+
+/* Medidas em px, não rem: globals.css define `html { font-size: 15px }`, então rem aqui
+   sairia ~6% menor que a referência (que roda com root de 16px). */
+.title {
+  font-family: var(--font-auth-display), "Times New Roman", serif;
+  font-size: 48px;
+  font-weight: 500;
+  line-height: 60px;
+  letter-spacing: -0.48px;
+  color: var(--foreground);
+}
+
+.subtitle {
+  margin-top: 16px;
+  font-size: 15px;
+  line-height: 24.375px;
+  color: var(--muted-foreground);
+}
+
+/* ── Formulário ───────────────────────────────────────────────────────────── */
+.form {
+  margin-top: 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Dois campos lado a lado (nome/setor, nova senha/confirmar) — `grid sm:grid-cols-2`. */
+.pairGrid {
+  display: grid;
+  gap: 24px;
+}
+@media (min-width: 640px) {
+  .pairGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.field {
+  display: block;
+  min-width: 0;
+}
+
+/* line-height 24px pelo mesmo motivo do .brandSub: na referência o label é uma span
+   inline e herda a caixa de linha de 24px do bloco, não os 16.5px do próprio texto. */
+.labelEyebrow {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 24px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.controlWrap {
+  display: block;
+  margin-top: 8px;
+}
+
+.inputBase {
+  display: block;
+  width: 100%;
+  /* 14 + 22.5 (line-height) + 14 + 2 (bordas) = 52.5 → o arredondamento do navegador
+     descia para 52 e a diferença acumulava ao longo do formulário. */
+  min-height: 53px;
+  padding: 14px 16px;
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--foreground);
+  background: var(--field);
+  border: 1px solid var(--input-border);
+  border-radius: var(--auth-radius);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.inputBase::placeholder {
+  color: color-mix(in oklab, var(--muted-foreground) 75%, transparent);
+}
+
+.inputBase:focus {
+  outline: none;
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 22%, transparent);
+}
+
+.inputBase:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.inputBase[aria-invalid="true"] {
+  border-color: var(--destructive);
+}
+
+select.inputBase {
+  appearance: none;
+  /* Seta desenhada em CSS: um <select> sem `appearance:none` herda o widget do SO e
+     quebra a altura/raio do field-base; sem indicador, deixa de parecer um seletor. */
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 20px) calc(50% + 2px), calc(100% - 15px) calc(50% + 2px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 44px;
+  cursor: pointer;
+}
+
+/* Campo de código: input único com tracking largo, como na referência. */
+.codeInput {
+  max-width: 224px;
+  letter-spacing: 0.45em;
+  font-variant-numeric: tabular-nums;
+}
+
+.passwordWrap {
+  position: relative;
+  display: block;
+}
+
+.passwordWrap .inputBase {
+  padding-right: 96px;
+}
+
+.toggleSenha {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: none;
+  padding: 0;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.toggleSenha:hover {
+  color: var(--ember);
+}
+.toggleSenha:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.hint {
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted-foreground);
+}
+
+.fieldError {
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--destructive);
+}
+
+/* ── Ações ────────────────────────────────────────────────────────────────── */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px 32px;
+  padding-top: 8px;
+}
+
+.submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 52px;
+  padding: 16px 24px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.025em;
+  color: var(--primary-foreground);
+  background: var(--primary);
+  border: none;
+  border-radius: var(--auth-radius);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+@media (min-width: 640px) {
+  .submit {
+    width: auto;
+    min-width: 224px;
+  }
+}
+.submit:hover:not(:disabled) {
+  background: var(--ink-soft);
+}
+.submit:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.submit:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* Link e botão-link têm a mesma aparência: sublinhado discreto que acende em ember. */
+.inlineLink,
+.linkButton {
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  color: var(--ink);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--border);
+  text-underline-offset: 4px;
+  transition: text-decoration-color 0.15s, color 0.15s;
+}
+.inlineLink:hover,
+.linkButton:hover:not(:disabled) {
+  text-decoration-color: var(--ember);
+}
+.linkButton:disabled {
+  color: var(--muted-foreground);
+  cursor: not-allowed;
+  text-decoration-color: transparent;
+}
+.inlineLink:focus-visible,
+.linkButton:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+/* Sublinhado sempre em ember — usado no "Ativar conta" do rodapé do login. */
+.emberLink {
+  composes: inlineLink;
+  text-decoration-color: var(--ember);
+}
+
+/* ── Rodapé do formulário ─────────────────────────────────────────────────── */
+.formFooter {
+  margin-top: 48px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--muted-foreground);
+}
+
+/* ── Alertas ──────────────────────────────────────────────────────────────── */
+.alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: var(--auth-radius);
+  font-size: 13px;
+  line-height: 1.5;
+  border: 1px solid;
+}
+.alert svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.alertErro {
+  composes: alert;
+  color: var(--destructive);
+  background: color-mix(in oklab, var(--destructive) 7%, transparent);
+  border-color: color-mix(in oklab, var(--destructive) 28%, transparent);
+}
+
+.alertOk {
+  composes: alert;
+  color: var(--ink-soft);
+  background: color-mix(in oklab, var(--ember) 10%, transparent);
+  border-color: color-mix(in oklab, var(--ember) 35%, transparent);
+}
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid color-mix(in oklab, var(--primary-foreground) 35%, transparent);
+  border-top-color: var(--primary-foreground);
+  border-radius: 50%;
+  animation: girar 0.6s linear infinite;
+}
+@keyframes girar {
+  to { transform: rotate(360deg); }
+}
+
+.maskedEmail {
+  color: var(--foreground);
+  font-weight: 500;
+}
+
+/* ── Estado de sucesso ────────────────────────────────────────────────────── */
+.successIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 24px;
+  border-radius: 50%;
+  color: var(--ink);
+  background: var(--ember);
+}
+
+.successActions {
+  margin-top: 40px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px 32px;
+}
+
+@media (max-width: 639px) {
+  .title {
+    font-size: 36px;
+    line-height: 1.25;
+  }
+}

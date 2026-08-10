@@ -121,7 +121,11 @@ export function PainelTokensClient() {
         </button>
       </div>
 
-      {erro && <div className={styles.error}>{erro}</div>}
+      {erro && (
+              <div className={styles.error} role="alert">
+                {erro}
+              </div>
+            )}
 
       <div className={styles.tableWrap}>
         <table className={styles.table}>

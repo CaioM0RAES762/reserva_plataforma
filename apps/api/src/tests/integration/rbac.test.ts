@@ -3,6 +3,8 @@ import type { FastifyInstance } from "fastify";
 import { buildApp } from "../../app.js";
 import { getPool, sql, closePool } from "../../db/pool.js";
 import { hashPassword } from "../../utils/password.js";
+import { definirProviderEmailParaTeste } from "../../services/email.service.js";
+import { criarProviderMockSempreAceita } from "../helpers/emailProviderMock.js";
 
 // Sprint S6 — matriz RBAC (rota x perfil), cobrindo 100% das rotas criadas em S1-S5.
 // Perfis testados: Admin e Colaborador — "gestor_setor" só existe a partir de S7 (SDD §17.4,
@@ -11,6 +13,10 @@ import { hashPassword } from "../../utils/password.js";
 const EMAIL_COLABORADOR_TI = "teste.rbac.ti@metalsider.com.br";
 const EMAIL_COLABORADOR_MANUTENCAO = "teste.rbac.manutencao@metalsider.com.br";
 const SENHA = "SenhaForte123";
+// Admin próprio deste arquivo — não depende de SEED_ADMIN_EMAIL/SEED_ADMIN_PASSWORD
+// (podem não estar definidas no .env), mesmo padrão dos colaboradores abaixo.
+const EMAIL_ADMIN_TESTE = "teste.rbac.admin@metalsider.com.br";
+const SENHA_ADMIN_TESTE = "SenhaAdminTeste123";
 const CODIGO_PLATAFORMA = "PLT-S6-RBAC";
 const DATA_RESERVA = "2026-09-15";
 
@@ -51,6 +57,10 @@ beforeAll(async () => {
   app = await buildApp();
   await app.ready();
 
+  // POST /auth/recuperar-senha (testado abaixo) é bloqueante — sem mock, cada rodada desta
+  // suíte dispararia um e-mail real.
+  definirProviderEmailParaTeste(criarProviderMockSempreAceita());
+
   const pool = await getPool();
 
   await pool.request().query(
@@ -63,24 +73,25 @@ beforeAll(async () => {
     .request()
     .query(`DELETE FROM LogAuditoria WHERE entidade_id IN (SELECT id FROM Plataforma WHERE codigo = '${CODIGO_PLATAFORMA}')`);
   await pool.request().query(`DELETE FROM Plataforma WHERE codigo LIKE '${CODIGO_PLATAFORMA}%'`);
+  // Inclui o admin de teste nas 3 limpezas abaixo: se uma rodada anterior tiver falhado
+  // no meio do afterAll (ex.: FK ainda não coberta na época), a linha do admin pode ter
+  // ficado órfã com Notificacao/LogAuditoria pendentes — sem limpar isso aqui, o DELETE de
+  // Usuario por e-mail logo abaixo falharia de novo com o mesmo tipo de erro de FK.
+  const EMAILS_USUARIOS_TESTE = `'${EMAIL_COLABORADOR_TI}', '${EMAIL_COLABORADOR_MANUTENCAO}', '${EMAIL_ADMIN_TESTE}'`;
+  await pool
+    .request()
+    .query(`DELETE FROM CodigoVerificacao WHERE usuario_id IN (SELECT id FROM Usuario WHERE email IN (${EMAILS_USUARIOS_TESTE}))`);
+  await pool
+    .request()
+    .query(`DELETE FROM LogAuditoria WHERE usuario_id IN (SELECT id FROM Usuario WHERE email IN (${EMAILS_USUARIOS_TESTE}))`);
+  await pool
+    .request()
+    .query(`DELETE FROM Notificacao WHERE usuario_id IN (SELECT id FROM Usuario WHERE email IN (${EMAILS_USUARIOS_TESTE}))`);
   await pool
     .request()
     .query(
-      `DELETE FROM CodigoVerificacao WHERE usuario_id IN (SELECT id FROM Usuario WHERE email IN ('${EMAIL_COLABORADOR_TI}', '${EMAIL_COLABORADOR_MANUTENCAO}'))`
+      `DELETE FROM Usuario WHERE email IN ('${EMAIL_COLABORADOR_TI}', '${EMAIL_COLABORADOR_MANUTENCAO}', '${EMAIL_ADMIN_TESTE}')`
     );
-  await pool
-    .request()
-    .query(
-      `DELETE FROM LogAuditoria WHERE usuario_id IN (SELECT id FROM Usuario WHERE email IN ('${EMAIL_COLABORADOR_TI}', '${EMAIL_COLABORADOR_MANUTENCAO}'))`
-    );
-  await pool
-    .request()
-    .query(
-      `DELETE FROM Notificacao WHERE usuario_id IN (SELECT id FROM Usuario WHERE email IN ('${EMAIL_COLABORADOR_TI}', '${EMAIL_COLABORADOR_MANUTENCAO}'))`
-    );
-  await pool
-    .request()
-    .query(`DELETE FROM Usuario WHERE email IN ('${EMAIL_COLABORADOR_TI}', '${EMAIL_COLABORADOR_MANUTENCAO}')`);
 
   const setorTi = await pool.request().query("SELECT id FROM Setor WHERE nome = 'TI'");
   setorTiId = setorTi.recordset[0].id;
@@ -122,10 +133,20 @@ beforeAll(async () => {
     );
   colaboradorManutencaoId = colaboradorManutencao.recordset[0].id;
 
+  await pool
+    .request()
+    .input("nome", sql.NVarChar, "Admin de Teste (rbac)")
+    .input("email", sql.NVarChar, EMAIL_ADMIN_TESTE)
+    .input("senha_hash", sql.VarChar, await hashPassword(SENHA_ADMIN_TESTE))
+    .query(
+      `INSERT INTO Usuario (nome, email, senha_hash, perfil, setor_id, ativo, email_verificado)
+       VALUES (@nome, @email, @senha_hash, 'admin', NULL, 1, 1)`
+    );
+
   const loginAdmin = await app.inject({
     method: "POST",
     url: "/api/v1/auth/login",
-    payload: { email: process.env.SEED_ADMIN_EMAIL, senha: process.env.SEED_ADMIN_PASSWORD },
+    payload: { email: EMAIL_ADMIN_TESTE, senha: SENHA_ADMIN_TESTE },
   });
   expect(loginAdmin.statusCode).toBe(200);
   cookieAdmin = extrairCookieToken(loginAdmin.cookies.map((c) => `${c.name}=${c.value}`));
@@ -150,6 +171,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  definirProviderEmailParaTeste(null);
   const pool = await getPool();
   await pool
     .request()
@@ -175,6 +197,20 @@ afterAll(async () => {
   await pool
     .request()
     .query(`DELETE FROM Usuario WHERE id IN ('${colaboradorTiId}', '${colaboradorManutencaoId}')`);
+  // O admin de teste é ATOR de várias entradas de auditoria/notificação geradas durante a
+  // suíte (aprovar/rejeitar reserva etc.), não só alvo — sem limpar essas referências
+  // primeiro, o DELETE do Usuario esbarra em FK_Notificacao_Usuario/FK_LogAuditoria_Usuario.
+  await pool
+    .request()
+    .query(
+      `DELETE FROM Notificacao WHERE usuario_id IN (SELECT id FROM Usuario WHERE email = '${EMAIL_ADMIN_TESTE}')`
+    );
+  await pool
+    .request()
+    .query(
+      `DELETE FROM LogAuditoria WHERE usuario_id IN (SELECT id FROM Usuario WHERE email = '${EMAIL_ADMIN_TESTE}')`
+    );
+  await pool.request().query(`DELETE FROM Usuario WHERE email = '${EMAIL_ADMIN_TESTE}'`);
   await app.close();
   await closePool();
 });

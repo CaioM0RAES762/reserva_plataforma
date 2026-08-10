@@ -1,12 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import styles from "../app/(app)/historico/page.module.css";
-import { apiFetch } from "../lib/api";
+import { apiDownload, apiFetch, mensagemDeErro } from "../lib/api";
+import { useDebounce } from "../lib/useDebounce";
+import { Paginacao } from "./Paginacao";
 import { ReservaStatusBadge } from "./ReservaStatusBadge";
 import { ReservaDetalheModal, type ReservaDetalhe } from "./ReservaDetalheModal";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3335";
+const POR_PAGINA = 50;
 
 interface Setor {
   id: string;
@@ -21,7 +24,10 @@ interface Plataforma {
 }
 
 interface HistoricoClientProps {
-  perfil: "admin" | "colaborador";
+  // `gestor_setor` faltava na união: a página repassa o perfil real vindo de /conta, então
+  // um Gestor chegava aqui tipado como Colaborador e era repassado assim ao modal de
+  // detalhe, que decide por perfil quais ações de aprovação exibir.
+  perfil: "admin" | "gestor_setor" | "colaborador";
   setorId: string | null;
 }
 
@@ -54,6 +60,11 @@ export function HistoricoClient({ perfil, setorId }: HistoricoClientProps) {
   const [dataDe, setDataDe] = useState("");
   const [dataAte, setDataAte] = useState("");
   const [reservaSelecionada, setReservaSelecionada] = useState<ReservaDetalhe | null>(null);
+  const [total, setTotal] = useState(0);
+  const [pagina, setPagina] = useState(0);
+
+  const buscaComAtraso = useDebounce(busca);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     Promise.all([apiFetch<Setor[]>("/api/v1/setores"), apiFetch<Plataforma[]>("/api/v1/plataformas")])
@@ -64,61 +75,78 @@ export function HistoricoClient({ perfil, setorId }: HistoricoClientProps) {
       .catch(() => undefined);
   }, []);
 
-  function montarQuery(): string {
-    const params = new URLSearchParams();
-    if (busca) params.set("q", busca);
-    if (perfil === "admin" && setorFiltro) params.set("setor", setorFiltro);
-    if (plataformaFiltro) params.set("plataforma", plataformaFiltro);
-    if (statusFiltro) params.set("status", statusFiltro);
-    if (dataDe) params.set("dateFrom", dataDe);
-    if (dataAte) params.set("dateTo", dataAte);
-    return params.toString();
-  }
+  const montarQuery = useCallback(
+    (comPaginacao: boolean): string => {
+      const params = new URLSearchParams();
+      if (buscaComAtraso) params.set("q", buscaComAtraso);
+      if (perfil === "admin" && setorFiltro) params.set("setor", setorFiltro);
+      if (plataformaFiltro) params.set("plataforma", plataformaFiltro);
+      if (statusFiltro) params.set("status", statusFiltro);
+      if (dataDe) params.set("dateFrom", dataDe);
+      if (dataAte) params.set("dateTo", dataAte);
+      if (comPaginacao) {
+        params.set("limit", String(POR_PAGINA));
+        params.set("offset", String(pagina * POR_PAGINA));
+      }
+      return params.toString();
+    },
+    [buscaComAtraso, perfil, setorFiltro, plataformaFiltro, statusFiltro, dataDe, dataAte, pagina]
+  );
 
   const carregar = useCallback(async () => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setCarregando(true);
     setErro(null);
     try {
-      const query = montarQuery();
-      const dados = await apiFetch<ReservaDetalhe[]>(`/api/v1/historico${query ? `?${query}` : ""}`);
-      setRegistros(dados);
+      const resposta = await fetch(`${API_URL}/api/v1/historico?${montarQuery(true)}`, {
+        credentials: "include",
+        signal: controller.signal,
+      });
+      if (!resposta.ok) {
+        const corpo = await resposta.json().catch(() => ({}));
+        throw new Error((corpo as { erro?: string }).erro ?? "Erro ao carregar histórico.");
+      }
+      setRegistros((await resposta.json()) as ReservaDetalhe[]);
+      setTotal(Number(resposta.headers.get("X-Total-Count") ?? 0));
     } catch (err) {
-      setErro(err instanceof Error ? err.message : "Erro ao carregar histórico.");
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      setErro(mensagemDeErro(err, "Erro ao carregar histórico."));
     } finally {
-      setCarregando(false);
+      if (!controller.signal.aborted) setCarregando(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [busca, setorFiltro, plataformaFiltro, statusFiltro, dataDe, dataAte]);
+  }, [montarQuery]);
 
   useEffect(() => {
-    const timer = setTimeout(carregar, 250);
-    return () => clearTimeout(timer);
+    carregar();
   }, [carregar]);
+
+  useEffect(() => () => abortRef.current?.abort(), []);
+
+  useEffect(() => {
+    setPagina(0);
+  }, [buscaComAtraso, setorFiltro, plataformaFiltro, statusFiltro, dataDe, dataAte]);
 
   async function exportarCsv() {
     setExportando(true);
     setErro(null);
     try {
-      const query = montarQuery();
-      const response = await fetch(`${API_URL}/api/v1/historico/export${query ? `?${query}` : ""}`, {
-        credentials: "include",
-      });
-      if (!response.ok) {
-        throw new Error("Erro ao exportar CSV.");
-      }
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `historico_${new Date().toISOString().slice(0, 10)}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
+      // A exportação usa os MESMOS filtros da tela, mas sem paginação — o CSV continua
+      // trazendo o resultado completo, não só a página visível.
+      await apiDownload(
+        `/api/v1/historico/export?${montarQuery(false)}`,
+        `historico_${new Date().toISOString().slice(0, 10)}.csv`
+      );
     } catch (err) {
-      setErro(err instanceof Error ? err.message : "Erro ao exportar CSV.");
+      setErro(mensagemDeErro(err, "Erro ao exportar CSV."));
     } finally {
       setExportando(false);
     }
   }
+
+  const periodoInvalido = Boolean(dataDe && dataAte && dataAte < dataDe);
 
   return (
     <section>
@@ -139,14 +167,19 @@ export function HistoricoClient({ perfil, setorId }: HistoricoClientProps) {
 
       <div className={styles.filterBar}>
         <input
-          type="text"
-          placeholder="Buscar..."
+          type="search"
+          placeholder="Buscar por setor, responsável, plataforma ou motivo..."
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
           className={styles.search}
+          aria-label="Buscar no histórico"
         />
         {perfil === "admin" && (
-          <select value={setorFiltro} onChange={(e) => setSetorFiltro(e.target.value)}>
+          <select
+            value={setorFiltro}
+            onChange={(e) => setSetorFiltro(e.target.value)}
+            aria-label="Filtrar por setor"
+          >
             <option value="">Todos os setores</option>
             {setores.map((s) => (
               <option key={s.id} value={s.id}>
@@ -155,7 +188,11 @@ export function HistoricoClient({ perfil, setorId }: HistoricoClientProps) {
             ))}
           </select>
         )}
-        <select value={plataformaFiltro} onChange={(e) => setPlataformaFiltro(e.target.value)}>
+        <select
+          value={plataformaFiltro}
+          onChange={(e) => setPlataformaFiltro(e.target.value)}
+          aria-label="Filtrar por plataforma"
+        >
           <option value="">Todas as plataformas</option>
           {plataformas.map((p) => (
             <option key={p.id} value={p.id}>
@@ -163,7 +200,7 @@ export function HistoricoClient({ perfil, setorId }: HistoricoClientProps) {
             </option>
           ))}
         </select>
-        <select value={statusFiltro} onChange={(e) => setStatusFiltro(e.target.value)}>
+        <select value={statusFiltro} onChange={(e) => setStatusFiltro(e.target.value)} aria-label="Filtrar por status">
           <option value="">Todos os status</option>
           <option value="pendente">Pendente</option>
           <option value="agendada">Agendada</option>
@@ -172,29 +209,52 @@ export function HistoricoClient({ perfil, setorId }: HistoricoClientProps) {
           <option value="cancelada">Cancelada</option>
           <option value="rejeitada">Rejeitada</option>
         </select>
-        <input type="date" value={dataDe} onChange={(e) => setDataDe(e.target.value)} />
-        <input type="date" value={dataAte} onChange={(e) => setDataAte(e.target.value)} />
+        <input
+          type="date"
+          value={dataDe}
+          onChange={(e) => setDataDe(e.target.value)}
+          aria-label="Data inicial"
+          max={dataAte || undefined}
+        />
+        <input
+          type="date"
+          value={dataAte}
+          onChange={(e) => setDataAte(e.target.value)}
+          aria-label="Data final"
+          // Impede montar um período invertido no próprio seletor, em vez de deixar o
+          // usuário submeter e receber uma lista vazia sem explicação.
+          min={dataDe || undefined}
+        />
       </div>
 
-      {erro && <div className={styles.error}>{erro}</div>}
+      {periodoInvalido && (
+        <div className={styles.error} role="alert">
+          A data final é anterior à data inicial — ajuste o período para ver resultados.
+        </div>
+      )}
+      {erro && (
+        <div className={styles.error} role="alert">
+          {erro}
+        </div>
+      )}
 
       <div className={styles.tableWrap}>
         <table className={styles.table}>
           <thead>
             <tr>
-              <th>ID</th>
-              <th>Data/Hora Reserva</th>
-              <th>Setor</th>
-              <th>Responsável</th>
-              <th>Plataforma</th>
-              <th>Período</th>
-              <th>Motivo</th>
-              <th>Status</th>
-              <th>Ações</th>
+              <th scope="col">ID</th>
+              <th scope="col">Data/Hora Reserva</th>
+              <th scope="col">Setor</th>
+              <th scope="col">Responsável</th>
+              <th scope="col">Plataforma</th>
+              <th scope="col">Período</th>
+              <th scope="col">Motivo</th>
+              <th scope="col">Status</th>
+              <th scope="col">Ações</th>
             </tr>
           </thead>
-          <tbody>
-            {carregando ? (
+          <tbody aria-busy={carregando}>
+            {carregando && registros.length === 0 ? (
               <tr>
                 <td colSpan={9} className={styles.empty}>
                   Carregando...
@@ -203,7 +263,7 @@ export function HistoricoClient({ perfil, setorId }: HistoricoClientProps) {
             ) : registros.length === 0 ? (
               <tr>
                 <td colSpan={9} className={styles.empty}>
-                  Nenhum registro encontrado.
+                  Nenhum registro encontrado para os filtros aplicados.
                 </td>
               </tr>
             ) : (
@@ -234,6 +294,7 @@ export function HistoricoClient({ perfil, setorId }: HistoricoClientProps) {
                     <button
                       className={styles.btnIcon}
                       title="Ver detalhes"
+                      aria-label={`Ver detalhes da reserva de ${r.plataformaNome} em ${formatarData(r.data)}`}
                       onClick={() => setReservaSelecionada(r)}
                     >
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -248,6 +309,15 @@ export function HistoricoClient({ perfil, setorId }: HistoricoClientProps) {
           </tbody>
         </table>
       </div>
+
+      <Paginacao
+        total={total}
+        pagina={pagina}
+        porPagina={POR_PAGINA}
+        carregando={carregando}
+        onMudarPagina={setPagina}
+        rotuloItens="registro(s)"
+      />
 
       {reservaSelecionada && (
         <ReservaDetalheModal

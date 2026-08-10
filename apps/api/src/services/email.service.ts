@@ -1,84 +1,298 @@
-import { Client } from "@microsoft/microsoft-graph-client";
 import "dotenv/config";
+import { EmailNaoEnviadoError, type EmailProvider, type EmailSendResult } from "./email/types.js";
+import { SmtpEmailProvider, lerConfigSmtpDoAmbiente, type SmtpConfig } from "./email/smtpProvider.js";
+import { MicrosoftGraphEmailProvider, lerConfigGraphDoAmbiente, type GraphConfig } from "./email/graphProvider.js";
 
-// Node 20+ possui fetch nativo — sem necessidade de isomorphic-fetch.
+export { EmailNaoEnviadoError, type EmailSendResult } from "./email/types.js";
 
+// Compatibilidade com o formato usado pela fila (BullMQ) e pelas ~10 rotas que só chamam
+// `enviarEmail`/`enfileirarEmail` sem se importar com o resultado estruturado.
 export interface EmailJobData {
   destinatario: string;
   assunto: string;
   corpoHtml: string;
+  // Alternativa texto puro. Quando ausente, é derivada do HTML (ver `htmlParaTexto`) — os
+  // templates de código de verificação (auth) já fornecem uma versão escrita à mão, mais
+  // legível que a derivação automática.
+  corpoTexto?: string;
 }
 
-function getGraphClient(): Client {
-  const tenantId = process.env.GRAPH_TENANT_ID;
-  const clientId = process.env.GRAPH_CLIENT_ID;
-  const clientSecret = process.env.GRAPH_CLIENT_SECRET;
+const isProduction = process.env.NODE_ENV === "production";
 
-  if (!tenantId || !clientId || !clientSecret) {
-    throw new Error(
-      "Credenciais do Microsoft Graph não configuradas (GRAPH_TENANT_ID/GRAPH_CLIENT_ID/GRAPH_CLIENT_SECRET)."
+export type ProvedorEmail = "smtp" | "graph";
+
+// Fora de produção, sem provedor configurado, o e-mail é gravado em disco em vez de
+// enviado — assim o fluxo de ativação/recuperação é testável ponta a ponta localmente sem
+// credenciais reais. Em produção isto nunca é usado: sem credenciais o envio falha
+// explicitamente (ver `enviarEmail`).
+const DIRETORIO_EMAILS_DEV = "emails-dev";
+
+async function registrarEmailEmDisco(data: EmailJobData): Promise<string> {
+  const { mkdir, writeFile } = await import("node:fs/promises");
+  const { join } = await import("node:path");
+  await mkdir(DIRETORIO_EMAILS_DEV, { recursive: true });
+  const arquivo = join(
+    DIRETORIO_EMAILS_DEV,
+    `${new Date().toISOString().replace(/[:.]/g, "-")}_${data.destinatario.replace(/[^a-z0-9]/gi, "_")}.html`
+  );
+  await writeFile(arquivo, `<!-- ${data.assunto} -->\n${data.corpoHtml}`, "utf8");
+  return arquivo;
+}
+
+// Remove tags e normaliza espaços para gerar a alternativa text/plain de templates que não
+// escrevem a própria versão em texto. Filtros antispam pontuam negativamente mensagens
+// só-HTML sem contraparte em texto puro.
+function htmlParaTexto(html: string): string {
+  return html
+    .replace(/<(br|\/p|\/div|\/h[1-6])\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .split("\n")
+    .map((linha) => linha.trim())
+    .join("\n")
+    .trim();
+}
+
+function mascararEmail(email: string): string {
+  const [usuario, dominio] = email.split("@");
+  if (!dominio) return "***";
+  const visivel = usuario.slice(0, 2);
+  return `${visivel}${"*".repeat(Math.max(usuario.length - 2, 1))}@${dominio}`;
+}
+
+// ---------------------------------------------------------------------------------------
+// Resolução de provedor
+// ---------------------------------------------------------------------------------------
+//
+// EMAIL_PROVIDER explícito ("smtp" | "graph") tem precedência e é validado no boot: se
+// declarado e a configuração obrigatória daquele provedor estiver incompleta, a aplicação
+// falha alto e claro (`validarConfiguracaoEmailNoBoot`) em vez de subir silenciosamente
+// quebrada. Sem EMAIL_PROVIDER, o comportamento antigo é preservado: autodetecta por
+// credenciais presentes (SMTP tem precedência sobre Graph), e sem nenhuma credencial cai
+// no fallback de disco em desenvolvimento.
+function providerExplicito(): ProvedorEmail | null {
+  const valor = process.env.EMAIL_PROVIDER?.trim().toLowerCase();
+  if (!valor) return null;
+  if (valor === "smtp" || valor === "graph") return valor;
+  throw new Error(`EMAIL_PROVIDER inválido: "${valor}". Valores aceitos: "smtp" ou "graph".`);
+}
+
+export function credenciaisSmtpConfiguradas(): boolean {
+  return lerConfigSmtpDoAmbiente() !== null;
+}
+
+export function credenciaisGraphConfiguradas(): boolean {
+  return lerConfigGraphDoAmbiente() !== null;
+}
+
+export function provedorEmailAtivo(): ProvedorEmail | null {
+  const explicito = providerExplicito();
+  if (explicito) return explicito;
+  if (credenciaisSmtpConfiguradas()) return "smtp";
+  if (credenciaisGraphConfiguradas()) return "graph";
+  return null;
+}
+
+export function emailConfigurado(): boolean {
+  return provedorEmailAtivo() !== null;
+}
+
+let providerInstance: EmailProvider | null = null;
+let providerInstanceKey: string | null = null;
+let providerOverrideParaTeste: EmailProvider | null = null;
+
+// Seam de injeção de dependência só para testes: permite que testes unitários/integração
+// substituam o provedor real por um mock (sem rede, sem SMTP/Graph reais) e ainda assim
+// exercitem a lógica de negócio de verdade (rate limit, transação, resposta HTTP). Nunca
+// usado em código de produção — nenhuma rota chama isto.
+export function definirProviderEmailParaTeste(provider: EmailProvider | null): void {
+  providerOverrideParaTeste = provider;
+  providerInstance = null;
+  providerInstanceKey = null;
+}
+
+function resolverProvider(): EmailProvider | null {
+  if (providerOverrideParaTeste) return providerOverrideParaTeste;
+
+  const provedor = provedorEmailAtivo();
+  if (!provedor) return null;
+
+  // Recria a instância só se a escolha de provedor mudou (relevante em testes, que trocam
+  // variáveis de ambiente entre casos) — o transporte SMTP em si já mantém pool próprio.
+  const chave = provedor;
+  if (providerInstance && providerInstanceKey === chave) return providerInstance;
+
+  providerInstance =
+    provedor === "smtp"
+      ? new SmtpEmailProvider(lerConfigSmtpDoAmbiente())
+      : new MicrosoftGraphEmailProvider(lerConfigGraphDoAmbiente());
+  providerInstanceKey = chave;
+  return providerInstance;
+}
+
+// Chamado uma vez no boot (server.ts). Só lança quando EMAIL_PROVIDER foi declarado
+// explicitamente e a configuração obrigatória daquele provedor está incompleta — nunca por
+// simplesmente não haver nenhum provedor configurado em desenvolvimento (fallback de disco
+// continua válido nesse caso).
+export function validarConfiguracaoEmailNoBoot(): void {
+  const explicito = providerExplicito(); // lança se EMAIL_PROVIDER tiver valor inválido
+  if (!explicito) return;
+
+  const provider = explicito === "smtp" ? new SmtpEmailProvider(lerConfigSmtpDoAmbiente()) : new MicrosoftGraphEmailProvider(lerConfigGraphDoAmbiente());
+  provider.validarConfiguracao();
+}
+
+// Log mascarado da configuração real resolvida pelo processo em execução — nunca imprime
+// senha/secret. Existe porque "editei o .env" e "o processo que atende as requisições usa
+// esse .env" são afirmações diferentes: múltiplas instâncias, cwd errado, ou um processo
+// antigo ainda vivo fazem o processo real rodar com config diferente da que se imagina.
+// Ver README/relatório: isto é o que se deve olhar para confirmar qual config está ativa.
+export function logConfiguracaoEmail(logger: { info: (obj: unknown, msg?: string) => void; warn: (obj: unknown, msg?: string) => void }): void {
+  const provedor = provedorEmailAtivo();
+  const smtp = lerConfigSmtpDoAmbiente();
+  const graph = lerConfigGraphDoAmbiente();
+
+  const info: Record<string, unknown> = {
+    provider: provedor ?? "nenhum (fallback: grava em disco fora de produção)",
+    environment: process.env.NODE_ENV ?? "development",
+    cwd: process.cwd(),
+  };
+  if (smtp) {
+    info.smtp = { host: smtp.host, port: smtp.port, secure: smtp.secure, user: maskUser(smtp.user), from: smtp.from };
+  }
+  if (graph) {
+    info.graph = { tenantId: graph.tenantId, senderEmail: maskUser(graph.senderEmail) };
+  }
+
+  if (!provedor && isProduction) {
+    logger.warn(info, "[EMAIL CONFIG] nenhum provedor configurado em produção — códigos de verificação NÃO serão entregues");
+  } else {
+    logger.info(info, "[EMAIL CONFIG]");
+  }
+}
+
+function maskUser(endereco: string): string {
+  const [usuario, dominio] = endereco.split("@");
+  if (!dominio) return "***";
+  return `${usuario.slice(0, 1)}***@${dominio}`;
+}
+
+// Diagnóstico de conectividade (usado pelo script `email:diagnose` e, opcionalmente, no
+// boot). Nunca lança: o resultado é sempre `{ok, detalhe?}`.
+export async function testarConexaoEmail(): Promise<{ ok: boolean; provider: ProvedorEmail | null; detalhe?: string }> {
+  const provider = resolverProvider();
+  if (!provider) return { ok: false, provider: null, detalhe: "Nenhum provedor configurado." };
+  const resultado = await provider.testarConexao();
+  return { ...resultado, provider: provider.nome };
+}
+
+// ---------------------------------------------------------------------------------------
+// Envio
+// ---------------------------------------------------------------------------------------
+
+export type TipoEmailObservabilidade =
+  | "ACTIVATION"
+  | "ACTIVATION_RESEND"
+  | "PASSWORD_RESET"
+  | "NOTIFICATION";
+
+export interface EnviarEmailOpcoes {
+  tipo?: TipoEmailObservabilidade;
+  correlationId?: string;
+}
+
+// Ponto único de envio. Sempre retorna o resultado estruturado do provedor em caso de
+// sucesso; sempre lança `EmailNaoEnviadoError` em caso de falha — nunca engole o erro e
+// finge sucesso. Quem chama decide o que responder ao cliente (rotas de auth precisam
+// diferenciar "não vou revelar se a conta existe" de "o envio realmente falhou"; a fila de
+// notificações em massa só precisa que a exceção dispare o retry do BullMQ).
+export async function enviarEmail(data: EmailJobData, opcoes: EnviarEmailOpcoes = {}): Promise<EmailSendResult> {
+  const tipo = opcoes.tipo ?? "NOTIFICATION";
+  const destinatarioMascarado = mascararEmail(data.destinatario);
+  const logPrefixo = opcoes.correlationId ? `[EMAIL][${opcoes.correlationId}]` : "[EMAIL]";
+
+  console.info(`${logPrefixo} tentativa iniciada tipo=${tipo} destinatario=${destinatarioMascarado}`);
+
+  const provider = resolverProvider();
+  if (!provider) {
+    if (isProduction) {
+      console.error(`${logPrefixo} erro tipo=${tipo} destinatario=${destinatarioMascarado} codigo=NO_PROVIDER_IN_PRODUCTION`);
+      throw new EmailNaoEnviadoError(
+        "Provedor de e-mail não configurado (defina EMAIL_PROVIDER + as variáveis correspondentes).",
+        "NO_PROVIDER_IN_PRODUCTION"
+      );
+    }
+    const arquivo = await registrarEmailEmDisco(data);
+    console.warn(
+      `${logPrefixo} nenhum provedor configurado — gravado em disco tipo=${tipo} destinatario=${destinatarioMascarado} arquivo=${arquivo} (modo desenvolvimento)`
     );
+    return {
+      success: true,
+      provider: "smtp",
+      accepted: [data.destinatario],
+      rejected: [],
+      response: `dev-fallback:${arquivo}`,
+      tempoMs: 0,
+    };
   }
 
-  return Client.init({
-    authProvider: async (done) => {
-      try {
-        const params = new URLSearchParams({
-          client_id: clientId,
-          client_secret: clientSecret,
-          scope: "https://graph.microsoft.com/.default",
-          grant_type: "client_credentials",
-        });
-        const response = await fetch(
-          `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`,
-          { method: "POST", body: params }
-        );
-        const json = (await response.json()) as { access_token?: string; error?: string };
-        if (!json.access_token) {
-          throw new Error(json.error ?? "Falha ao obter token do Microsoft Graph");
-        }
-        done(null, json.access_token);
-      } catch (err) {
-        done(err as Error, null);
-      }
-    },
-  });
-}
+  console.info(`${logPrefixo} provider utilizado=${provider.nome} tipo=${tipo}`);
 
-export async function enviarEmail(data: EmailJobData): Promise<void> {
-  const senderEmail = process.env.GRAPH_SENDER_EMAIL;
-  if (!senderEmail) {
-    throw new Error("GRAPH_SENDER_EMAIL não configurado.");
-  }
-
-  const client = getGraphClient();
-
-  await client.api(`/users/${senderEmail}/sendMail`).post({
-    message: {
+  try {
+    const resultado = await provider.enviar({
+      to: data.destinatario,
       subject: data.assunto,
-      body: { contentType: "HTML", content: data.corpoHtml },
-      toRecipients: [{ emailAddress: { address: data.destinatario } }],
-    },
-    saveToSentItems: true,
-  });
+      html: data.corpoHtml,
+      text: data.corpoTexto ?? htmlParaTexto(data.corpoHtml),
+    });
+    console.info(
+      `${logPrefixo} aceito tipo=${tipo} destinatario=${destinatarioMascarado} provider=${resultado.provider} ` +
+        `messageId=${resultado.messageId ?? "-"} accepted=${resultado.accepted.length} rejected=${resultado.rejected.length} ` +
+        `tempoMs=${resultado.tempoMs} response="${resultado.response ?? ""}"`
+    );
+    return resultado;
+  } catch (err) {
+    const erro = err instanceof EmailNaoEnviadoError ? err : new EmailNaoEnviadoError("Falha ao enviar e-mail.", "UNKNOWN", err);
+    console.error(
+      `${logPrefixo} rejeitado/erro tipo=${tipo} destinatario=${destinatarioMascarado} provider=${provider.nome} codigo=${erro.errorCode} mensagem="${erro.message}"`
+    );
+    throw erro;
+  }
 }
 
 export function templateCodigoVerificacao(codigo: string, tipo: "ativacao_conta" | "reset_senha"): {
   assunto: string;
   corpoHtml: string;
+  corpoTexto: string;
 } {
   const titulo = tipo === "ativacao_conta" ? "Ativação de conta" : "Redefinição de senha";
-  return {
-    assunto: `PlataformaRes — Código de verificação (${titulo})`,
-    corpoHtml: `
-      <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
-        <h2>${titulo}</h2>
+  const assunto = `PlataformaRes — Código de verificação (${titulo})`;
+  const corpoHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; color:#1a1a1a;">
+        <p style="font-size:13px; color:#666; letter-spacing:0.5px; text-transform:uppercase; margin:0 0 4px;">PlataformaRes</p>
+        <h2 style="margin:0 0 12px;">${titulo}</h2>
         <p>Use o código abaixo para continuar. Ele expira em 15 minutos e só pode ser usado uma vez.</p>
-        <p style="font-size: 32px; font-weight: bold; letter-spacing: 8px;">${codigo}</p>
-        <p style="color: #666; font-size: 12px;">Se você não solicitou isso, ignore este e-mail.</p>
+        <p style="font-size: 32px; font-weight: bold; letter-spacing: 8px; margin: 20px 0;">${codigo}</p>
+        <p style="color: #666; font-size: 13px;">Se você não solicitou isso, ignore este e-mail — nenhuma ação será tomada na sua conta.</p>
       </div>
-    `,
-  };
+    `;
+  const corpoTexto = [
+    "PlataformaRes",
+    titulo,
+    "",
+    "Use o código abaixo para continuar. Ele expira em 15 minutos e só pode ser usado uma vez.",
+    "",
+    `Código: ${codigo}`,
+    "",
+    "Se você não solicitou isso, ignore este e-mail — nenhuma ação será tomada na sua conta.",
+  ].join("\n");
+
+  return { assunto, corpoHtml, corpoTexto };
 }
 
 export interface DadosNovaReservaPendente {

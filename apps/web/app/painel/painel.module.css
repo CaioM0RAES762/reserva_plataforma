@@ -65,7 +65,7 @@
   gap: 18px;
   background: #111C31;
   border: 1px solid #1E293B;
-  border-left: 6px solid #2563EB;
+  border-left: 6px solid #D97A3B;
   border-radius: 12px;
   padding: 16px 20px;
   margin-bottom: 12px;
@@ -121,12 +121,15 @@
 .plataformaNome { font-size: 1.05rem; font-weight: 700; overflow-wrap: break-word; }
 .plataformaStatus { font-size: 0.85rem; font-weight: 700; margin-top: 6px; }
 
-.disponivel { border-color: #16A34A; }
-.disponivel .plataformaStatus { color: #4ADE80; }
-.reservada { border-color: #D97706; }
-.reservada .plataformaStatus { color: #FBBF24; }
-.manutencao { border-color: #7C3AED; }
-.manutencao .plataformaStatus { color: #C4B5FD; }
+/* Mesma semântica de cor do restante do app: disponível=verde, em uso=azul,
+   manutenção=âmbar (ver --signal/--chart-3/--safety em globals.css) — só os valores
+   HEX são ajustados aqui para contraste em fundo escuro (kiosk de chão de fábrica). */
+.disponivel { border-color: #3E9E6A; }
+.disponivel .plataformaStatus { color: #6FD79C; }
+.reservada { border-color: #5B8FC7; }
+.reservada .plataformaStatus { color: #93C5FD; }
+.manutencao { border-color: #D97A3B; }
+.manutencao .plataformaStatus { color: #F0B27A; }
 .inativa { border-color: #475569; opacity: 0.6; }
 .inativa .plataformaStatus { color: #94A3B8; }
 

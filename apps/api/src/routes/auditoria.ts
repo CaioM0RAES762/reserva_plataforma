@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { auditoriaQuerySchema } from "@plataformares/shared";
+import { auditoriaQuerySchema, resolverPaginacao } from "@plataformares/shared";
 import { getPool, sql } from "../db/pool.js";
 import { autenticar, requireRole } from "../middlewares/rbac.js";
 
@@ -22,9 +22,24 @@ function mapAuditoria(row: AuditoriaRow) {
     acao: row.acao,
     entidade: row.entidade,
     entidadeId: row.entidade_id,
-    detalhes: row.detalhes ? JSON.parse(row.detalhes) : null,
+    // Defesa em profundidade: hoje a constraint CK_LogAuditoria_detalhes_json (migration
+    // 0001) garante JSON válido nesta coluna, então JSON.parse não quebra. Mas a garantia
+    // vive só no banco — se a constraint for removida numa migration futura, ou se um
+    // dump/importação trouxer uma linha fora do padrão, um único registro inválido faria
+    // a consulta inteira responder 500, justamente na tela usada para investigar
+    // incidentes. Preservar o texto cru custa nada e remove esse ponto único de falha.
+    detalhes: interpretarDetalhes(row.detalhes),
     criadoEm: row.criado_em,
   };
+}
+
+function interpretarDetalhes(detalhes: string | null): unknown {
+  if (!detalhes) return null;
+  try {
+    return JSON.parse(detalhes);
+  } catch {
+    return detalhes;
+  }
 }
 
 function formatarDataHoraBr(dataHora: Date): string {
@@ -92,10 +107,23 @@ export async function auditoriaRoutes(app: FastifyInstance): Promise<void> {
       const dbRequest = pool.request();
       const where = montarWhereAuditoria(dbRequest, parsed.data);
 
-      const result = await dbRequest.query<AuditoriaRow>(
-        `SELECT TOP 500 ${SELECT_AUDITORIA} ${FROM_AUDITORIA} ${where} ORDER BY la.criado_em DESC`
+      // Antes: `TOP 500` fixo, que truncava silenciosamente — o Admin não tinha como
+      // saber que existiam mais registros além dos exibidos, nem como alcançá-los.
+      // Agora a janela é explícita e o total real vai no header X-Total-Count.
+      const { limit, offset } = resolverPaginacao(parsed.data);
+      dbRequest.input("limit", sql.Int, limit).input("offset", sql.Int, offset);
+      const result = await dbRequest.query<AuditoriaRow & { total_geral: number }>(
+        `SELECT ${SELECT_AUDITORIA}, COUNT(*) OVER() AS total_geral ${FROM_AUDITORIA} ${where}
+         ORDER BY la.criado_em DESC, la.id
+         OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY`
       );
-      return reply.status(200).send(result.recordset.map(mapAuditoria));
+      const total = result.recordset[0]?.total_geral ?? 0;
+      return reply
+        .header("X-Total-Count", String(total))
+        .header("X-Limit", String(limit))
+        .header("X-Offset", String(offset))
+        .status(200)
+        .send(result.recordset.map(mapAuditoria));
     }
   );
 

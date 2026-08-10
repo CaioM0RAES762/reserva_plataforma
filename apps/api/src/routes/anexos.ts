@@ -2,7 +2,12 @@ import type { FastifyInstance } from "fastify";
 import { criarAnexoSchema } from "@plataformares/shared";
 import { getPool, sql } from "../db/pool.js";
 import { autenticar, usuarioNoEscopoDaReserva } from "../middlewares/rbac.js";
-import { armazenamentoService, ArquivoExcedeLimiteError, MimeNaoPermitidoError } from "../services/storage.service.js";
+import {
+  armazenamentoService,
+  ArquivoExcedeLimiteError,
+  gerarUrlAcessoOuNulo,
+  MimeNaoPermitidoError,
+} from "../services/storage.service.js";
 
 interface ReservaEscopoRow {
   id: string;
@@ -39,7 +44,9 @@ async function mapAnexo(row: AnexoRow) {
     tamanhoBytes: row.tamanho_bytes,
     enviadoPorId: row.enviado_por_id,
     enviadoPorNome: row.enviado_por_nome,
-    url: await armazenamentoService.gerarUrlAcesso(row.url_blob),
+    // Blob indisponível degrada para `null` em vez de 500 — a lista de anexos (nome,
+    // tamanho, autor) continua legível mesmo sem o link de download. Ver plataformas.ts.
+    url: await gerarUrlAcessoOuNulo(row.url_blob),
     criadoEm: row.criado_em.toISOString(),
   };
 }

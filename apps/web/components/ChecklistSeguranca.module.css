@@ -1,7 +1,7 @@
 .wrap {
   margin-top: 18px;
   padding-top: 16px;
-  border-top: 1px solid var(--border-light);
+  border-top: 1px solid var(--hairline);
 }
 
 .header {
@@ -12,32 +12,25 @@
 }
 
 .title {
-  font-size: 0.85rem;
-  font-weight: 700;
-  color: var(--text);
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 1.05rem;
+  color: var(--ink);
 }
 
 .statusBadge {
-  font-size: 0.72rem;
-  font-weight: 600;
+  font-size: 0.64rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   padding: 3px 9px;
-  border-radius: 999px;
+  border-radius: var(--ind-radius-sm);
+  border: 1px solid transparent;
 }
 
-.statusOk {
-  background: var(--green-light);
-  color: var(--green);
-}
-
-.statusBloqueado {
-  background: var(--red-light);
-  color: var(--red);
-}
-
-.statusPendente {
-  background: var(--gray-light);
-  color: var(--gray);
-}
+.statusOk { color: var(--signal); background: color-mix(in oklch, var(--signal) 14%, transparent); border-color: color-mix(in oklch, var(--signal) 35%, transparent); }
+.statusBloqueado { color: var(--hazard); background: color-mix(in oklch, var(--hazard) 12%, transparent); border-color: color-mix(in oklch, var(--hazard) 32%, transparent); }
+.statusPendente { color: var(--ink-muted); background: color-mix(in oklch, var(--ink) 6%, transparent); border-color: var(--hairline); }
 
 .itens {
   display: flex;
@@ -46,10 +39,10 @@
 }
 
 .item {
-  border: 1px solid var(--border-light);
-  border-radius: 8px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-sm);
   padding: 10px 12px;
-  background: var(--surface-2);
+  background: var(--paper-elev);
 }
 
 .itemHeader {
@@ -61,12 +54,12 @@
 
 .itemDescricao {
   font-size: 0.82rem;
-  color: var(--text);
+  color: var(--ink);
   line-height: 1.4;
 }
 
 .itemObrigatorio {
-  color: var(--red);
+  color: var(--hazard);
   margin-left: 3px;
 }
 
@@ -78,12 +71,12 @@
 
 .toggleBtn {
   font-size: 0.72rem;
-  font-weight: 600;
+  font-weight: 500;
   padding: 5px 10px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text-muted);
+  border-radius: var(--ind-radius-sm);
+  border: 1px solid var(--hairline);
+  background: var(--paper-elev);
+  color: var(--ink-muted);
   cursor: pointer;
 }
 
@@ -93,15 +86,15 @@
 }
 
 .toggleConformeAtivo {
-  background: var(--green-light);
-  border-color: var(--green);
-  color: var(--green);
+  background: color-mix(in oklch, var(--signal) 14%, transparent);
+  border-color: var(--signal);
+  color: var(--signal);
 }
 
 .toggleNaoConformeAtivo {
-  background: var(--red-light);
-  border-color: var(--red);
-  color: var(--red);
+  background: color-mix(in oklch, var(--hazard) 12%, transparent);
+  border-color: var(--hazard);
+  color: var(--hazard);
 }
 
 .observacao {
@@ -111,9 +104,11 @@
 .observacao textarea {
   width: 100%;
   font-size: 0.78rem;
-  padding: 6px 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  padding: 7px 9px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-sm);
+  background: var(--paper);
+  color: var(--ink);
   resize: vertical;
   font-family: inherit;
 }
@@ -124,14 +119,15 @@
   align-items: center;
   gap: 8px;
   font-size: 0.75rem;
+  color: var(--ink-soft);
 }
 
 .fotoPreview {
   width: 44px;
   height: 44px;
-  border-radius: 6px;
+  border-radius: var(--ind-radius-sm);
   object-fit: cover;
-  border: 1px solid var(--border);
+  border: 1px solid var(--hairline);
 }
 
 .footer {
@@ -142,11 +138,11 @@
 
 .aviso {
   font-size: 0.78rem;
-  color: var(--text-muted);
+  color: var(--ink-muted);
   margin-top: 8px;
 }
 
 .avisoBloqueio {
-  color: var(--red);
-  font-weight: 600;
+  color: var(--hazard);
+  font-weight: 500;
 }

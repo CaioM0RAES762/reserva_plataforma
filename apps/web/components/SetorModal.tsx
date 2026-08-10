@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import styles from "./Admin.module.css";
+import { useModalAcessivel } from "../lib/useModalAcessivel";
 
 export interface SetorFormValues {
   nome: string;
@@ -22,6 +23,7 @@ interface SetorModalProps {
 }
 
 export function SetorModal({ setor, onClose, onSalvar }: SetorModalProps) {
+  const { refDialogo, propsDialogo, idTitulo, aoClicarNoOverlay } = useModalAcessivel(onClose, "setor-modal");
   const [nome, setNome] = useState(setor?.nome ?? "");
   const [corHex, setCorHex] = useState(setor?.corHex ?? "#2563EB");
   const [erro, setErro] = useState<string | null>(null);
@@ -53,20 +55,22 @@ export function SetorModal({ setor, onClose, onSalvar }: SetorModalProps) {
   return (
     <div
       className={styles.modalOverlay}
-      onClick={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
+      onClick={aoClicarNoOverlay}
     >
-      <div className={styles.modal}>
+      <div className={styles.modal} ref={refDialogo} {...propsDialogo}>
         <div className={styles.modalHeader}>
-          <h3>{setor ? "Editar Setor" : "Novo Setor"}</h3>
-          <button type="button" className={styles.modalClose} onClick={onClose}>
+          <h3 id={idTitulo}>{setor ? "Editar Setor" : "Novo Setor"}</h3>
+          <button type="button" className={styles.modalClose} onClick={onClose} aria-label="Fechar">
             ✕
           </button>
         </div>
         <form onSubmit={handleSubmit}>
           <div className={styles.modalBody}>
-            {erro && <div className={styles.error}>{erro}</div>}
+            {erro && (
+              <div className={styles.error} role="alert">
+                {erro}
+              </div>
+            )}
             <div className={styles.formGrid}>
               <div className={styles.formGroup}>
                 <label htmlFor="st-nome">Nome *</label>

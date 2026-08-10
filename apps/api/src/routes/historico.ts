@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { historicoQuerySchema } from "@plataformares/shared";
+import { historicoQuerySchema, resolverPaginacao } from "@plataformares/shared";
 import { getPool, sql } from "../db/pool.js";
 import { autenticar } from "../middlewares/rbac.js";
 import { SELECT_RESERVA, FROM_RESERVA, mapReserva, type ReservaRow } from "./reservas.js";
@@ -90,10 +90,20 @@ export async function historicoRoutes(app: FastifyInstance): Promise<void> {
       parsed.data
     );
 
-    const result = await dbRequest.query<ReservaRow>(
-      `SELECT ${SELECT_RESERVA} ${FROM_RESERVA} ${where} ORDER BY r.criado_em DESC`
+    const { limit, offset } = resolverPaginacao(parsed.data);
+    dbRequest.input("limit", sql.Int, limit).input("offset", sql.Int, offset);
+    const result = await dbRequest.query<ReservaRow & { total_geral: number }>(
+      `SELECT ${SELECT_RESERVA}, COUNT(*) OVER() AS total_geral ${FROM_RESERVA} ${where}
+       ORDER BY r.criado_em DESC, r.id
+       OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY`
     );
-    return reply.status(200).send(result.recordset.map(mapReserva));
+    const total = result.recordset[0]?.total_geral ?? 0;
+    return reply
+      .header("X-Total-Count", String(total))
+      .header("X-Limit", String(limit))
+      .header("X-Offset", String(offset))
+      .status(200)
+      .send(result.recordset.map(mapReserva));
   });
 
   app.get("/api/v1/historico/export", { preHandler: autenticar }, async (request, reply) => {

@@ -98,4 +98,41 @@ input, select, textarea {
   color: var(--text);
 }
 
+/* Indicador de foco global. Vários componentes definiam `outline: none` nos seus estados
+   de foco sem colocar nada no lugar — quem navega por teclado ficava literalmente sem
+   saber onde estava. `:focus-visible` só aparece na navegação por teclado, então o
+   contorno não polui o clique com mouse. */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+  border-radius: var(--ind-radius-sm);
+}
+
+/* Campos desabilitados precisam parecer desabilitados: em vários formulários (Setor
+   Solicitante, Responsável) o input `disabled` era visualmente idêntico a um editável. */
+input:disabled, select:disabled, textarea:disabled {
+  background: color-mix(in oklch, var(--ink) 4%, transparent);
+  color: var(--ink-muted);
+  cursor: not-allowed;
+}
+
+/* Alvos de toque em telas pequenas: 36px é o mínimo confortável para dedo (RNF-04).
+   Botões de ícone das tabelas tinham ~24px e eram difíceis de acertar no celular. */
+@media (max-width: 600px) {
+  button, [role="button"], a[class*="btn"] {
+    min-height: 36px;
+  }
+}
+
+/* Respeita a preferência de sistema por menos movimento — o app usa animações de pulso,
+   transições de sidebar e esqueletos animados. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 .tabular-nums { font-variant-numeric: tabular-nums; }

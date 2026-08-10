@@ -38,6 +38,19 @@ async function registrarAuditoriaSetor(
 // filtrado a ativo=1) permanece intacto — usado pela legenda do Calendário e pelo
 // formulário de Nova Reserva, que só devem oferecer setores ativos.
 export async function setoresRoutes(app: FastifyInstance): Promise<void> {
+  // Lista pública e mínima (id + nome, só setores ativos), usada exclusivamente pelo
+  // seletor "Setor" da tela de ativação de conta — que é anterior ao login e portanto
+  // não tem token para chamar GET /setores. Devolve menos que a rota autenticada
+  // (sem cor, sem flag de ativo) e nada aqui é sensível: são os nomes das áreas da
+  // planta. Mantida separada em vez de afrouxar o `autenticar` da rota original.
+  app.get("/api/v1/setores/publicos", async (_request, reply) => {
+    const pool = await getPool();
+    const result = await pool
+      .request()
+      .query<Pick<SetorRow, "id" | "nome">>("SELECT id, nome FROM Setor WHERE ativo = 1 ORDER BY nome");
+    return reply.status(200).send(result.recordset.map((row) => ({ id: row.id, nome: row.nome })));
+  });
+
   app.get("/api/v1/setores", { preHandler: autenticar }, async (_request, reply) => {
     const pool = await getPool();
     const result = await pool

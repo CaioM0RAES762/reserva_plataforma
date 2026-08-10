@@ -86,6 +86,7 @@ export interface ArmazenamentoService {
     tipoMimeDeclarado: string
   ): Promise<ArquivoSalvoDetalhado>;
   gerarUrlAcesso(blobPath: string): Promise<string>;
+  excluirArquivo(blobPath: string): Promise<void>;
 }
 
 function extrairDadosDataUrl(dataUrlBase64: string): { mimeDeclarado: string; buffer: Buffer } {
@@ -159,8 +160,11 @@ class ArmazenamentoAzureBlobService implements ArmazenamentoService {
 
   async gerarUrlAcesso(blobPath: string): Promise<string> {
     const client = getBlobServiceClient();
-    const container = await getContainerClient();
-    const blockBlob = container.getBlockBlobClient(blobPath);
+    // Assinar um SAS é uma operação puramente local (HMAC sobre a chave da conta). A
+    // versão anterior chamava getContainerClient(), que faz createIfNotExists() — uma ida
+    // à rede por arquivo, ou seja, uma chamada ao Blob Storage por linha em toda listagem
+    // de plataformas/anexos. getBlockBlobClient apenas monta a URL, sem I/O.
+    const blockBlob = client.getContainerClient(CONTAINER_NAME).getBlockBlobClient(blobPath);
     const credential = client.credential;
     if (!(credential instanceof StorageSharedKeyCredential)) {
       throw new Error("Geração de SAS exige uma connection string com chave de conta (StorageSharedKeyCredential).");
@@ -182,6 +186,33 @@ class ArmazenamentoAzureBlobService implements ArmazenamentoService {
 
     return `${blockBlob.url}?${sas}`;
   }
+
+  async excluirArquivo(blobPath: string): Promise<void> {
+    const container = await getContainerClient();
+    await container.getBlockBlobClient(blobPath).deleteIfExists();
+  }
 }
 
 export const armazenamentoService: ArmazenamentoService = new ArmazenamentoAzureBlobService();
+
+// Geração de URL tolerante a falha, para uso em LISTAGENS.
+//
+// Motivo (bug real): `GET /api/v1/plataformas` mapeava cada linha chamando
+// `gerarUrlAcesso` diretamente. Com o Blob Storage indisponível (ou a connection string
+// ausente), uma única plataforma com imagem cadastrada fazia a rota inteira responder
+// 500 — derrubando junto a tela de Frota, o Dashboard e o seletor de plataforma do
+// formulário de reserva, todos por causa de uma miniatura. Uma imagem que não carrega
+// nunca deve impedir a leitura dos dados: aqui a falha vira `null` (a UI já trata como
+// "Sem imagem") e fica registrada no log do servidor.
+export async function gerarUrlAcessoOuNulo(
+  blobPath: string | null | undefined,
+  aoFalhar?: (erro: unknown) => void
+): Promise<string | null> {
+  if (!blobPath) return null;
+  try {
+    return await armazenamentoService.gerarUrlAcesso(blobPath);
+  } catch (erro) {
+    aoFalhar?.(erro);
+    return null;
+  }
+}

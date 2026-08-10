@@ -18,5 +18,12 @@ export default async function CalendarioPage() {
 
   const usuario = await response.json();
 
-  return <CalendarioClient perfil={usuario.perfil} setorId={usuario.setorId} />;
+  return (
+    <CalendarioClient
+      perfil={usuario.perfil}
+      setorId={usuario.setorId}
+      solicitanteNome={usuario.nome}
+      setorNome={usuario.setorNome}
+    />
+  );
 }

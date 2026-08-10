@@ -15,7 +15,7 @@ import {
   YAxis,
 } from "recharts";
 import styles from "../app/(app)/relatorios/page.module.css";
-import { apiFetch } from "../lib/api";
+import { apiDownload, apiFetch, mensagemDeErro } from "../lib/api";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3335";
 
@@ -167,17 +167,16 @@ export function RelatoriosClient({ perfil }: RelatoriosClientProps) {
     setErro(null);
     try {
       const query = `relatorio=${relatorio}&formato=${formato}&dateFrom=${dateFrom}&dateTo=${dateTo}`;
-      const response = await fetch(`${API_URL}/api/v1/relatorios/export?${query}`, { credentials: "include" });
-      if (!response.ok) throw new Error("Erro ao exportar relatório.");
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `relatorio_${relatorio}_${dateFrom}_a_${dateTo}.${formato === "excel" ? "xlsx" : "pdf"}`;
-      a.click();
-      URL.revokeObjectURL(url);
+      // Antes: o <a> nunca era inserido no DOM e o object URL era revogado no mesmo tick
+      // do click() — Firefox e Safari cancelam o download nessa condição. `apiDownload`
+      // centraliza o fluxo correto (anexa, clica, remove) e propaga a mensagem real de
+      // erro da API em vez de um texto genérico.
+      await apiDownload(
+        `/api/v1/relatorios/export?${query}`,
+        `relatorio_${relatorio}_${dateFrom}_a_${dateTo}.${formato === "excel" ? "xlsx" : "pdf"}`
+      );
     } catch (err) {
-      setErro(err instanceof Error ? err.message : "Erro ao exportar relatório.");
+      setErro(mensagemDeErro(err, "Erro ao exportar relatório."));
     } finally {
       setExportando(null);
     }
@@ -227,7 +226,11 @@ export function RelatoriosClient({ perfil }: RelatoriosClientProps) {
         </div>
       </div>
 
-      {erro && <div className={styles.error}>{erro}</div>}
+      {erro && (
+              <div className={styles.error} role="alert">
+                {erro}
+              </div>
+            )}
 
       {carregando ? (
         <div className={styles.loading}>Carregando indicadores...</div>

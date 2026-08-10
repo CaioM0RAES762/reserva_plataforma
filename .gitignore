@@ -12,3 +12,5 @@ SDD.md
 MASTER.md
 apps/api/uploads/
 apps/api/.azurite/
+# E-mails gravados em disco quando o Microsoft Graph não está configurado (só em dev)
+apps/api/emails-dev/

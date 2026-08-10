@@ -37,33 +37,6 @@
   }
 }
 
-/* S14 (RNF-04, 360px): em telas de celular estreitas, o bloco de ações não cabe ao
-   lado do hamburger + breadcrumb — reduz ações redundantes ao essencial. */
-@media (max-width: 480px) {
-  .topbar {
-    padding: 0 12px;
-    gap: 8px;
-  }
-  .actions {
-    gap: 6px;
-  }
-  .clock {
-    display: none;
-  }
-  .accountLabel {
-    display: none;
-  }
-  .accountLink {
-    padding: 6px 8px;
-  }
-  .logoutBtn {
-    padding: 7px 9px;
-  }
-  .userInfo {
-    display: none;
-  }
-}
-
 .topbar {
   height: var(--topbar-h);
   background: color-mix(in oklch, var(--paper) 80%, transparent);
@@ -185,11 +158,65 @@
 .logoutBtn:hover { border-color: var(--hazard); color: var(--hazard); }
 
 .userBlock {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding-left: 4px;
+}
+
+.userTrigger {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding-left: 4px;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: var(--ind-radius-sm);
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
 }
+.userTrigger:hover { background: color-mix(in oklch, var(--ink) 5%, transparent); }
+.userTrigger[aria-expanded="true"] { border-color: var(--hairline); background: var(--paper-elev); }
+.userTrigger:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+.userMenu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 60;
+  min-width: 190px;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  gap: 2px;
+  background: var(--paper-elev);
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-sm);
+  box-shadow: 0 12px 28px -12px color-mix(in oklch, var(--ink) 35%, transparent);
+}
+
+.userMenuItem {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: var(--ind-radius-sm);
+  background: transparent;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--ink-soft);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.userMenuItem:hover { background: color-mix(in oklch, var(--ink) 6%, transparent); color: var(--ink); }
+.userMenuItem:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
+.userMenuItem:disabled { opacity: 0.6; cursor: progress; }
+.userMenuItemDanger:hover { color: var(--hazard); background: color-mix(in oklch, var(--hazard) 10%, transparent); }
+
 .userInfo { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.25; }
 .userName { font-size: 0.8rem; font-weight: 500; color: var(--ink); white-space: nowrap; }
 .userRole {
@@ -214,3 +241,47 @@
 }
 
 .content { flex: 1; padding: 28px 24px; }
+
+/* ---------- Responsividade da Topbar (RNF-04) ----------
+   IMPORTANTE: estas media queries ficam NO FIM do arquivo de propósito.
+   Elas estavam declaradas no topo, antes das regras base de .clock/.userInfo — e como
+   têm a mesma especificidade, as regras base declaradas depois venciam por ordem de
+   cascata. Resultado: os `display: none` nunca surtiam efeito e a topbar continuava
+   transbordando em telas estreitas (medidos 159px de estouro a 360px), apesar de a
+   correção "existir" no arquivo desde a S14. */
+
+@media (max-width: 640px) {
+  .topbar {
+    padding: 0 12px;
+    gap: 8px;
+  }
+  .actions {
+    gap: 6px;
+  }
+  /* Data/hora é informação redundante em celular (o próprio sistema já a exibe). */
+  .clock {
+    display: none;
+  }
+  .divider {
+    display: none;
+  }
+  /* Mantém só o avatar: o nome e o perfil já aparecem na sidebar e no menu aberto. */
+  .userInfo {
+    display: none;
+  }
+  .userTrigger {
+    padding: 4px;
+  }
+  .breadcrumb {
+    font-size: 0.66rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+@media (max-width: 400px) {
+  /* Em telas muito estreitas o prefixo "CENTRAL ›" sai e fica só a tela atual. */
+  .breadcrumb > span:not(.breadcrumbCurrent) {
+    display: none;
+  }
+}

@@ -33,7 +33,11 @@ export function TrocarSenhaForm() {
 
   return (
     <form className={styles.form} onSubmit={handleSubmit}>
-      {erro && <div className={styles.error}>{erro}</div>}
+      {erro && (
+              <div className={styles.error} role="alert">
+                {erro}
+              </div>
+            )}
       {sucesso && <div className={styles.success}>Senha alterada com sucesso.</div>}
 
       <div className={styles.group}>

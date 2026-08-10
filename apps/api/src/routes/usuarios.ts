@@ -7,9 +7,9 @@ import {
 } from "@plataformares/shared";
 import { getPool, sql } from "../db/pool.js";
 import { autenticar, requireRole } from "../middlewares/rbac.js";
-import { calcularExpiracaoCodigo, gerarCodigoVerificacao, hashPassword } from "../utils/password.js";
-import { enfileirarEmail } from "../services/queue.js";
-import { templateCodigoVerificacao } from "../services/email.service.js";
+import { gerarCodigoVerificacao, hashPassword } from "../utils/password.js";
+import { EmailNaoEnviadoError } from "../services/email.service.js";
+import { emitirEEnviarCodigo } from "../services/otp.service.js";
 
 interface UsuarioRow {
   id: string;
@@ -106,10 +106,12 @@ export async function usuariosRoutes(app: FastifyInstance): Promise<void> {
     }
   );
 
-  // RF-USR-01: cadastrar usuário — nasce inativo quanto a email_verificado (ativo=1,
-  // email_verificado=0) e recebe um código de ativação por e-mail, mesmo fluxo de
-  // CodigoVerificacao usado em auth.ts (S1), aqui disparado pelo Admin em vez do
-  // próprio usuário se auto-cadastrando.
+  // RF-USR-01: cadastrar usuário pela mão do Admin. Desde o autocadastro (POST
+  // /api/v1/auth/cadastrar, público), esta rota deixou de ser o único jeito de uma conta
+  // nascer — o caso comum (colaborador) passa por lá. Esta continua existindo para o Admin
+  // criar diretamente contas gestor_setor/admin (perfis que o autocadastro nunca atribui) ou
+  // casos excepcionais. Mesma semântica: nasce inativo quanto a email_verificado (ativo=1,
+  // email_verificado=0) e recebe um código de ativação por e-mail.
   app.post(
     "/api/v1/usuarios",
     { preHandler: [autenticar, requireRole(["admin"])] },
@@ -136,12 +138,11 @@ export async function usuariosRoutes(app: FastifyInstance): Promise<void> {
       }
 
       const senhaPlaceholder = await hashPassword(gerarCodigoVerificacao() + gerarCodigoVerificacao());
-      const codigo = gerarCodigoVerificacao();
-      const expiraEm = calcularExpiracaoCodigo();
       const setorFinal = perfil === "admin" ? null : setorId ?? null;
 
       const transaction = pool.transaction();
       await transaction.begin();
+      let novoId: string;
       try {
         const insercao = await transaction
           .request()
@@ -155,18 +156,7 @@ export async function usuariosRoutes(app: FastifyInstance): Promise<void> {
              OUTPUT INSERTED.id
              VALUES (@nome, @email, @senha_hash, @perfil, @setor_id, 1, 0)`
           );
-        const novoId = insercao.recordset[0].id;
-
-        await transaction
-          .request()
-          .input("usuario_id", sql.UniqueIdentifier, novoId)
-          .input("codigo", sql.Char(6), codigo)
-          .input("tipo", sql.VarChar, "ativacao_conta")
-          .input("expira_em", sql.DateTime2, expiraEm)
-          .query(
-            `INSERT INTO CodigoVerificacao (usuario_id, codigo, tipo, expira_em, utilizado)
-             VALUES (@usuario_id, @codigo, @tipo, @expira_em, 0)`
-          );
+        novoId = insercao.recordset[0].id;
 
         await registrarAuditoriaUsuario(transaction, request.usuario!.sub, "criar_usuario", novoId, {
           nome,
@@ -176,15 +166,6 @@ export async function usuariosRoutes(app: FastifyInstance): Promise<void> {
         });
 
         await transaction.commit();
-
-        const { assunto, corpoHtml } = templateCodigoVerificacao(codigo, "ativacao_conta");
-        await enfileirarEmail({ destinatario: email, assunto, corpoHtml });
-
-        const completo = await pool
-          .request()
-          .input("id", sql.UniqueIdentifier, novoId)
-          .query<UsuarioRow>(`SELECT ${SELECT_USUARIO} ${FROM_USUARIO} WHERE u.id = @id`);
-        return reply.status(201).send(mapUsuario(completo.recordset[0]));
       } catch (err) {
         await transaction.rollback();
         const sqlErr = err as { number?: number };
@@ -193,6 +174,35 @@ export async function usuariosRoutes(app: FastifyInstance): Promise<void> {
         }
         throw err;
       }
+
+      // O código de ativação e seu envio ficam FORA da transação de criação: a conta já
+      // existe (commit acima) e não deve ser desfeita por uma falha transitória de e-mail
+      // (rede, provedor fora do ar por um instante). Antes, esta chamada era fire-and-forget
+      // (`enfileirarEmail`) e a rota respondia 201 sem nunca saber se o envio funcionou —
+      // agora o resultado real do envio é refletido em `codigoEnviado`/`avisoEnvio` na
+      // resposta, e o Admin tem "Reenviar código" na lista de usuários para recuperar sem
+      // precisar recriar a conta.
+      let codigoEnviado = true;
+      let avisoEnvio: string | undefined;
+      try {
+        await emitirEEnviarCodigo({
+          usuarioId: novoId,
+          email,
+          tipo: "ativacao_conta",
+          tipoObservabilidade: "ACTIVATION",
+        });
+      } catch (err) {
+        const detalhe = err instanceof EmailNaoEnviadoError ? err.message : "erro interno";
+        request.log.error({ err, usuarioId: novoId }, "conta criada, mas falha ao enviar o código de ativação inicial");
+        codigoEnviado = false;
+        avisoEnvio = `Conta criada, mas não foi possível enviar o e-mail de ativação agora (${detalhe}). Use "Reenviar código" para tentar de novo.`;
+      }
+
+      const completo = await pool
+        .request()
+        .input("id", sql.UniqueIdentifier, novoId)
+        .query<UsuarioRow>(`SELECT ${SELECT_USUARIO} ${FROM_USUARIO} WHERE u.id = @id`);
+      return reply.status(201).send({ ...mapUsuario(completo.recordset[0]), codigoEnviado, avisoEnvio });
     }
   );
 
@@ -345,31 +355,32 @@ export async function usuariosRoutes(app: FastifyInstance): Promise<void> {
       }
 
       const tipo = usuario.email_verificado ? "reset_senha" : "ativacao_conta";
-      const codigo = gerarCodigoVerificacao();
-      const expiraEm = calcularExpiracaoCodigo();
+      const tipoObservabilidade = tipo === "reset_senha" ? "PASSWORD_RESET" : "ACTIVATION_RESEND";
 
-      const transaction = pool.transaction();
-      await transaction.begin();
+      // Emissão + envio bloqueante e transacional (otp.service.ts) — antes esta rota usava
+      // `enfileirarEmail` (fila fire-and-forget) e respondia "Código reenviado com
+      // sucesso" mesmo que o worker nunca tivesse conseguido enviar nada. O Admin agora só
+      // vê sucesso depois que o provedor de e-mail realmente confirmou o envio.
       try {
-        await transaction
-          .request()
-          .input("usuario_id", sql.UniqueIdentifier, id)
-          .input("codigo", sql.Char(6), codigo)
-          .input("tipo", sql.VarChar, tipo)
-          .input("expira_em", sql.DateTime2, expiraEm)
-          .query(
-            `INSERT INTO CodigoVerificacao (usuario_id, codigo, tipo, expira_em, utilizado)
-             VALUES (@usuario_id, @codigo, @tipo, @expira_em, 0)`
-          );
-        await registrarAuditoriaUsuario(transaction, request.usuario!.sub, "reenviar_codigo_usuario", id, { tipo });
-        await transaction.commit();
+        await emitirEEnviarCodigo({ usuarioId: id, email: usuario.email, tipo, tipoObservabilidade });
       } catch (err) {
-        await transaction.rollback();
-        throw err;
+        request.log.error({ err, usuarioId: id }, "falha ao reenviar código de verificação (ação do admin)");
+        const detalhe = err instanceof EmailNaoEnviadoError ? err.message : "erro interno";
+        return reply
+          .status(502)
+          .send({ erro: `Não foi possível enviar o e-mail agora (${detalhe}). Tente novamente em instantes.` });
       }
 
-      const { assunto, corpoHtml } = templateCodigoVerificacao(codigo, tipo);
-      await enfileirarEmail({ destinatario: usuario.email, assunto, corpoHtml });
+      await pool
+        .request()
+        .input("usuario_id", sql.UniqueIdentifier, request.usuario!.sub)
+        .input("acao", sql.VarChar, "reenviar_codigo_usuario")
+        .input("entidade_id", sql.UniqueIdentifier, id)
+        .input("detalhes", sql.NVarChar, JSON.stringify({ tipo }))
+        .query(
+          `INSERT INTO LogAuditoria (usuario_id, acao, entidade, entidade_id, detalhes)
+           VALUES (@usuario_id, @acao, 'Usuario', @entidade_id, @detalhes)`
+        );
 
       return reply.status(200).send({ mensagem: "Código reenviado com sucesso.", tipo });
     }

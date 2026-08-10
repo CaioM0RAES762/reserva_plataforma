@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
   LayoutDashboard,
   Construction,
@@ -147,16 +147,49 @@ function NavLink({ item, ativo, badge }: { item: NavItem; ativo: boolean; badge?
     );
   }
   return (
-    <Link href={item.href} className={`${styles.navItem} ${ativo ? styles.active : ""}`}>
-      {item.icon}
+    <Link
+      href={item.href}
+      className={`${styles.navItem} ${ativo ? styles.active : ""}`}
+      // Leitores de tela anunciam qual item é a página atual; sem isto, o destaque era
+      // apenas visual.
+      aria-current={ativo ? "page" : undefined}
+    >
+      <span aria-hidden="true" style={{ display: "flex" }}>
+        {item.icon}
+      </span>
       <span>{item.label}</span>
-      {typeof badge === "number" && badge > 0 && <span className={styles.navBadge}>{badge}</span>}
+      {typeof badge === "number" && badge > 0 && (
+        <span className={styles.navBadge} aria-label={`${badge} pendente(s)`}>
+          {badge}
+        </span>
+      )}
     </Link>
   );
 }
 
+// O item ativo era decidido por `pathname === href.split("?")[0]`, o que fazia "Reservas"
+// (/reservas) e "Checklists NR-18/35" (/reservas?status=agendada) acenderem AO MESMO
+// TEMPO, já que ambos resolvem para o mesmo pathname. Comparando também a querystring, só
+// o item que corresponde de fato à visão atual fica destacado.
+function itemEstaAtivo(item: NavItem, pathname: string, searchParams: URLSearchParams): boolean {
+  const [caminho, query] = item.href.split("?");
+  if (pathname !== caminho) return false;
+  if (!query) {
+    // Item sem query só está ativo quando a URL atual também não tem os filtros que
+    // pertencem a outro item do menu apontando para o mesmo caminho.
+    const irmaosComQuery = NAV_ITEMS.filter((outro) => outro !== item && outro.href.startsWith(`${caminho}?`));
+    return !irmaosComQuery.some((irmao) => {
+      const parametrosDoIrmao = new URLSearchParams(irmao.href.split("?")[1]);
+      return [...parametrosDoIrmao.entries()].every(([chave, valor]) => searchParams.get(chave) === valor);
+    });
+  }
+  const esperados = new URLSearchParams(query);
+  return [...esperados.entries()].every(([chave, valor]) => searchParams.get(chave) === valor);
+}
+
 export function Sidebar({ nome, perfil, badges }: SidebarProps) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const iniciais = nome
     .split(" ")
     .map((parte) => parte[0])
@@ -190,11 +223,16 @@ export function Sidebar({ nome, perfil, badges }: SidebarProps) {
         </div>
       </div>
 
-      <nav className={styles.nav}>
+      <nav className={styles.nav} aria-label="Navegação principal">
         <div className={styles.navGroup}>
           <span className={styles.navLabel}>{GRUPO_LABEL.operacao}</span>
           {grupoOperacao.map((item) => (
-            <NavLink key={item.href} item={item} ativo={pathname === item.href.split("?")[0]} badge={badgeFor(item)} />
+            <NavLink
+              key={item.href}
+              item={item}
+              ativo={itemEstaAtivo(item, pathname, searchParams)}
+              badge={badgeFor(item)}
+            />
           ))}
         </div>
 
@@ -202,7 +240,12 @@ export function Sidebar({ nome, perfil, badges }: SidebarProps) {
           <div className={styles.navGroup}>
             <span className={styles.navLabel}>{GRUPO_LABEL.administracao}</span>
             {grupoAdministracao.map((item) => (
-              <NavLink key={item.href} item={item} ativo={pathname === item.href} badge={badgeFor(item)} />
+              <NavLink
+                key={item.href}
+                item={item}
+                ativo={itemEstaAtivo(item, pathname, searchParams)}
+                badge={badgeFor(item)}
+              />
             ))}
           </div>
         )}
@@ -210,7 +253,7 @@ export function Sidebar({ nome, perfil, badges }: SidebarProps) {
 
       <div className={styles.footer}>
         <span className={styles.statusDot} aria-hidden="true" />
-        <span className={styles.versionTag}>PlataformaRes — S12</span>
+        <span className={styles.versionTag}>PlataformaRes</span>
       </div>
     </aside>
   );

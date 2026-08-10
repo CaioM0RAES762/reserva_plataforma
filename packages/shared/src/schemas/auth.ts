@@ -36,6 +36,29 @@ export const recuperarSenhaSolicitarSchema = z.object({
 });
 export type RecuperarSenhaSolicitarInput = z.infer<typeof recuperarSenhaSolicitarSchema>;
 
+// Reenvio para uma conta que já existe (nascida por autocadastro ou criada pelo Admin).
+// `nome`/`setorId` continuam opcionais aqui: servem só para registrar divergência em
+// auditoria (ver comentário em auth.ts), nunca para bloquear o reenvio — um erro de
+// digitação no nome não pode impedir alguém de reenviar o próprio código.
+export const ativarContaReenviarSchema = z.object({
+  email: emailMetalsiderSchema,
+  nome: z.string().trim().min(1).max(120).optional(),
+  setorId: z.string().uuid().optional(),
+});
+export type AtivarContaReenviarInput = z.infer<typeof ativarContaReenviarSchema>;
+
+// Autocadastro (RN-USR-01 estendida): qualquer e-mail do domínio corporativo pode se
+// cadastrar sozinho — o perfil nasce sempre "colaborador" (nunca escolhido pelo usuário) e
+// setorId é obrigatório, igual à regra que já vale para colaborador/gestor_setor na criação
+// pelo Admin. O Admin deixa de ser o único jeito de uma conta nascer; seu papel passa a ser
+// só promover/rebaixar perfil e ativar/desativar contas.
+export const cadastrarContaSchema = z.object({
+  nome: z.string().trim().min(2, "Nome deve ter ao menos 2 caracteres").max(120),
+  email: emailMetalsiderSchema,
+  setorId: z.string().uuid("Selecione um setor"),
+});
+export type CadastrarContaInput = z.infer<typeof cadastrarContaSchema>;
+
 export const recuperarSenhaConfirmarSchema = z.object({
   email: emailMetalsiderSchema,
   codigo: z.string().length(6).regex(/^\d{6}$/),

@@ -1,55 +1,143 @@
-.wrap {
+/* Tokens do design das telas de autenticação, extraídos dos estilos computados da
+   referência (elevator-flow-guardian). Ficam escopados a .shell — as telas internas do
+   app continuam com os tokens industriais de globals.css, intocados. */
+.shell {
+  --paper: oklch(98.2% 0.006 85);
+  --field: oklch(96.8% 0.006 85);
+  --ink: oklch(20% 0.012 60);
+  --ink-soft: oklch(30% 0.014 60);
+  --foreground: oklch(22% 0.015 60);
+  --muted-foreground: oklch(50% 0.014 65);
+  --border: oklch(89.5% 0.008 80);
+  --input-border: oklch(88% 0.009 80);
+  --ember: oklch(68% 0.17 52);
+  --ember-soft: oklch(86% 0.07 70);
+  --ring: oklch(66% 0.16 55);
+  --primary: oklch(24% 0.014 55);
+  --primary-foreground: oklch(98.5% 0.005 85);
+  --destructive: oklch(52% 0.19 27);
+  --panel: oklch(21% 0.013 58);
+  --panel-foreground: oklch(96% 0.008 85);
+  --panel-line: oklch(100% 0 0 / 0.09);
+
+  --auth-radius: 6px;
+  --auth-radius-sm: 4px;
+
+  font-family: var(--font-auth-sans), system-ui, sans-serif;
+  color: var(--foreground);
+  background: var(--paper);
+
   min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg);
-  padding: 24px;
+  display: grid;
+  grid-template-columns: 65fr 35fr;
 }
 
-.card {
-  width: 100%;
-  max-width: 380px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-lg);
-  padding: 32px 28px;
+/* ── Coluna do formulário ─────────────────────────────────────────────────── */
+.formColumn {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  padding: 40px 112px;
+  min-width: 0;
 }
 
 .brand {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 24px;
+  gap: 12px;
+  align-self: flex-start;
 }
 
 .brandIcon {
-  width: 38px;
-  height: 38px;
-  background: var(--primary);
-  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--auth-radius-sm);
+  background: var(--ember);
+  color: var(--ink);
   flex-shrink: 0;
-  color: #fff;
 }
 
 .brandText {
-  display: flex;
-  flex-direction: column;
+  line-height: 1.25;
 }
 
 .brandName {
-  font-weight: 700;
-  font-size: 0.95rem;
-  letter-spacing: -0.02em;
-  color: var(--text);
+  display: block;
+  font-family: var(--font-auth-display), "Times New Roman", serif;
+  font-size: 20px;
+  font-weight: 400;
+  line-height: 28px;
+  color: var(--ink);
 }
 
+/* line-height 20px (não 1.25): na referência este texto é uma span inline dentro de um
+   bloco `leading-tight`, então ocupa uma caixa de linha de 20px. Com 13.75px o bloco da
+   marca ficava 6px mais baixo e desalinhava verticalmente todo o formulário centrado. */
 .brandSub {
-  font-size: 0.68rem;
-  color: var(--text-muted);
-  margin-top: 1px;
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 20px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+/* flex:1 + justify-content:center reproduz o `flex flex-1 flex-col justify-center py-14`
+   da referência: o bloco do formulário fica centrado no espaço entre logo e rodapé. */
+.formArea {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  padding: 56px 0;
+  min-width: 0;
+}
+
+.formSlot {
+  width: 100%;
+  max-width: 576px;
+  min-width: 0;
+}
+
+.legalFooter {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted-foreground);
+}
+
+.sidePanelWrap {
+  position: relative;
+  min-width: 0;
+}
+
+/* ── Responsivo ───────────────────────────────────────────────────────────── */
+@media (max-width: 1279px) {
+  .formColumn {
+    padding: 40px 64px;
+  }
+}
+
+@media (max-width: 1023px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+  .sidePanelWrap {
+    display: none;
+  }
+  .formColumn {
+    padding: 40px 48px;
+  }
+}
+
+@media (max-width: 639px) {
+  .formColumn {
+    padding: 28px 20px;
+  }
+  .formArea {
+    padding: 40px 0;
+  }
 }

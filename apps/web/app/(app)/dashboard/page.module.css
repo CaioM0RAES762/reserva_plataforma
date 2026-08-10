@@ -565,3 +565,51 @@
   color: var(--ink-muted);
   flex-wrap: wrap;
 }
+
+/* ---------- Responsividade em telas estreitas (RNF-04) ----------
+   O Dashboard foi redesenhado depois da matriz de responsividade da S14 e reintroduziu
+   transbordo horizontal: a 360px o documento media 519px de largura (159px além da
+   viewport), obrigando a rolagem lateral da página inteira. Três causas, corrigidas
+   abaixo: os dois botões do hero lado a lado, a régua de 11 horários em uma linha e a
+   tabela de ranking com 4 colunas de largura fixa. */
+
+@media (max-width: 640px) {
+  /* Os botões do hero (198px + 146px + gap) não cabem em 360px lado a lado. */
+  .heroActions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  .heroActions > * {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  /* A régua 07:00–17:00 tem 11 marcações fixas; abaixo de 640px exibe de 2 em 2 para
+     caber sem espremer os rótulos (os blocos da linha do tempo continuam posicionados
+     pela mesma fração de tempo — só os rótulos ficam mais esparsos). */
+  .timelineRuler > span:nth-child(even) {
+    display: none;
+  }
+
+  /* A tabela de ranking rola dentro do próprio painel, nunca empurrando a página.
+     `.tableWrap` já tem overflow-x: auto, mas a tabela herdava width:100% do container
+     e estourava mesmo assim por causa da largura mínima do conteúdo das células. */
+  .tableWrap {
+    -webkit-overflow-scrolling: touch;
+  }
+  .table {
+    min-width: 460px;
+  }
+
+  /* Cabeçalhos de painel com título + ação empilham em vez de disputar a mesma linha. */
+  .panelHeader {
+    padding: 16px;
+  }
+}
+
+@media (max-width: 400px) {
+  /* Em telas muito estreitas, cada botão do hero ocupa a linha inteira. */
+  .heroActions > * {
+    flex: 1 1 100%;
+  }
+}

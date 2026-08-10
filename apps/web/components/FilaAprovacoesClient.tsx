@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import styles from "../app/(app)/reservas/page.module.css";
-import { apiFetch } from "../lib/api";
+import { ApiRequestError, apiFetch, mensagemDeErro } from "../lib/api";
+import { useEventosSSE } from "../lib/useEventosSSE";
 import { ReservaStatusBadge } from "./ReservaStatusBadge";
 import { PriorityBadge } from "./PriorityBadge";
 import { ReservaDetalheModal, type ReservaDetalhe } from "./ReservaDetalheModal";
@@ -37,10 +38,14 @@ export function FilaAprovacoesClient({ perfil, setorId }: FilaAprovacoesClientPr
       const dados = await apiFetch<ReservaFila[]>("/api/v1/reservas/fila-aprovacoes");
       setReservas(dados);
     } catch (err) {
-      if (err instanceof Error && err.message.toLowerCase().includes("permiss")) {
+      // Antes a detecção de "sem permissão" era feita procurando a substring "permiss" na
+      // mensagem de erro — qualquer ajuste de texto no backend quebraria silenciosamente
+      // a tela (mostraria um erro cru no lugar da explicação de perfil). Agora usa o
+      // status HTTP, que é o contrato de verdade.
+      if (err instanceof ApiRequestError && err.ehSemPermissao) {
         setSemPermissao(true);
       } else {
-        setErro(err instanceof Error ? err.message : "Erro ao carregar a fila de aprovações.");
+        setErro(mensagemDeErro(err, "Erro ao carregar a fila de aprovações."));
       }
     } finally {
       setCarregando(false);
@@ -50,6 +55,15 @@ export function FilaAprovacoesClient({ perfil, setorId }: FilaAprovacoesClientPr
   useEffect(() => {
     carregar();
   }, [carregar]);
+
+  // A fila é a tela mais sensível a tempo do sistema: uma reserva aprovada por outro
+  // aprovador continuava listada aqui até o usuário recarregar a página na mão, levando a
+  // um 409 ("transição inválida") ao tentar decidir sobre algo já decidido.
+  useEventosSSE({
+    onEvento: (tipo) => {
+      if (tipo.startsWith("reserva.")) carregar();
+    },
+  });
 
   if (perfil === "colaborador" || semPermissao) {
     return (
@@ -82,24 +96,28 @@ export function FilaAprovacoesClient({ perfil, setorId }: FilaAprovacoesClientPr
         </div>
       </div>
 
-      {erro && <div className={styles.error}>{erro}</div>}
+      {erro && (
+              <div className={styles.error} role="alert">
+                {erro}
+              </div>
+            )}
 
       <div className={styles.tableWrap}>
         <table className={styles.table}>
           <thead>
             <tr>
-              <th>Setor</th>
-              <th>Solicitante</th>
-              <th>Plataforma</th>
-              <th>Data</th>
-              <th>Horário</th>
-              <th>Prioridade</th>
-              <th>Status</th>
-              <th>Aprovação</th>
+              <th scope="col">Setor</th>
+              <th scope="col">Solicitante</th>
+              <th scope="col">Plataforma</th>
+              <th scope="col">Data</th>
+              <th scope="col">Horário</th>
+              <th scope="col">Prioridade</th>
+              <th scope="col">Status</th>
+              <th scope="col">Aprovação</th>
             </tr>
           </thead>
-          <tbody>
-            {carregando ? (
+          <tbody aria-busy={carregando}>
+            {carregando && reservas.length === 0 ? (
               <tr>
                 <td colSpan={8} className={styles.empty}>
                   Carregando...
@@ -113,7 +131,21 @@ export function FilaAprovacoesClient({ perfil, setorId }: FilaAprovacoesClientPr
               </tr>
             ) : (
               reservas.map((r) => (
-                <tr key={r.id} onClick={() => setReservaSelecionada(r)} style={{ cursor: "pointer" }}>
+                // Mesma correção da tela de Reservas: a linha era acionável só com mouse.
+                <tr
+                  key={r.id}
+                  className={styles.rowClickable}
+                  tabIndex={0}
+                  role="button"
+                  aria-label={`Decidir sobre a reserva de ${r.plataformaNome} do setor ${r.setorNome} em ${formatarData(r.data)}`}
+                  onClick={() => setReservaSelecionada(r)}
+                  onKeyDown={(evento) => {
+                    if (evento.key === "Enter" || evento.key === " ") {
+                      evento.preventDefault();
+                      setReservaSelecionada(r);
+                    }
+                  }}
+                >
                   <td>
                     <strong>{r.setorNome}</strong>
                   </td>
@@ -129,19 +161,14 @@ export function FilaAprovacoesClient({ perfil, setorId }: FilaAprovacoesClientPr
                   <td>
                     <ReservaStatusBadge status={r.status} />
                   </td>
+                  {/* Selos movidos de estilo inline para classes do módulo: as cores
+                      estavam em hex fixo (#FEF3C7/#92400E), fora do sistema de tokens
+                      usado no resto do app — destoavam do restante e não acompanhavam
+                      nenhuma mudança de tema. */}
                   <td style={{ whiteSpace: "nowrap" }}>
                     {r.slaEstourado && (
                       <span
-                        style={{
-                          display: "inline-block",
-                          marginRight: 6,
-                          padding: "2px 8px",
-                          borderRadius: 999,
-                          background: "var(--red-light)",
-                          color: "var(--red)",
-                          fontSize: "0.72rem",
-                          fontWeight: 700,
-                        }}
+                        className={`${styles.selo} ${styles.seloSla}`}
                         title={`Prioridade urgente sem decisão há mais de ${r.slaHoras}h`}
                       >
                         SLA estourado
@@ -149,15 +176,8 @@ export function FilaAprovacoesClient({ perfil, setorId }: FilaAprovacoesClientPr
                     )}
                     {r.aguardaSegundaAprovacao && (
                       <span
-                        style={{
-                          display: "inline-block",
-                          padding: "2px 8px",
-                          borderRadius: 999,
-                          background: "#FEF3C7",
-                          color: "#92400E",
-                          fontSize: "0.72rem",
-                          fontWeight: 700,
-                        }}
+                        className={`${styles.selo} ${styles.seloSegundaAprovacao}`}
+                        title="Já aprovada pelo Gestor de Setor — aguarda a decisão do Admin (RN-RES-08)"
                       >
                         Aguarda 2ª aprovação
                       </span>

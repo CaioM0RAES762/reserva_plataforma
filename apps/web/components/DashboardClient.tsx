@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Area,
@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import styles from "../app/(app)/dashboard/page.module.css";
 import { apiFetch } from "../lib/api";
+import { useEventosSSE } from "../lib/useEventosSSE";
 
 const COR_GRADE = "#DEDAD1";
 const COR_EIXO = "#6E6961";
@@ -251,6 +252,10 @@ export function DashboardClient({ usuarioId, usuarioNome, perfil, setorNome }: D
   const [ranking, setRanking] = useState<RankingSetorItem[] | null>(null);
   const [ultimaSincronizacao, setUltimaSincronizacao] = useState<string>("");
 
+  // `carregar` guardado em ref para que o efeito de SSE (abaixo) possa dispará-lo sem
+  // recriar a assinatura do canal a cada render.
+  const recarregarRef = useRef<(() => void) | null>(null);
+
   useEffect(() => {
     let cancelado = false;
 
@@ -299,12 +304,50 @@ export function DashboardClient({ usuarioId, usuarioNome, perfil, setorNome }: D
     }
 
     carregar(true);
-    const intervalo = setInterval(() => carregar(false), 60_000);
+    recarregarRef.current = () => carregar(false);
+
+    // O dashboard recarregava as 8 rotas a cada 60s incondicionalmente — mesmo com a aba
+    // em segundo plano e mesmo sem nada ter mudado no sistema. Como o app já mantém um
+    // canal SSE aberto (o mesmo do sino de notificações), a atualização passa a ser
+    // dirigida por evento: recarrega quando algo realmente muda (ver efeito abaixo) e o
+    // intervalo vira só uma rede de segurança, bem mais espaçada, para o caso de o SSE
+    // estar indisponível (proxy corporativo bloqueando streaming).
+    const intervalo = setInterval(() => {
+      // `document.hidden`: uma aba de dashboard esquecida em segundo plano fazia 8
+      // requisições por minuto indefinidamente, por usuário.
+      if (!document.hidden) carregar(false);
+    }, 180_000);
+
+    // Ao voltar para a aba, sincroniza na hora em vez de exibir dados possivelmente
+    // velhos até o próximo tique do intervalo.
+    function aoVoltarParaAba() {
+      if (!document.hidden) carregar(false);
+    }
+    document.addEventListener("visibilitychange", aoVoltarParaAba);
+
     return () => {
       cancelado = true;
+      recarregarRef.current = null;
       clearInterval(intervalo);
+      document.removeEventListener("visibilitychange", aoVoltarParaAba);
     };
   }, [ehAprovador, perfil, periodo]);
+
+  // Atualização em tempo real: qualquer mudança de reserva ou de status de plataforma
+  // publicada pelo backend refaz a carga. Sem isto, aprovar uma reserva em outra aba (ou
+  // outro usuário concluir um uso) só refletia aqui no próximo ciclo do intervalo.
+  const timerEventoRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEventosSSE({
+    onEvento: () => {
+      // Agrupa rajadas de eventos numa única recarga: criar uma série recorrente publica
+      // até 12 eventos seguidos, e cada recarga custa 8 requisições.
+      if (timerEventoRef.current) clearTimeout(timerEventoRef.current);
+      timerEventoRef.current = setTimeout(() => recarregarRef.current?.(), 600);
+    },
+  });
+  useEffect(() => () => {
+    if (timerEventoRef.current) clearTimeout(timerEventoRef.current);
+  }, []);
 
   useEffect(() => {
     if (checklistsPendentes.length === 0) {
@@ -433,7 +476,11 @@ export function DashboardClient({ usuarioId, usuarioNome, perfil, setorNome }: D
         </div>
       </div>
 
-      {erro && <div className={styles.error}>{erro}</div>}
+      {erro && (
+              <div className={styles.error} role="alert">
+                {erro}
+              </div>
+            )}
 
       {kpis && (
         <div className={styles.kpiStrip}>

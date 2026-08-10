@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { CATEGORIAS_PLATAFORMA, PRIORIDADES_RESERVA, STATUS_RESERVA } from "../enums.js";
+import { paginacaoQuerySchema } from "./paginacao.js";
 
 const HORA_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -15,6 +16,8 @@ export const reservaPublicaSchema = z.object({
   // de Segurança e para espelhar o bloqueio de "Iniciar Uso" — o backend é sempre a
   // fonte de verdade (rota /reservas/:id/status revalida via requerChecklist).
   plataformaCategoria: z.enum(CATEGORIAS_PLATAFORMA),
+  // Onde a plataforma fica — exibido junto ao motivo na coluna "Recurso" da listagem.
+  plataformaLocalizacao: z.string().nullable(),
   data: z.string(),
   horaInicio: z.string(),
   horaFim: z.string(),
@@ -96,8 +99,32 @@ export const historicoQuerySchema = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, "Data final inválida.")
     .optional(),
+  ...paginacaoQuerySchema.shape,
 });
 export type HistoricoQueryInput = z.infer<typeof historicoQuerySchema>;
+
+// GET /reservas — antes lia os filtros direto de `request.query` sem validação alguma
+// (único ponto do sistema fora do padrão Zod da Seção 2 do MASTER.md): um `?status=xpto`
+// era concatenado no SQL como parâmetro e devolvia lista vazia sem explicação, e
+// `?data=abc` chegava ao driver como sql.Date inválido, virando erro 500.
+export const listarReservasQuerySchema = z.object({
+  q: z.string().trim().min(1).optional(),
+  status: z.enum(STATUS_RESERVA).optional(),
+  data: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida.")
+    .optional(),
+  dateFrom: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Data inicial inválida.")
+    .optional(),
+  dateTo: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Data final inválida.")
+    .optional(),
+  ...paginacaoQuerySchema.shape,
+});
+export type ListarReservasQueryInput = z.infer<typeof listarReservasQuerySchema>;
 
 export const conflitoRespostaSchema = z.object({
   conflito: z.boolean(),

@@ -99,7 +99,11 @@ export function ConfiguracoesClient() {
         </button>
       </div>
 
-      {erro && <div className={styles.error}>{erro}</div>}
+      {erro && (
+              <div className={styles.error} role="alert">
+                {erro}
+              </div>
+            )}
       {mensagem && <div className={styles.success}>{mensagem}</div>}
 
       {carregando ? (

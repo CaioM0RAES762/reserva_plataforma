@@ -1,0 +1,67 @@
+/* Sem linhas conectoras entre as etapas: a referência separa os passos só por espaço. */
+.stepper {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 24px;
+  margin-bottom: 40px;
+  padding: 0;
+  list-style: none;
+}
+
+.passo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.circulo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 600;
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
+}
+
+.rotulo {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+  transition: color 0.2s;
+}
+
+.passo[data-estado="futura"] .circulo {
+  border: 1px solid var(--input-border);
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+.passo[data-estado="atual"] .circulo {
+  background: var(--ember);
+  color: var(--ink);
+  border: 1px solid var(--ember);
+}
+.passo[data-estado="atual"] .rotulo {
+  color: var(--ink);
+}
+
+.passo[data-estado="concluida"] .circulo {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border: 1px solid var(--primary);
+}
+
+@media (max-width: 479px) {
+  .rotulo {
+    display: none;
+  }
+}

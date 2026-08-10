@@ -26,15 +26,22 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   }
 
   const headers = { cookie: `token=${token}` };
-  const response = await fetch(`${API_URL}/api/v1/conta`, { headers, cache: "no-store" });
 
-  if (!response.ok) {
+  // As duas chamadas eram sequenciais: cada navegação entre páginas autenticadas pagava
+  // dois round-trips em série no servidor antes de renderizar qualquer coisa. Elas são
+  // independentes — a de KPIs não usa nada da resposta de /conta —, então rodam juntas e
+  // o layout passa a custar um round-trip. `catch` no lugar do `.ok` mantém o
+  // comportamento anterior: falha de KPI só remove os badges, nunca derruba a página.
+  const [contaResponse, kpisResponse] = await Promise.all([
+    fetch(`${API_URL}/api/v1/conta`, { headers, cache: "no-store" }).catch(() => null),
+    fetch(`${API_URL}/api/v1/dashboard/kpis`, { headers, cache: "no-store" }).catch(() => null),
+  ]);
+
+  if (!contaResponse?.ok) {
     redirect("/login");
   }
 
-  const usuario = (await response.json()) as ContaResponse;
-
-  const kpisResponse = await fetch(`${API_URL}/api/v1/dashboard/kpis`, { headers, cache: "no-store" }).catch(() => null);
+  const usuario = (await contaResponse.json()) as ContaResponse;
   const kpis = kpisResponse?.ok ? ((await kpisResponse.json()) as KpisResponse) : null;
   const badges = kpis
     ? { frota: kpis.totalPlataformas, aprovacoes: kpis.pendenciasAprovacao, checklists: kpis.checklistsPendentes }
@@ -42,6 +49,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <>
+      {/* Primeiro elemento focável da página: quem navega por teclado pula a sidebar
+          inteira (14 links) em vez de tabular por ela em toda troca de tela. */}
+      <a href="#conteudo-principal" className={styles.skipLink}>
+        Pular para o conteúdo
+      </a>
       {/* S14 (RNF-04): abaixo de 900px a sidebar vira off-canvas — controlada por este
           checkbox (técnica CSS-only, sem JS/estado), alternado pelo botão ☰ no Topbar
           (label[for]) e fechável tocando no backdrop (também um label[for]). */}

@@ -226,18 +226,62 @@ function montarHtmlRelatorio(entrada: DadosRelatorio, periodo: { inicio: string;
 </html>`;
 }
 
+// Instância única de Chromium reaproveitada entre exportações — a otimização registrada
+// como pendência no ADR-03 da S13 ("Puppeteer sem pool de browser").
+//
+// Antes, cada `GET /relatorios/export?formato=pdf` subia e derrubava um Chromium inteiro.
+// O custo dominante é o start-up do navegador (~1,5–20s dependendo da máquina e do cache
+// de disco), não a renderização em si — a ponto de o teste de exportação em PDF estourar
+// o timeout de 20s da suíte numa execução com o processo frio. Mantendo o navegador vivo,
+// só a primeira exportação paga o start-up; as seguintes abrem apenas uma aba nova.
+let browserPromise: Promise<import("puppeteer").Browser> | null = null;
+
+async function obterBrowser(): Promise<import("puppeteer").Browser> {
+  const existente = await browserPromise?.catch(() => null);
+  // Um Chromium que morreu (OOM, crash) não pode ficar em cache: a próxima exportação
+  // reabriria sobre uma instância desconectada e falharia para sempre até um restart.
+  if (existente?.connected) {
+    return existente;
+  }
+  browserPromise = puppeteer
+    .launch({
+      headless: true,
+      // Flags padrão para Chromium em container/CI: sem elas o processo não sobe em
+      // ambientes sem /dev/shm dimensionado nem com usuário sem privilégios.
+      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+    })
+    .catch((err) => {
+      browserPromise = null;
+      throw err;
+    });
+  return browserPromise;
+}
+
 export async function gerarPdfRelatorio(
   entrada: DadosRelatorio,
   periodo: { inicio: string; fim: string }
 ): Promise<Buffer> {
   const html = montarHtmlRelatorio(entrada, periodo);
-  const browser = await puppeteer.launch({ headless: true });
+  const browser = await obterBrowser();
+  const page = await browser.newPage();
   try {
-    const page = await browser.newPage();
     await page.setContent(html, { waitUntil: "domcontentloaded" });
-    const pdf = await page.pdf({ format: "A4", printBackground: true, margin: { top: "16mm", bottom: "16mm", left: "12mm", right: "12mm" } });
+    const pdf = await page.pdf({
+      format: "A4",
+      printBackground: true,
+      margin: { top: "16mm", bottom: "16mm", left: "12mm", right: "12mm" },
+    });
     return Buffer.from(pdf);
   } finally {
-    await browser.close();
+    // Só a aba é fechada; o navegador segue vivo para a próxima exportação.
+    await page.close().catch(() => undefined);
   }
+}
+
+// Encerramento explícito, usado no desligamento gracioso do servidor e no teardown dos
+// testes — sem isto o processo do Chromium sobreviveria ao processo da API.
+export async function encerrarBrowserRelatorios(): Promise<void> {
+  const browser = await browserPromise?.catch(() => null);
+  browserPromise = null;
+  await browser?.close().catch(() => undefined);
 }

@@ -1,13 +1,14 @@
 .badge {
   display: inline-block;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 0.7rem;
-  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: var(--ind-radius-sm);
+  border: 1px solid transparent;
+  font-size: 0.64rem;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 
-.normal { background: #F3F4F6; color: var(--gray); }
-.alta { background: var(--orange-light); color: var(--orange); }
-.urgente { background: var(--red-light); color: var(--red); }
+.normal { color: var(--ink-muted); background: color-mix(in oklch, var(--ink) 6%, transparent); border-color: var(--hairline); }
+.alta { color: var(--safety); background: var(--safety-soft); border-color: color-mix(in oklch, var(--safety) 40%, transparent); }
+.urgente { color: var(--hazard); background: color-mix(in oklch, var(--hazard) 12%, transparent); border-color: color-mix(in oklch, var(--hazard) 32%, transparent); }

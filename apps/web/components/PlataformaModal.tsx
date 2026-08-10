@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import styles from "../app/(app)/plataformas/page.module.css";
+import { useModalAcessivel } from "../lib/useModalAcessivel";
 
 export interface PlataformaFormValues {
   codigo: string;
@@ -10,6 +11,12 @@ export interface PlataformaFormValues {
   capacidade?: number;
   observacoes?: string;
   status?: "disponivel" | "manutencao" | "inativa";
+  imagemBase64?: string;
+  removerImagem?: boolean;
+  tipoEquipamento?: string;
+  alturaMaximaM?: number;
+  capacidadeOperadores?: number;
+  horimetroHoras?: number;
 }
 
 export interface PlataformaEditavel {
@@ -20,6 +27,13 @@ export interface PlataformaEditavel {
   capacidade: number | null;
   observacoes: string | null;
   status: string;
+  categoria: string;
+  risco: string;
+  imagemUrl: string | null;
+  tipoEquipamento: string | null;
+  alturaMaximaM: number | null;
+  capacidadeOperadores: number | null;
+  horimetroHoras: number | null;
 }
 
 interface PlataformaModalProps {
@@ -28,17 +42,59 @@ interface PlataformaModalProps {
   onSalvar: (valores: PlataformaFormValues) => Promise<void>;
 }
 
+const TAMANHO_MAX_IMAGEM = 10 * 1024 * 1024;
+
+function lerArquivoComoBase64(arquivo: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const leitor = new FileReader();
+    leitor.onload = () => resolve(leitor.result as string);
+    leitor.onerror = reject;
+    leitor.readAsDataURL(arquivo);
+  });
+}
+
 export function PlataformaModal({ plataforma, onClose, onSalvar }: PlataformaModalProps) {
+  const { refDialogo, propsDialogo, idTitulo, aoClicarNoOverlay } = useModalAcessivel(onClose, "plataforma-modal");
   const [codigo, setCodigo] = useState(plataforma?.codigo ?? "");
   const [nome, setNome] = useState(plataforma?.nome ?? "");
   const [localizacao, setLocalizacao] = useState(plataforma?.localizacao ?? "");
   const [capacidade, setCapacidade] = useState(plataforma?.capacidade?.toString() ?? "");
   const [observacoes, setObservacoes] = useState(plataforma?.observacoes ?? "");
+  const [tipoEquipamento, setTipoEquipamento] = useState(plataforma?.tipoEquipamento ?? "");
+  const [alturaMaximaM, setAlturaMaximaM] = useState(plataforma?.alturaMaximaM?.toString() ?? "");
+  const [capacidadeOperadores, setCapacidadeOperadores] = useState(
+    plataforma?.capacidadeOperadores?.toString() ?? ""
+  );
+  const [horimetroHoras, setHorimetroHoras] = useState(plataforma?.horimetroHoras?.toString() ?? "");
   const [status, setStatus] = useState(
     plataforma && plataforma.status !== "reservada" ? plataforma.status : "disponivel"
   );
+  const [imagemPreview, setImagemPreview] = useState<string | null>(plataforma?.imagemUrl ?? null);
+  const [imagemBase64, setImagemBase64] = useState<string | undefined>(undefined);
+  const [removerImagem, setRemoverImagem] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
+  const inputImagemRef = useRef<HTMLInputElement>(null);
+
+  async function handleSelecionarImagem(arquivo: File | undefined) {
+    if (!arquivo) return;
+    setErro(null);
+    if (arquivo.size > TAMANHO_MAX_IMAGEM) {
+      setErro("A imagem excede o limite de 10 MB.");
+      return;
+    }
+    const base64 = await lerArquivoComoBase64(arquivo);
+    setImagemPreview(base64);
+    setImagemBase64(base64);
+    setRemoverImagem(false);
+  }
+
+  function handleRemoverImagem() {
+    setImagemPreview(null);
+    setImagemBase64(undefined);
+    setRemoverImagem(true);
+    if (inputImagemRef.current) inputImagemRef.current.value = "";
+  }
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -58,6 +114,12 @@ export function PlataformaModal({ plataforma, onClose, onSalvar }: PlataformaMod
         capacidade: capacidade ? Number(capacidade) : undefined,
         observacoes: observacoes.trim() || undefined,
         status: plataforma ? (status as PlataformaFormValues["status"]) : undefined,
+        imagemBase64,
+        removerImagem: removerImagem || undefined,
+        tipoEquipamento: tipoEquipamento.trim() || undefined,
+        alturaMaximaM: alturaMaximaM ? Number(alturaMaximaM) : undefined,
+        capacidadeOperadores: capacidadeOperadores ? Number(capacidadeOperadores) : undefined,
+        horimetroHoras: horimetroHoras ? Number(horimetroHoras) : undefined,
       });
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Erro ao salvar plataforma.");
@@ -69,20 +131,50 @@ export function PlataformaModal({ plataforma, onClose, onSalvar }: PlataformaMod
   return (
     <div
       className={styles.modalOverlay}
-      onClick={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
+      onClick={aoClicarNoOverlay}
     >
-      <div className={styles.modal}>
+      <div className={styles.modal} ref={refDialogo} {...propsDialogo}>
         <div className={styles.modalHeader}>
-          <h3>{plataforma ? "Editar Plataforma" : "Nova Plataforma"}</h3>
-          <button type="button" className={styles.modalClose} onClick={onClose}>
+          <h3 id={idTitulo}>{plataforma ? "Editar Plataforma" : "Nova Plataforma"}</h3>
+          <button type="button" className={styles.modalClose} onClick={onClose} aria-label="Fechar">
             ✕
           </button>
         </div>
         <form onSubmit={handleSubmit}>
           <div className={styles.modalBody}>
-            {erro && <div className={styles.error}>{erro}</div>}
+            {erro && (
+              <div className={styles.error} role="alert">
+                {erro}
+              </div>
+            )}
+
+            <div className={styles.imageUpload}>
+              <input
+                ref={inputImagemRef}
+                type="file"
+                accept="image/*"
+                style={{ display: "none" }}
+                onChange={(e) => handleSelecionarImagem(e.target.files?.[0])}
+              />
+              <div className={styles.imagePreviewBox} onClick={() => inputImagemRef.current?.click()}>
+                {imagemPreview ? (
+                  <img src={imagemPreview} alt="Pré-visualização" className={styles.imagePreviewImg} />
+                ) : (
+                  <span className={styles.imagePreviewPlaceholder}>+ Adicionar imagem</span>
+                )}
+              </div>
+              <div className={styles.imageUploadActions}>
+                <button type="button" className={styles.btnIcon} onClick={() => inputImagemRef.current?.click()}>
+                  {imagemPreview ? "Trocar imagem" : "Selecionar imagem"}
+                </button>
+                {imagemPreview && (
+                  <button type="button" className={styles.btnIconDanger} onClick={handleRemoverImagem}>
+                    Remover
+                  </button>
+                )}
+              </div>
+            </div>
+
             <div className={styles.formGrid}>
               <div className={styles.formGroup}>
                 <label htmlFor="pf-codigo">Código *</label>
@@ -115,6 +207,46 @@ export function PlataformaModal({ plataforma, onClose, onSalvar }: PlataformaMod
                   min="0"
                   value={capacidade}
                   onChange={(e) => setCapacidade(e.target.value)}
+                />
+              </div>
+              <div className={styles.formGroup}>
+                <label htmlFor="pf-tipo">Tipo de equipamento</label>
+                <input
+                  id="pf-tipo"
+                  value={tipoEquipamento}
+                  onChange={(e) => setTipoEquipamento(e.target.value)}
+                  placeholder="Ex: Tesoura elétrica"
+                />
+              </div>
+              <div className={styles.formGroup}>
+                <label htmlFor="pf-altura">Altura máxima (m)</label>
+                <input
+                  id="pf-altura"
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  value={alturaMaximaM}
+                  onChange={(e) => setAlturaMaximaM(e.target.value)}
+                />
+              </div>
+              <div className={styles.formGroup}>
+                <label htmlFor="pf-operadores">Operadores (capacidade)</label>
+                <input
+                  id="pf-operadores"
+                  type="number"
+                  min="0"
+                  value={capacidadeOperadores}
+                  onChange={(e) => setCapacidadeOperadores(e.target.value)}
+                />
+              </div>
+              <div className={styles.formGroup}>
+                <label htmlFor="pf-horimetro">Horímetro (h)</label>
+                <input
+                  id="pf-horimetro"
+                  type="number"
+                  min="0"
+                  value={horimetroHoras}
+                  onChange={(e) => setHorimetroHoras(e.target.value)}
                 />
               </div>
               {plataforma && (

@@ -1,0 +1,132 @@
+/* Peças novas do redesenho do modal de detalhe — o shell (overlay/modal/botões/erro/
+   formGrid do checklist) continua vindo de reservas/page.module.css, compartilhado com
+   ReservaModal/ChecklistSeguranca/FilaAprovacoesClient; aqui só o que é exclusivo desta
+   tela, para não arriscar regressão visual nas outras. */
+
+.stepper {
+  display: flex;
+  align-items: center;
+  padding: 4px 0 18px;
+}
+.stepperStep {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+.stepperDot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.62rem;
+  font-weight: 600;
+  border: 2px solid var(--hairline);
+  background: var(--paper-elev);
+  color: var(--ink-muted);
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+.stepperStep.done .stepperDot { border-color: var(--signal); background: var(--signal); color: var(--paper); }
+.stepperStep.active .stepperDot { border-color: var(--safety); color: var(--safety); box-shadow: 0 0 0 3px var(--safety-soft); }
+.stepperLabel {
+  font-size: 0.62rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-muted);
+  text-align: center;
+  white-space: nowrap;
+}
+.stepperStep.done .stepperLabel,
+.stepperStep.active .stepperLabel { color: var(--ink); }
+.stepperConnector {
+  flex: 1;
+  height: 2px;
+  background: var(--hairline);
+  margin: 0 -8px;
+  transform: translateY(-14px);
+}
+.stepperConnector.done { background: var(--signal); }
+
+.terminalBanner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: var(--ind-radius-sm);
+  font-size: 0.85rem;
+  font-weight: 500;
+  margin-bottom: 18px;
+}
+.terminalBanner.rejeitada {
+  background: color-mix(in oklch, var(--hazard) 10%, transparent);
+  color: var(--hazard);
+  border: 1px solid color-mix(in oklch, var(--hazard) 30%, transparent);
+}
+.terminalBanner.cancelada {
+  background: color-mix(in oklch, var(--ink) 5%, transparent);
+  color: var(--ink-muted);
+  border: 1px solid var(--hairline);
+}
+
+.summaryCard {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px 18px;
+  background: color-mix(in oklch, var(--ink) 2.5%, transparent);
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-md);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.summaryRow { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
+.summaryRowFull { grid-column: 1 / -1; }
+.summaryIcon {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--ind-radius-sm);
+  background: var(--paper-elev);
+  border: 1px solid var(--hairline);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-muted);
+  flex-shrink: 0;
+}
+.summaryText { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.summaryLabel {
+  font-size: 0.62rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-muted);
+}
+.summaryValue { font-size: 0.87rem; color: var(--ink); font-weight: 500; overflow-wrap: anywhere; }
+.summarySub { font-size: 0.76rem; color: var(--ink-muted); margin-top: 2px; }
+
+.motivoBlock {
+  border-left: 3px solid var(--hairline);
+  padding: 4px 0 4px 12px;
+  margin-bottom: 16px;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  font-style: italic;
+  line-height: 1.5;
+}
+
+.sectionTitle {
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-muted);
+  margin: 18px 0 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--hairline);
+}
+.sectionTitle:first-child { margin-top: 0; padding-top: 0; border-top: none; }

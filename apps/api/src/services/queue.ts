@@ -16,15 +16,36 @@ export const EMAIL_QUEUE_NAME = "email";
 export const emailQueue = new Queue<EmailJobData>(EMAIL_QUEUE_NAME, { connection });
 
 export function iniciarEmailWorker(): Worker<EmailJobData> {
-  return new Worker<EmailJobData>(
+  const worker = new Worker<EmailJobData>(
     EMAIL_QUEUE_NAME,
     async (job: Job<EmailJobData>) => {
-      await enviarEmail(job.data);
+      await enviarEmail(job.data, { tipo: "NOTIFICATION", correlationId: job.id });
     },
     { connection }
   );
+
+  // Sem isto, um job que esgota as 3 tentativas fica "failed" no Redis e ninguém nunca
+  // fica sabendo — a notificação (reserva aprovada, SLA estourado etc.) simplesmente não
+  // chega, sem log algum. `enviarEmail` já loga cada tentativa individual; isto aqui é o
+  // log de "desistiu depois de todas as tentativas".
+  worker.on("failed", (job, err) => {
+    console.error(
+      `[EMAIL][fila] job ${job?.id ?? "?"} falhou definitivamente após ${job?.attemptsMade ?? "?"} tentativa(s): ${err.message}`
+    );
+  });
+  worker.on("error", (err) => {
+    console.error(`[EMAIL][fila] erro no worker: ${err.message}`);
+  });
+
+  return worker;
 }
 
+// Notificações em massa (aprovações, SLA, comentários, ocorrências) usam a fila: a
+// latência de segundos importa menos aqui do que numa rota onde o usuário está parado na
+// tela esperando o código. Códigos de verificação (ativação/reset de senha) NUNCA passam
+// por aqui — usam `enviarEmail`/`emitirEEnviarCodigo` de forma bloqueante, com o resultado
+// real refletido na resposta HTTP (ver otp.service.ts e o comentário histórico que existia
+// antes: o caminho fire-and-forget respondia sucesso sem nunca confirmar o envio).
 export async function enfileirarEmail(data: EmailJobData): Promise<void> {
   await emailQueue.add("enviar", data, {
     attempts: 3,

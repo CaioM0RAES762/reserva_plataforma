@@ -12,6 +12,24 @@
   font-family: var(--font-sans);
 }
 
+/* Link "pular para o conteúdo": invisível até receber foco pelo teclado, quando aparece
+   no topo da tela. Padrão de acessibilidade para layouts com navegação lateral longa. */
+.skipLink {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 200;
+  padding: 10px 16px;
+  background: var(--ink, #221f1b);
+  color: var(--paper, #fff);
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-radius: 0 0 6px 0;
+}
+.skipLink:focus {
+  left: 0;
+}
+
 /* S14 (RNF-04, 360-900px): sidebar off-canvas, sem JS — o checkbox/backdrop e o botão ☰
    (label[for="sidebar-toggle"] no Topbar) fazem toda a alternância via CSS puro. */
 .sidebarToggleInput {

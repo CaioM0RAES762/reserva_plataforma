@@ -1,11 +1,14 @@
 .badge {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   padding: 3px 9px;
-  border-radius: 20px;
-  font-size: 0.72rem;
-  font-weight: 600;
+  font-size: 0.64rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-radius: var(--ind-radius-sm);
+  border: 1px solid transparent;
   white-space: nowrap;
 }
 .badge::before {
@@ -14,9 +17,10 @@
   height: 5px;
   border-radius: 50%;
   background: currentColor;
+  flex-shrink: 0;
 }
 
-.disponivel { background: var(--green-light); color: var(--green); }
-.reservada { background: var(--primary-light); color: var(--primary); }
-.manutencao { background: var(--orange-light); color: var(--orange); }
-.inativa { background: #F3F4F6; color: var(--gray); }
+.disponivel { color: var(--signal); background: color-mix(in oklch, var(--signal) 14%, transparent); border-color: color-mix(in oklch, var(--signal) 35%, transparent); }
+.reservada { color: var(--chart-3); background: color-mix(in oklch, var(--chart-3) 14%, transparent); border-color: color-mix(in oklch, var(--chart-3) 35%, transparent); }
+.manutencao { color: var(--safety); background: var(--safety-soft); border-color: color-mix(in oklch, var(--safety) 40%, transparent); }
+.inativa { color: var(--ink-muted); background: color-mix(in oklch, var(--ink) 6%, transparent); border-color: var(--hairline); }

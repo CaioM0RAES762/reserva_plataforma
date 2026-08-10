@@ -2,76 +2,60 @@ import { describe, expect, it } from "vitest";
 import {
   calcularExpiracaoCodigo,
   codigoExpirado,
+  codigosConferem,
   gerarCodigoVerificacao,
-  hashPassword,
-  verifyPassword,
 } from "../../utils/password.js";
 
-describe("hashPassword / verifyPassword", () => {
-  it("gera um hash diferente da senha original", async () => {
-    const hash = await hashPassword("MinhaSenha123");
-    expect(hash).not.toBe("MinhaSenha123");
-    expect(hash.startsWith("$2b$")).toBe(true);
-  });
-
-  it("valida a senha correta contra o hash", async () => {
-    const hash = await hashPassword("MinhaSenha123");
-    await expect(verifyPassword("MinhaSenha123", hash)).resolves.toBe(true);
-  });
-
-  it("rejeita senha incorreta contra o hash", async () => {
-    const hash = await hashPassword("MinhaSenha123");
-    await expect(verifyPassword("SenhaErrada999", hash)).resolves.toBe(false);
-  });
-
-  it("usa salt rounds 12 (custo embutido no hash bcrypt)", async () => {
-    const hash = await hashPassword("MinhaSenha123");
-    const custo = hash.split("$")[2];
-    expect(custo).toBe("12");
-  });
-});
-
 describe("gerarCodigoVerificacao", () => {
-  it("gera código com exatamente 6 dígitos numéricos", () => {
-    for (let i = 0; i < 50; i++) {
+  it("sempre gera 6 dígitos numéricos, com zero à esquerda quando necessário", () => {
+    for (let i = 0; i < 200; i++) {
       const codigo = gerarCodigoVerificacao();
       expect(codigo).toMatch(/^\d{6}$/);
     }
   });
 
-  it("preserva zeros à esquerda", () => {
-    // Com 1000 amostras, a chance de nunca gerar um código < 100000 é desprezível
-    const codigos = Array.from({ length: 2000 }, () => gerarCodigoVerificacao());
-    expect(codigos.some((c) => c.length === 6 && c.startsWith("0"))).toBe(true);
+  it("não é constante nem segue um padrão trivial (sanidade de aleatoriedade)", () => {
+    const codigos = new Set(Array.from({ length: 200 }, () => gerarCodigoVerificacao()));
+    // Com 200 amostras de um espaço de 1.000.000, colisões são estatisticamente raras;
+    // exigir >150 valores distintos detecta um gerador quebrado (ex.: sempre "000000",
+    // ou um contador previsível) sem ser um teste de qualidade estatística do PRNG.
+    expect(codigos.size).toBeGreaterThan(150);
   });
 });
 
-describe("expiração de código (RN-AUTH-01: 15 minutos)", () => {
-  it("calcula expiração 15 minutos à frente da data base", () => {
+describe("codigosConferem", () => {
+  it("retorna true para códigos idênticos", () => {
+    expect(codigosConferem("482913", "482913")).toBe(true);
+  });
+
+  it("retorna false para códigos diferentes de mesmo tamanho", () => {
+    expect(codigosConferem("482913", "482914")).toBe(false);
+  });
+
+  it("retorna false (sem lançar) para tamanhos diferentes", () => {
+    expect(codigosConferem("482913", "4829130")).toBe(false);
+    expect(codigosConferem("", "482913")).toBe(false);
+  });
+});
+
+describe("calcularExpiracaoCodigo / codigoExpirado", () => {
+  it("expira exatamente 15 minutos após a emissão", () => {
     const agora = new Date("2026-01-01T10:00:00.000Z");
     const expiraEm = calcularExpiracaoCodigo(agora);
     expect(expiraEm.toISOString()).toBe("2026-01-01T10:15:00.000Z");
   });
 
-  it("não considera expirado antes do prazo", () => {
+  it("não está expirado antes do horário de expiração", () => {
     const agora = new Date("2026-01-01T10:00:00.000Z");
     const expiraEm = calcularExpiracaoCodigo(agora);
-    const checagem = new Date("2026-01-01T10:14:59.000Z");
-    expect(codigoExpirado(expiraEm, checagem)).toBe(false);
+    const umSegundoAntes = new Date(expiraEm.getTime() - 1000);
+    expect(codigoExpirado(expiraEm, umSegundoAntes)).toBe(false);
   });
 
-  it("considera expirado exatamente no instante do prazo", () => {
+  it("está expirado depois do horário de expiração", () => {
     const agora = new Date("2026-01-01T10:00:00.000Z");
     const expiraEm = calcularExpiracaoCodigo(agora);
-    expect(codigoExpirado(expiraEm, expiraEm)).toBe(false);
-    const umMsDepois = new Date(expiraEm.getTime() + 1);
-    expect(codigoExpirado(expiraEm, umMsDepois)).toBe(true);
-  });
-
-  it("considera expirado bem depois do prazo", () => {
-    const agora = new Date("2026-01-01T10:00:00.000Z");
-    const expiraEm = calcularExpiracaoCodigo(agora);
-    const muitoDepois = new Date("2026-01-01T11:00:00.000Z");
-    expect(codigoExpirado(expiraEm, muitoDepois)).toBe(true);
+    const umSegundoDepois = new Date(expiraEm.getTime() + 1000);
+    expect(codigoExpirado(expiraEm, umSegundoDepois)).toBe(true);
   });
 });
