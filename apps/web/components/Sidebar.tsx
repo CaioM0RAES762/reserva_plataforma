@@ -19,6 +19,8 @@ import {
   FileSearch,
 } from "lucide-react";
 import styles from "./Sidebar.module.css";
+import { useSidebarState } from "./SidebarState";
+import { SidebarUserMenu } from "./SidebarUserMenu";
 
 interface NavItem {
   href: string;
@@ -153,11 +155,14 @@ function NavLink({ item, ativo, badge }: { item: NavItem; ativo: boolean; badge?
       // Leitores de tela anunciam qual item é a página atual; sem isto, o destaque era
       // apenas visual.
       aria-current={ativo ? "page" : undefined}
+      // Com a sidebar recolhida o rótulo some visualmente — o title supre o contexto
+      // via tooltip nativo do navegador, sem precisar de um componente de tooltip novo.
+      title={item.label}
     >
       <span aria-hidden="true" style={{ display: "flex" }}>
         {item.icon}
       </span>
-      <span>{item.label}</span>
+      <span className={styles.navItemLabel}>{item.label}</span>
       {typeof badge === "number" && badge > 0 && (
         <span className={styles.navBadge} aria-label={`${badge} pendente(s)`}>
           {badge}
@@ -190,12 +195,7 @@ function itemEstaAtivo(item: NavItem, pathname: string, searchParams: URLSearchP
 export function Sidebar({ nome, perfil, badges }: SidebarProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const iniciais = nome
-    .split(" ")
-    .map((parte) => parte[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
+  const { collapsed } = useSidebarState();
   const itensVisiveis = NAV_ITEMS.filter((item) => !item.perfis || item.perfis.includes(perfil));
   const grupoOperacao = itensVisiveis.filter((item) => item.grupo === "operacao");
   const grupoAdministracao = itensVisiveis.filter((item) => item.grupo === "administracao");
@@ -206,20 +206,12 @@ export function Sidebar({ nome, perfil, badges }: SidebarProps) {
   };
 
   return (
-    <aside className={styles.sidebar}>
+    <aside className={`${styles.sidebar} ${collapsed ? styles.collapsed : ""}`}>
       <div className={styles.brand}>
         <div className={styles.brandIcon}>PR</div>
         <div className={styles.brandText}>
           <span className={styles.brandName}>PlataformaRes</span>
           <span className={styles.brandSub}>Central de Operações</span>
-        </div>
-      </div>
-
-      <div className={styles.profile}>
-        <div className={styles.profileAvatar}>{iniciais}</div>
-        <div className={styles.profileInfo}>
-          <span className={styles.profileName}>{nome}</span>
-          <span className={styles.profileRole}>{PERFIL_LABEL[perfil]}</span>
         </div>
       </div>
 
@@ -252,8 +244,7 @@ export function Sidebar({ nome, perfil, badges }: SidebarProps) {
       </nav>
 
       <div className={styles.footer}>
-        <span className={styles.statusDot} aria-hidden="true" />
-        <span className={styles.versionTag}>PlataformaRes</span>
+        <SidebarUserMenu nome={nome} perfilLabel={PERFIL_LABEL[perfil]} />
       </div>
     </aside>
   );

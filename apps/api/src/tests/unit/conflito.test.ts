@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { combinarDataHoraBrasilia } from "@plataformares/shared";
 import {
   combinarDataHora,
   encontrarBloqueioConflitante,
@@ -200,7 +201,11 @@ describe("validarJanelaReserva", () => {
     horarioExpedienteInicio: "06:00",
     horarioExpedienteFim: "22:00",
   };
-  const agora = combinarDataHora("2026-08-10", "08:00");
+  // combinarDataHoraBrasilia (não combinarDataHora): "agora" precisa ser um instante
+  // real, do mesmo jeito que `new Date()` é em produção — usar a combinadora naive
+  // aqui mascararia exatamente o bug de fuso horário que estas regras existem para
+  // prevenir (ver comentário em validarJanelaReserva / conflito.service.ts).
+  const agora = combinarDataHoraBrasilia("2026-08-10", "08:00");
 
   it("aceita reserva dentro da duração máxima, do expediente e com antecedência suficiente", () => {
     const resultado = validarJanelaReserva(
@@ -266,5 +271,77 @@ describe("validarJanelaReserva", () => {
       agora // agora = 2026-08-10 08:00 — exatamente 2h de antecedência
     );
     expect(resultado.ok).toBe(true);
+  });
+
+  // Regressão do bug de fuso horário (combinarDataHora vs. combinarDataHoraBrasilia):
+  // "agora" 2026-08-14 15:45 (Brasília), reserva 2026-08-14 17:45 — exatamente 120min
+  // reais de antecedência. Com o bug antigo isto era rejeitado (exigia ~5h na prática).
+  it("aceita reserva a exatamente 120 minutos reais de antecedência (regressão do bug de fuso)", () => {
+    const agoraReal = combinarDataHoraBrasilia("2026-08-14", "15:45");
+    const resultado = validarJanelaReserva(
+      { data: "2026-08-14", horaInicio: "17:45", horaFim: "18:45", prioridade: "normal" },
+      regras,
+      agoraReal
+    );
+    expect(resultado.ok).toBe(true);
+  });
+
+  it("rejeita reserva a exatamente 119 minutos reais de antecedência", () => {
+    const agoraReal = combinarDataHoraBrasilia("2026-08-14", "15:45");
+    const resultado = validarJanelaReserva(
+      { data: "2026-08-14", horaInicio: "17:44", horaFim: "18:44", prioridade: "normal" },
+      regras,
+      agoraReal
+    );
+    expect(resultado.ok).toBe(false);
+    if (!resultado.ok) expect(resultado.erro).toContain("antecedência mínima");
+  });
+
+  it("aceita reserva com mais de 2h de antecedência sem disparar o aviso incorretamente", () => {
+    const agoraReal = combinarDataHoraBrasilia("2026-08-14", "15:45");
+    const resultado = validarJanelaReserva(
+      { data: "2026-08-14", horaInicio: "18:49", horaFim: "19:49", prioridade: "normal" },
+      regras,
+      agoraReal
+    );
+    expect(resultado.ok).toBe(true);
+  });
+
+  it("virada de dia: compara por instante real, não por hora isolada (prioridade urgente para isolar do horário de expediente)", () => {
+    // Agora: 2026-08-14 23:30. Reserva: 2026-08-15 01:00 — 90 minutos reais, menor que
+    // o mínimo (120min) — deve rejeitar mesmo cruzando a virada de dia.
+    const agoraReal = combinarDataHoraBrasilia("2026-08-14", "23:30");
+    const rejeitada = validarJanelaReserva(
+      { data: "2026-08-15", horaInicio: "01:00", horaFim: "02:00", prioridade: "urgente" },
+      regras,
+      agoraReal
+    );
+    expect(rejeitada.ok).toBe(false);
+
+    // Mesmo "agora", reserva 2026-08-15 02:00 — 150 minutos reais, cruza a meia-noite e
+    // deve ser aceita (a comparação é por instante real, não por hora isolada — uma
+    // comparação ingênua de "01:00" e "02:00" como se fossem do mesmo dia da hora atual
+    // erraria feio aqui).
+    const aceita = validarJanelaReserva(
+      { data: "2026-08-15", horaInicio: "02:00", horaFim: "03:00", prioridade: "urgente" },
+      regras,
+      agoraReal
+    );
+    expect(aceita.ok).toBe(true);
+  });
+
+  it("rejeita reserva em data passada mesmo com horário nominal maior", () => {
+    const agoraReal = combinarDataHoraBrasilia("2026-08-14", "15:45");
+    const resultado = validarJanelaReserva(
+      { data: "2026-08-13", horaInicio: "23:00", horaFim: "23:59", prioridade: "normal" },
+      regras,
+      agoraReal
+    );
+    expect(resultado.ok).toBe(false);
+  });
+
+  it("horário local (Brasília) vs. UTC: 17:45 de Brasília equivale a 20:45 UTC, não a 17:45 UTC", () => {
+    const inicio = combinarDataHoraBrasilia("2026-08-14", "17:45");
+    expect(inicio.toISOString()).toBe("2026-08-14T20:45:00.000Z");
   });
 });

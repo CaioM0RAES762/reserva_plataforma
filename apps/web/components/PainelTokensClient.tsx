@@ -162,7 +162,7 @@ export function PainelTokensClient() {
                         Revogar
                       </button>
                     ) : (
-                      <span style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>Revogado</span>
+                      <span style={{ color: "var(--text-muted)", fontSize: "var(--text-meta)" }}>Revogado</span>
                     )}
                   </td>
                 </tr>

@@ -208,14 +208,14 @@ export function AuditoriaClient() {
                       {r.entidade}
                       {r.entidadeId && (
                         <span
-                          style={{ display: "block", fontSize: "0.7rem", color: "var(--ink-muted)" }}
+                          style={{ display: "block", fontSize: "var(--text-meta)", color: "var(--ink-muted)" }}
                           title={r.entidadeId}
                         >
                           {r.entidadeId.slice(0, 8)}
                         </span>
                       )}
                     </td>
-                    <td style={{ maxWidth: 320, fontSize: "0.78rem" }} title={detalhesTexto}>
+                    <td style={{ maxWidth: 320, fontSize: "var(--text-secondary)" }} title={detalhesTexto}>
                       {detalhesTexto.length > 90 ? `${detalhesTexto.slice(0, 90)}…` : detalhesTexto}
                     </td>
                   </tr>

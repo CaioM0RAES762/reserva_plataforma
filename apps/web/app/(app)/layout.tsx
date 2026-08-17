@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { Sidebar } from "../../components/Sidebar";
 import { AppShell } from "../../components/AppShell";
+import { SidebarStateProvider } from "../../components/SidebarState";
 import styles from "../../components/Sidebar.module.css";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3335";
@@ -48,7 +49,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     : undefined;
 
   return (
-    <>
+    // Fonte única do estado de colapso do desktop (Sidebar, Topbar e AppShell leem o
+    // mesmo contexto) — ver components/SidebarState.tsx. Não interfere no off-canvas
+    // mobile abaixo, que continua CSS-only via o checkbox #sidebar-toggle.
+    <SidebarStateProvider>
       {/* Primeiro elemento focável da página: quem navega por teclado pula a sidebar
           inteira (14 links) em vez de tabular por ela em toda troca de tela. */}
       <a href="#conteudo-principal" className={styles.skipLink}>
@@ -60,7 +64,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <input type="checkbox" id="sidebar-toggle" className={styles.sidebarToggleInput} />
       <label htmlFor="sidebar-toggle" className={styles.sidebarBackdrop} aria-hidden="true" />
       <Sidebar nome={usuario.nome} perfil={usuario.perfil} badges={badges} />
-      <AppShell nome={usuario.nome} perfil={usuario.perfil}>{children}</AppShell>
-    </>
+      <AppShell perfil={usuario.perfil}>{children}</AppShell>
+    </SidebarStateProvider>
   );
 }

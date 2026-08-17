@@ -2,11 +2,11 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 3px 9px;
-  font-size: 0.64rem;
-  font-weight: 500;
+  padding: 3px 10px;
+  font-size: var(--text-micro);
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-label);
   border-radius: var(--ind-radius-sm);
   border: 1px solid transparent;
   white-space: nowrap;

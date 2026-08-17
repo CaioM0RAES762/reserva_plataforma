@@ -60,6 +60,7 @@ export interface ReservaRow {
   data: string;
   hora_inicio: string;
   hora_fim: string;
+  quantidade_pessoas: number;
   motivo: string;
   prioridade: string;
   status: string;
@@ -81,6 +82,7 @@ export const SELECT_RESERVA = `
   CONVERT(varchar(10), r.data, 23) AS data,
   CONVERT(varchar(5), r.hora_inicio, 108) AS hora_inicio,
   CONVERT(varchar(5), r.hora_fim, 108) AS hora_fim,
+  r.quantidade_pessoas,
   r.motivo, r.prioridade, r.status,
   aprovador.nome AS aprovado_por_nome,
   segundo_aprovador.nome AS segunda_aprovacao_por_nome,
@@ -114,6 +116,7 @@ export function mapReserva(row: ReservaRow) {
     data: row.data,
     horaInicio: row.hora_inicio,
     horaFim: row.hora_fim,
+    quantidadePessoas: row.quantidade_pessoas,
     motivo: row.motivo,
     prioridade: row.prioridade,
     status: row.status,
@@ -346,7 +349,8 @@ export async function reservasRoutes(app: FastifyInstance): Promise<void> {
         .send({ erro: "Sua conta não está vinculada a um setor. Não é possível solicitar reservas." });
     }
 
-    const { plataformaId, data, horaInicio, horaFim, motivo, prioridade, recorrencia } = parsed.data;
+    const { plataformaId, data, horaInicio, horaFim, quantidadePessoas, motivo, prioridade, recorrencia } =
+      parsed.data;
     const pool = await getPool();
 
     const contexto = await pool
@@ -359,9 +363,11 @@ export async function reservasRoutes(app: FastifyInstance): Promise<void> {
            (SELECT nome FROM Setor WHERE id = @setor_id) AS setor_nome,
            (SELECT nome FROM Usuario WHERE id = @solicitante_id) AS solicitante_nome,
            (SELECT nome FROM Plataforma WHERE id = @plataforma_id) AS plataforma_nome,
-           (SELECT status FROM Plataforma WHERE id = @plataforma_id) AS plataforma_status`
+           (SELECT status FROM Plataforma WHERE id = @plataforma_id) AS plataforma_status,
+           (SELECT capacidade FROM Plataforma WHERE id = @plataforma_id) AS plataforma_capacidade`
       );
-    const { setor_nome, solicitante_nome, plataforma_nome, plataforma_status } = contexto.recordset[0];
+    const { setor_nome, solicitante_nome, plataforma_nome, plataforma_status, plataforma_capacidade } =
+      contexto.recordset[0];
     if (!plataforma_nome) {
       return reply.status(404).send({ erro: "Plataforma não encontrada." });
     }
@@ -375,6 +381,18 @@ export async function reservasRoutes(app: FastifyInstance): Promise<void> {
           plataforma_status === "inativa"
             ? "Esta plataforma está inativa e não pode ser reservada."
             : "Esta plataforma está em manutenção e não pode ser reservada (RN-PLAT-04).",
+      });
+    }
+
+    // Correção da área de Reservas: capacidade oficial vem sempre do banco, nunca de um
+    // valor enviado pelo cliente — um `capacidadeMaxima` no corpo da requisição não seria
+    // fonte confiável (o cliente poderia mandar qualquer número). Quando a plataforma
+    // ainda não tem capacidade cadastrada (`plataforma_capacidade` null), não há limite
+    // conhecido para validar — a reserva segue sem essa checagem, em vez de inventar um
+    // teto arbitrário.
+    if (plataforma_capacidade !== null && quantidadePessoas > plataforma_capacidade) {
+      return reply.status(409).send({
+        erro: `Esta plataforma comporta no máximo ${plataforma_capacidade} pessoa(s).`,
       });
     }
 
@@ -474,13 +492,14 @@ export async function reservasRoutes(app: FastifyInstance): Promise<void> {
           .input("data", sql.Date, dataOcorrencia)
           .input("hora_inicio", sql.VarChar, horaInicio)
           .input("hora_fim", sql.VarChar, horaFim)
+          .input("quantidade_pessoas", sql.Int, quantidadePessoas)
           .input("motivo", sql.NVarChar, motivo)
           .input("prioridade", sql.VarChar, prioridade)
           .input("recorrencia_id", sql.UniqueIdentifier, recorrenciaId)
           .query<{ id: string }>(
-            `INSERT INTO Reserva (setor_id, solicitante_id, plataforma_id, data, hora_inicio, hora_fim, motivo, prioridade, recorrencia_id)
+            `INSERT INTO Reserva (setor_id, solicitante_id, plataforma_id, data, hora_inicio, hora_fim, quantidade_pessoas, motivo, prioridade, recorrencia_id)
              OUTPUT INSERTED.id
-             VALUES (@setor_id, @solicitante_id, @plataforma_id, @data, @hora_inicio, @hora_fim, @motivo, @prioridade, @recorrencia_id)`
+             VALUES (@setor_id, @solicitante_id, @plataforma_id, @data, @hora_inicio, @hora_fim, @quantidade_pessoas, @motivo, @prioridade, @recorrencia_id)`
           );
         const novaId = insercao.recordset[0].id;
         idsCriados.push(novaId);
@@ -671,9 +690,13 @@ export async function reservasRoutes(app: FastifyInstance): Promise<void> {
     }
 
     dbRequest.input("limit", sql.Int, limit).input("offset", sql.Int, offset);
+    // Corrigir/melhorar Reservas: ordem cronológica (ASC), não "mais recente criada
+    // primeiro" — a tela agora sempre opera sobre um período (padrão: esta semana), e o
+    // caso de uso passou a ser "o que vem primeiro nesse intervalo", não um feed de
+    // atividade. Combinado com o filtro de dateFrom/dateTo do período selecionado.
     const result = await dbRequest.query<ReservaRow & { total_geral: number }>(
       `SELECT ${SELECT_RESERVA}, COUNT(*) OVER() AS total_geral ${FROM_RESERVA} ${where}
-       ORDER BY r.data DESC, r.hora_inicio DESC, r.id
+       ORDER BY r.data ASC, r.hora_inicio ASC, r.id
        OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY`
     );
     // COUNT(*) OVER() devolve o total do filtro na mesma varredura — evita a segunda

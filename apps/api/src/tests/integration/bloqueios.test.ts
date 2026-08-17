@@ -148,6 +148,7 @@ describe("Bloqueios de Agenda (S9) — RN-RES-11: reserva dentro de bloqueio ati
         data: DATA_BLOQUEIO,
         horaInicio: "09:00",
         horaFim: "10:00",
+        quantidadePessoas: 1,
         motivo: "Reserva que não deveria ser criada — dentro de bloqueio",
       },
     });
@@ -178,6 +179,7 @@ describe("Bloqueios de Agenda (S9) — RN-RES-11: reserva dentro de bloqueio ati
         data: DATA_BLOQUEIO,
         horaInicio: "09:00",
         horaFim: "10:00",
+        quantidadePessoas: 1,
         motivo: "Reserva em plataforma não bloqueada",
       },
     });
@@ -232,6 +234,7 @@ describe("Bloqueios de Agenda (S9) — RN-RES-11: reserva dentro de bloqueio ati
         data: DATA_BLOQUEIO,
         horaInicio: "09:00",
         horaFim: "10:00",
+        quantidadePessoas: 1,
         motivo: "Reserva aceita após remoção do bloqueio",
       },
     });
@@ -253,6 +256,7 @@ describe("Bloqueios de Agenda (S9) — RN-BLK-01: confirmação dupla sobre rese
         data: DATA_RESERVA_EXISTENTE,
         horaInicio: "13:00",
         horaFim: "15:00",
+        quantidadePessoas: 1,
         motivo: "Reserva que será atingida por um bloqueio posterior",
       },
     });
@@ -351,6 +355,7 @@ describe("Reservas recorrentes (S9 — RF-RES-03)", () => {
         data: DATA_BASE,
         horaInicio: "08:00",
         horaFim: "09:00",
+        quantidadePessoas: 1,
         motivo: "Reunião semanal recorrente — teste S9",
         recorrencia: { quantidadeOcorrencias: 12 },
       },
@@ -380,6 +385,7 @@ describe("Reservas recorrentes (S9 — RF-RES-03)", () => {
         data: DATA_BASE,
         horaInicio: "08:00",
         horaFim: "09:00",
+        quantidadePessoas: 1,
         motivo: "Série conflitante — não deveria criar nenhuma ocorrência",
         recorrencia: { quantidadeOcorrencias: 12 },
       },

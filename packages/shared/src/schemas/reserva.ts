@@ -21,6 +21,9 @@ export const reservaPublicaSchema = z.object({
   data: z.string(),
   horaInicio: z.string(),
   horaFim: z.string(),
+  // Corrigir/melhorar Reservas: quantas pessoas vão usar a plataforma/recurso nesta
+  // reserva — validado contra Plataforma.capacidade na criação (rota POST /reservas).
+  quantidadePessoas: z.number().int(),
   motivo: z.string(),
   prioridade: z.enum(PRIORIDADES_RESERVA),
   status: z.enum(STATUS_RESERVA),
@@ -53,6 +56,12 @@ export const criarReservaSchema = z
     data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida."),
     horaInicio: z.string().regex(HORA_REGEX, "Horário inicial inválido."),
     horaFim: z.string().regex(HORA_REGEX, "Horário final inválido."),
+    // A capacidade máxima é validada no backend contra Plataforma.capacidade (nunca
+    // confiando em um valor de capacidade vindo do cliente) — ver POST /reservas.
+    quantidadePessoas: z
+      .number({ invalid_type_error: "Informe a quantidade de pessoas." })
+      .int("Quantidade de pessoas deve ser um número inteiro.")
+      .min(1, "Informe ao menos 1 pessoa."),
     motivo: z.string().trim().min(3, "Motivo deve ter no mínimo 3 caracteres.").max(300),
     prioridade: z.enum(PRIORIDADES_RESERVA).default("normal"),
     recorrencia: recorrenciaInputSchema.optional(),

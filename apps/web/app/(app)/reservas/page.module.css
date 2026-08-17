@@ -3,11 +3,11 @@
    ========================================================================== */
 
 /* Hierarquia tipográfica em três degraus claros:
-   1. Título da página  — display serif, ~2rem, peso normal (a "voz" da tela)
-   2. Título do dia     — display serif, ~1.05rem (divide a lista em blocos legíveis)
-   3. Nome do responsável / recurso — sans 0.86rem, peso 500 (o dado que se lê)
-   Tudo abaixo disso (setor, código, local, motivo, cabeçalho de coluna) é 0.72–0.76rem
-   em --ink-muted, para não competir com o dado principal. */
+   1. Título da página  — display serif, var(--text-page-title), peso 500 (a "voz" da tela)
+   2. Título do dia     — display serif, ~1.4rem (divide a lista em blocos legíveis)
+   3. Nome do responsável / recurso — sans var(--text-body), peso 600 (o dado que se lê)
+   Tudo abaixo disso (setor, código, local, motivo, cabeçalho de coluna) usa var(--text-meta)
+   ou var(--text-eyebrow) em --ink-muted, para não competir com o dado principal. */
 
 .pageHeader {
   display: flex;
@@ -15,23 +15,23 @@
   justify-content: space-between;
   gap: 20px;
   flex-wrap: wrap;
-  margin-bottom: 26px;
+  margin-bottom: 28px;
 }
 .pageHeaderTexto { min-width: 0; }
 
 .pageTitulo {
   font-family: var(--font-display);
-  font-weight: 400;
-  font-size: clamp(1.75rem, 2.6vw, 2.15rem);
+  font-weight: 500;
+  font-size: var(--text-page-title);
   line-height: 1.1;
   letter-spacing: -0.015em;
   color: var(--ink);
 }
 .pageSubtitulo {
-  margin-top: 6px;
-  font-size: 0.86rem;
+  margin-top: 8px;
+  font-size: var(--text-body-lg);
   line-height: 1.5;
-  color: var(--ink-muted);
+  color: var(--ink-soft);
 }
 
 .btnNovaReserva {
@@ -39,13 +39,14 @@
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
-  padding: 11px 20px;
+  min-height: var(--control-h);
+  padding: 0 22px;
   border: 1px solid var(--ink);
   border-radius: 999px;
   background: var(--ink);
   color: var(--paper);
   font-family: inherit;
-  font-size: 0.86rem;
+  font-size: var(--text-secondary);
   font-weight: 500;
   letter-spacing: -0.005em;
   cursor: pointer;
@@ -81,11 +82,12 @@
 }
 .campoBusca input {
   width: 100%;
-  padding: 10px 14px 10px 38px;
+  min-height: var(--control-h);
+  padding: 0 16px 0 40px;
   border: 1px solid var(--hairline);
   border-radius: 999px;
   background: var(--paper-elev);
-  font-size: 0.85rem;
+  font-size: var(--text-body);
   color: var(--ink);
   transition: border-color 0.15s;
 }
@@ -106,13 +108,14 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 15px;
+  min-height: var(--control-h-compact);
+  padding: 0 16px;
   border: 1px solid var(--hairline);
   border-radius: 999px;
   background: var(--paper-elev);
   color: var(--ink-soft);
   font-family: inherit;
-  font-size: 0.79rem;
+  font-size: var(--text-secondary);
   font-weight: 500;
   white-space: nowrap;
   cursor: pointer;
@@ -125,45 +128,51 @@
   color: var(--paper);
 }
 .chipAtivo:hover { background: var(--ink-soft); color: var(--paper); }
-.chipChevron { font-size: 0.6rem; line-height: 1; }
-.chipMaisFiltros { padding-left: 13px; }
 
-.painelMaisFiltros {
+/* ---------- Filtro de período ----------
+   Fica acima da barra de busca/status porque, diferente deles, o período nunca fica
+   "desligado" — a tela sempre opera sobre um intervalo real (padrão: esta semana). */
+.periodoBarra {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 16px;
   flex-wrap: wrap;
-  padding: 14px 16px;
   margin-bottom: 14px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--ind-radius-md);
-  background: var(--paper-elev);
 }
-.campoData { display: flex; flex-direction: column; gap: 6px; }
+.periodoCustom { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.periodoResumo {
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+.campoData { display: flex; flex-direction: column; gap: 7px; }
 .campoData label {
-  font-size: 0.68rem;
-  font-weight: 500;
+  font-size: var(--text-eyebrow);
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: var(--tracking-eyebrow);
   color: var(--ink-muted);
 }
 .campoData input {
-  padding: 8px 10px;
+  min-height: var(--control-h-compact);
+  padding: 0 12px;
   border: 1px solid var(--hairline);
   border-radius: var(--ind-radius-sm);
   background: var(--paper);
-  font-size: 0.82rem;
+  font-size: var(--text-secondary);
   color: var(--ink);
 }
 
 .btnLimpar {
-  padding: 8px 14px;
+  min-height: var(--control-h-compact);
+  padding: 0 16px;
   border: 1px solid var(--hairline);
   border-radius: var(--ind-radius-sm);
   background: transparent;
   color: var(--ink-soft);
   font-family: inherit;
-  font-size: 0.79rem;
+  font-size: var(--text-secondary);
   font-weight: 500;
   cursor: pointer;
   transition: border-color 0.15s, color 0.15s;
@@ -171,31 +180,31 @@
 .btnLimpar:hover { border-color: var(--hazard); color: var(--hazard); }
 
 .resultadoContagem {
-  font-size: 0.78rem;
+  font-size: var(--text-meta);
   color: var(--ink-muted);
   margin-bottom: 18px;
 }
 
 /* ---------- Agrupamento por dia ---------- */
 
-.diaGrupo { margin-bottom: 28px; }
+.diaGrupo { margin-bottom: 32px; }
 
 .diaCabecalho {
   display: flex;
   align-items: baseline;
-  gap: 10px;
-  margin-bottom: 10px;
+  gap: 12px;
+  margin-bottom: 12px;
 }
 .diaTitulo {
   font-family: var(--font-display);
-  font-weight: 400;
-  font-size: 1.05rem;
-  letter-spacing: -0.01em;
+  font-weight: 500;
+  font-size: 1.45rem;
+  letter-spacing: -0.012em;
   color: var(--ink);
   white-space: nowrap;
 }
 .diaData {
-  font-size: 0.76rem;
+  font-size: var(--text-meta);
   color: var(--ink-muted);
   white-space: nowrap;
 }
@@ -208,7 +217,7 @@
 }
 .diaContagem {
   font-family: var(--font-mono);
-  font-size: 0.74rem;
+  font-size: var(--text-meta);
   color: var(--ink-muted);
   white-space: nowrap;
 }
@@ -228,18 +237,18 @@
 }
 .tabela thead th {
   text-align: left;
-  padding: 11px 18px;
-  font-size: 0.62rem;
-  font-weight: 500;
+  padding: 12px 18px;
+  font-size: var(--text-eyebrow);
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.14em;
+  letter-spacing: var(--tracking-label);
   color: var(--ink-muted);
   background: color-mix(in oklch, var(--ink) 2.5%, transparent);
   border-bottom: 1px solid var(--hairline);
   white-space: nowrap;
 }
 .tabela td {
-  padding: 13px 18px;
+  padding: 14px 18px;
   border-bottom: 1px solid var(--hairline);
   vertical-align: middle;
 }
@@ -253,36 +262,43 @@
   background: color-mix(in oklch, var(--ink) 5%, transparent);
 }
 
+/* Reservas do usuário logado: fundo levemente mais quente/escuro (não uma cor forte) +
+   friso lateral em ember — a linha inteira fica identificável, não só um badge de
+   texto. Usa a mesma cor de acento (--safety, ember) já usada em destaques do app. */
+.linhaMinha { background: color-mix(in oklch, var(--safety) 6%, transparent); box-shadow: inset 3px 0 0 var(--safety); }
+.linhaMinha:hover { background: color-mix(in oklch, var(--safety) 10%, transparent); }
+.linhaMinha:focus-visible { background: color-mix(in oklch, var(--safety) 12%, transparent); }
+
 /* ---------- Coluna Responsável ---------- */
 
-.responsavel { display: flex; align-items: center; gap: 11px; }
+.responsavel { display: flex; align-items: center; gap: 12px; }
 .avatar {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   flex-shrink: 0;
   border-radius: 50%;
   background: color-mix(in oklch, var(--safety) 16%, transparent);
   color: color-mix(in oklch, var(--safety) 72%, var(--ink));
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.02em;
 }
-.responsavelTexto { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.responsavelTexto { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .responsavelNome {
   display: flex;
   align-items: center;
-  gap: 7px;
-  font-size: 0.86rem;
-  font-weight: 500;
+  gap: 8px;
+  font-size: var(--text-body);
+  font-weight: 600;
   color: var(--ink);
   line-height: 1.25;
 }
 .responsavelMeta {
-  font-size: 0.72rem;
+  font-size: var(--text-meta);
   color: var(--ink-muted);
   line-height: 1.3;
 }
@@ -292,12 +308,12 @@
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  padding: 1px 7px;
+  padding: 2px 8px;
   border-radius: 999px;
-  font-size: 0.62rem;
+  font-size: var(--text-micro);
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: var(--tracking-label);
   white-space: nowrap;
 }
 .seloUrgente {
@@ -310,13 +326,27 @@
   background: color-mix(in oklch, var(--caution) 18%, transparent);
   border: 1px solid color-mix(in oklch, var(--caution) 35%, transparent);
 }
+.seloMinha {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: var(--text-micro);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  white-space: nowrap;
+  color: color-mix(in oklch, var(--safety) 70%, var(--ink));
+  background: color-mix(in oklch, var(--safety) 16%, transparent);
+  border: 1px solid color-mix(in oklch, var(--safety) 38%, transparent);
+}
 
 /* ---------- Coluna Recurso ---------- */
 
 .recursoNome {
   display: block;
-  font-size: 0.86rem;
-  font-weight: 500;
+  font-size: var(--text-body);
+  font-weight: 600;
   color: var(--ink);
   line-height: 1.25;
 }
@@ -324,9 +354,9 @@
   display: flex;
   align-items: center;
   gap: 5px;
-  margin-top: 3px;
+  margin-top: 4px;
   max-width: 42ch;
-  font-size: 0.72rem;
+  font-size: var(--text-meta);
   color: var(--ink-muted);
   line-height: 1.3;
   white-space: nowrap;
@@ -342,7 +372,8 @@
   align-items: center;
   gap: 6px;
   font-family: var(--font-mono);
-  font-size: 0.8rem;
+  font-size: var(--text-secondary);
+  font-weight: 500;
   color: var(--ink-soft);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -364,17 +395,17 @@
 }
 .vazioTitulo {
   font-family: var(--font-display);
-  font-size: 1.05rem;
-  font-weight: 400;
+  font-size: var(--text-panel-title);
+  font-weight: 500;
   color: var(--ink);
 }
 .vazioTexto {
-  font-size: 0.83rem;
+  font-size: var(--text-secondary);
   color: var(--ink-muted);
   max-width: 42ch;
   line-height: 1.5;
 }
-.vazio .btnLimpar { margin-top: 10px; }
+.vazioAcoes { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
 
 .linhaEsqueleto {
   display: flex;
@@ -443,12 +474,12 @@
 }
 .header h1 {
   font-family: var(--font-display);
-  font-weight: 400;
-  font-size: clamp(1.6rem, 2.4vw, 2rem);
-  letter-spacing: -0.01em;
+  font-weight: 500;
+  font-size: var(--text-page-title);
+  letter-spacing: -0.015em;
   color: var(--ink);
 }
-.header p { font-size: 0.85rem; color: var(--ink-muted); margin-top: 4px; }
+.header p { font-size: var(--text-body-lg); color: var(--ink-soft); margin-top: 6px; }
 
 .error {
   background: var(--safety-soft);
@@ -456,7 +487,7 @@
   padding: 10px 12px;
   border: 1px solid var(--hairline);
   border-radius: var(--ind-radius-sm);
-  font-size: 0.82rem;
+  font-size: var(--text-secondary);
   margin-bottom: 12px;
 }
 
@@ -468,14 +499,14 @@
   overflow-x: auto;
 }
 
-.table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.table { width: 100%; border-collapse: collapse; font-size: var(--text-secondary); }
 .table th {
   text-align: left;
-  padding: 10px 16px;
-  font-size: 0.62rem;
-  font-weight: 500;
+  padding: 11px 16px;
+  font-size: var(--text-eyebrow);
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.16em;
+  letter-spacing: var(--tracking-label);
   color: var(--ink-muted);
   border-bottom: 1px solid var(--hairline);
   white-space: nowrap;
@@ -483,16 +514,16 @@
 .table th:first-child, .table td:first-child { padding-left: 20px; }
 .table th:last-child, .table td:last-child { padding-right: 20px; }
 .table td {
-  padding: 12px 16px;
+  padding: 13px 16px;
   color: var(--ink-soft);
   border-bottom: 1px solid var(--hairline);
   vertical-align: middle;
 }
 .table tbody tr:last-child td { border-bottom: none; }
 .table tbody tr:hover { background: color-mix(in oklch, var(--ink) 4%, transparent); }
-.table td strong { color: var(--ink); font-weight: 500; }
+.table td strong { color: var(--ink); font-weight: 600; }
 
-.empty { text-align: center; padding: 32px; color: var(--ink-muted); font-size: 0.83rem; }
+.empty { text-align: center; padding: 32px; color: var(--ink-muted); font-size: var(--text-secondary); }
 
 /* Linha da tabela que abre o detalhe. Antes o cursor de mão era aplicado inline e não
    havia estado de foco — quem navega por teclado não tinha como saber em que linha
@@ -531,9 +562,9 @@
 /* Selos da Fila de Aprovações (SLA estourado / aguarda 2ª aprovação). */
 .selo {
   display: inline-block;
-  padding: 2px 8px;
+  padding: 2px 9px;
   border-radius: 999px;
-  font-size: 0.7rem;
+  font-size: var(--text-micro);
   font-weight: 600;
   letter-spacing: 0.01em;
   white-space: nowrap;
@@ -550,7 +581,7 @@
 
 /* Texto de apoio dentro de formulários (explica uma regra sem parecer erro). */
 .hint {
-  font-size: 0.76rem;
+  font-size: var(--text-meta);
   color: var(--ink-muted);
   line-height: 1.5;
   margin-top: 8px;
@@ -574,12 +605,13 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  min-height: var(--control-h);
   background: var(--ink);
   color: var(--paper);
   border: 1px solid var(--ink);
   border-radius: var(--ind-radius-sm);
-  padding: 9px 16px;
-  font-size: 0.83rem;
+  padding: 0 18px;
+  font-size: var(--text-secondary);
   font-weight: 500;
 }
 .btnPrimary:hover { background: var(--ink-soft); }
@@ -589,8 +621,9 @@
   background: transparent;
   color: var(--ink-soft);
   border: none;
-  padding: 8px 14px;
-  font-size: 0.85rem;
+  padding: 0 14px;
+  min-height: var(--control-h);
+  font-size: var(--text-secondary);
   font-weight: 500;
   border-radius: var(--ind-radius-sm);
 }
@@ -602,8 +635,9 @@
   color: #fff;
   border: 1px solid var(--hazard);
   border-radius: var(--ind-radius-sm);
-  padding: 8px 14px;
-  font-size: 0.85rem;
+  min-height: var(--control-h);
+  padding: 0 16px;
+  font-size: var(--text-secondary);
   font-weight: 500;
 }
 .btnDanger:hover { opacity: 0.88; }
@@ -625,8 +659,11 @@
   background: var(--paper-elev);
   border: 1px solid var(--hairline);
   border-radius: var(--ind-radius-md);
-  width: 100%;
-  max-width: 600px;
+  /* min(900px, calc(100vw - 48px)): cabe os dois campos por linha confortavelmente em
+     desktop sem nunca encostar nas bordas da viewport em telas menores — o overlay
+     ao redor já reserva 20px de cada lado (.modalOverlay), então 48px de folga total
+     garante que o modal nunca force scroll horizontal na página. */
+  width: min(900px, calc(100vw - 48px));
   max-height: 90vh;
   display: flex;
   flex-direction: column;
@@ -640,7 +677,7 @@
   padding: 18px 22px;
   border-bottom: 1px solid var(--hairline);
 }
-.modalHeader h3 { font-family: var(--font-display); font-weight: 400; font-size: 1.15rem; color: var(--ink); }
+.modalHeader h3 { font-family: var(--font-display); font-weight: 500; font-size: var(--text-panel-title); color: var(--ink); }
 
 .modalClose {
   background: none;
@@ -666,32 +703,41 @@
 
 .formGrid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
+  /* minmax(0, 1fr), não só 1fr: uma coluna de grid tem min-width:auto por padrão, ou
+     seja, nunca encolhe além do conteúdo do filho mais largo. Um <select> sem width
+     própria segue o texto da opção mais longa (nomes de plataforma passam de 40
+     caracteres) — sem o minmax(0,...) isso estourava a coluna e, com ela, o modal
+     inteiro, forçando a barra de rolagem horizontal que este ajuste corrige. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px 20px;
 }
-.formGroup { display: flex; flex-direction: column; gap: 6px; }
+.formGroup { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .formGroupFull { grid-column: 1 / -1; }
 .formGroupHalf { grid-column: span 1; }
 
 .formGroup label {
-  font-size: 0.68rem;
-  font-weight: 500;
+  font-size: var(--text-eyebrow);
+  font-weight: 600;
   color: var(--ink-muted);
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: var(--tracking-eyebrow);
 }
 
 .formGroup input,
 .formGroup select,
 .formGroup textarea {
-  padding: 9px 12px;
+  width: 100%;
+  min-width: 0;
+  min-height: var(--control-h);
+  padding: 10px 13px;
   border: 1px solid var(--hairline);
   border-radius: var(--ind-radius-sm);
   background: var(--paper-elev);
-  font-size: 0.88rem;
+  font-size: var(--text-body);
   color: var(--ink);
   resize: vertical;
 }
+.formGroup textarea { min-height: 88px; }
 .formGroup input:focus,
 .formGroup select:focus,
 .formGroup textarea:focus {
@@ -702,6 +748,26 @@
   background: color-mix(in oklch, var(--ink) 4%, transparent);
   color: var(--ink-muted);
 }
+.formGroup input[aria-invalid="true"],
+.formGroup select[aria-invalid="true"] {
+  border-color: var(--hazard);
+}
+
+.fieldError {
+  display: block;
+  font-size: var(--text-meta);
+  color: var(--hazard);
+  line-height: 1.4;
+}
+
+.capacidadeInfo {
+  display: flex;
+  align-items: center;
+  min-height: var(--control-h);
+  padding: 0 2px;
+  font-size: var(--text-body);
+  color: var(--ink-soft);
+}
 
 .conflictAlert {
   display: flex;
@@ -711,8 +777,8 @@
   color: var(--hazard);
   border: 1px solid color-mix(in oklch, var(--hazard) 35%, var(--hairline));
   border-radius: var(--ind-radius-sm);
-  padding: 10px 14px;
-  font-size: 0.83rem;
+  padding: 11px 14px;
+  font-size: var(--text-secondary);
   font-weight: 500;
   margin-top: 14px;
 }

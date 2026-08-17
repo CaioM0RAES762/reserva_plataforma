@@ -472,7 +472,7 @@ export function RelatoriosClient({ perfil }: RelatoriosClientProps) {
                           <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: "#898781" }} />
                           <YAxis type="category" dataKey="plataformaNome" width={110} tick={{ fontSize: 11, fill: "#898781" }} />
                           <Tooltip />
-                          <Legend wrapperStyle={{ fontSize: "0.75rem" }} />
+                          <Legend wrapperStyle={{ fontSize: "0.8rem" }} />
                           <Bar dataKey="baixa" name="Baixa" stackId="g" fill={CORES_GRAVIDADE.baixa} />
                           <Bar dataKey="media" name="Média" stackId="g" fill={CORES_GRAVIDADE.media} />
                           <Bar dataKey="alta" name="Alta" stackId="g" fill={CORES_GRAVIDADE.alta} radius={[0, 4, 4, 0]} />

@@ -26,8 +26,8 @@
   background: var(--hazard);
   color: #fff;
   font-family: var(--font-mono);
-  font-size: 0.65rem;
-  font-weight: 500;
+  font-size: var(--text-micro);
+  font-weight: 600;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -59,17 +59,17 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 14px;
+  padding: 13px 14px;
   border-bottom: 1px solid var(--hairline);
   font-weight: 600;
-  font-size: 0.85rem;
+  font-size: var(--text-secondary);
   color: var(--ink);
 }
 
 .marcarTodas {
   background: transparent;
   color: var(--safety);
-  font-size: 0.75rem;
+  font-size: var(--text-meta);
   font-weight: 500;
 }
 .marcarTodas:hover { text-decoration: underline; }
@@ -80,7 +80,7 @@
   padding: 24px 14px;
   text-align: center;
   color: var(--ink-muted);
-  font-size: 0.85rem;
+  font-size: var(--text-secondary);
 }
 
 .item {
@@ -97,6 +97,6 @@
 .unread { background: var(--safety-soft); }
 .unread:hover { background: var(--safety-soft); }
 
-.itemTitulo { font-size: 0.83rem; font-weight: 600; color: var(--ink); }
-.itemMensagem { font-size: 0.78rem; color: var(--ink-soft); }
-.itemData { font-family: var(--font-mono); font-size: 0.68rem; color: var(--ink-muted); margin-top: 2px; }
+.itemTitulo { font-size: var(--text-secondary); font-weight: 600; color: var(--ink); }
+.itemMensagem { font-size: var(--text-meta); color: var(--ink-soft); }
+.itemData { font-family: var(--font-mono); font-size: var(--text-micro); color: var(--ink-muted); margin-top: 3px; }

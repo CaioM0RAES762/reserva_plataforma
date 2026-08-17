@@ -17,13 +17,13 @@
   min-width: 0;
 }
 .stepperDot {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.62rem;
+  font-size: var(--text-micro);
   font-weight: 600;
   border: 2px solid var(--hairline);
   background: var(--paper-elev);
@@ -34,10 +34,10 @@
 .stepperStep.done .stepperDot { border-color: var(--signal); background: var(--signal); color: var(--paper); }
 .stepperStep.active .stepperDot { border-color: var(--safety); color: var(--safety); box-shadow: 0 0 0 3px var(--safety-soft); }
 .stepperLabel {
-  font-size: 0.62rem;
-  font-weight: 500;
+  font-size: var(--text-micro);
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: var(--tracking-label);
   color: var(--ink-muted);
   text-align: center;
   white-space: nowrap;
@@ -59,7 +59,7 @@
   gap: 10px;
   padding: 12px 14px;
   border-radius: var(--ind-radius-sm);
-  font-size: 0.85rem;
+  font-size: var(--text-secondary);
   font-weight: 500;
   margin-bottom: 18px;
 }
@@ -100,33 +100,33 @@
 }
 .summaryText { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .summaryLabel {
-  font-size: 0.62rem;
-  font-weight: 500;
+  font-size: var(--text-eyebrow);
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-eyebrow);
   color: var(--ink-muted);
 }
-.summaryValue { font-size: 0.87rem; color: var(--ink); font-weight: 500; overflow-wrap: anywhere; }
-.summarySub { font-size: 0.76rem; color: var(--ink-muted); margin-top: 2px; }
+.summaryValue { font-size: var(--text-body); color: var(--ink); font-weight: 600; overflow-wrap: anywhere; }
+.summarySub { font-size: var(--text-meta); color: var(--ink-muted); margin-top: 3px; }
 
 .motivoBlock {
   border-left: 3px solid var(--hairline);
   padding: 4px 0 4px 12px;
   margin-bottom: 16px;
-  font-size: 0.85rem;
+  font-size: var(--text-secondary);
   color: var(--ink-soft);
   font-style: italic;
   line-height: 1.5;
 }
 
 .sectionTitle {
-  font-size: 0.68rem;
+  font-size: var(--text-eyebrow);
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-eyebrow);
   color: var(--ink-muted);
-  margin: 18px 0 8px;
-  padding-top: 14px;
+  margin: 20px 0 10px;
+  padding-top: 16px;
   border-top: 1px solid var(--hairline);
 }
 .sectionTitle:first-child { margin-top: 0; padding-top: 0; border-top: none; }

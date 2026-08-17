@@ -198,7 +198,7 @@ export function BloqueiosClient() {
                           Remover
                         </button>
                       ) : (
-                        <span style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>Já iniciado</span>
+                        <span style={{ color: "var(--text-muted)", fontSize: "var(--text-meta)" }}>Já iniciado</span>
                       )}
                     </td>
                   </tr>

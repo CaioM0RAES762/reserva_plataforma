@@ -124,7 +124,7 @@ Ao criar a reserva A via UI, o handler `POST /reservas` enfileirou automaticamen
 
 ```
 data
-{"destinatario":"admin@metalsider.com.br",
+{"destinatario":"caio.moraes@metalsider.com.br",
  "assunto":"PlataformaRes — Nova reserva pendente (Plataforma Elevatória A)",
  "corpoHtml":"...<strong>Colaborador Gate S3</strong> (Produção) solicitou o uso de <strong>Plataforma Elevatória A</strong>...
               Data: 2026-08-15 | Horário: 08:00 – 10:00 | Prioridade: normal |

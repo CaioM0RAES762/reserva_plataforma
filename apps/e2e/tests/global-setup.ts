@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export const CREDENCIAIS = {
-  admin: { email: "admin@metalsider.com.br", senha: "AdminForte123" },
+  admin: { email: "caio.moraes@metalsider.com.br", senha: "AdminForte123" },
   gestor: { email: "gestor.ti@metalsider.com.br", senha: "TesteE2E123!" },
   colaborador: { email: "colaborador.ti@metalsider.com.br", senha: "TesteE2E123!" },
 } as const;

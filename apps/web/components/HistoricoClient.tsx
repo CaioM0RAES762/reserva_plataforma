@@ -270,19 +270,19 @@ export function HistoricoClient({ perfil, setorId }: HistoricoClientProps) {
               registros.map((r) => (
                 <tr key={r.id}>
                   <td>
-                    <strong style={{ color: "var(--primary)", fontSize: "0.78rem" }}>{r.id.slice(0, 8)}</strong>
+                    <strong style={{ color: "var(--primary)", fontSize: "var(--text-secondary)" }}>{r.id.slice(0, 8)}</strong>
                   </td>
-                  <td style={{ fontSize: "0.8rem" }}>{formatarDataHora(r.criadoEm)}</td>
+                  <td style={{ fontSize: "var(--text-secondary)" }}>{formatarDataHora(r.criadoEm)}</td>
                   <td>{r.setorNome}</td>
                   <td>{r.solicitanteNome}</td>
                   <td>{r.plataformaNome}</td>
-                  <td style={{ whiteSpace: "nowrap", fontSize: "0.8rem" }}>
+                  <td style={{ whiteSpace: "nowrap", fontSize: "var(--text-secondary)" }}>
                     {formatarData(r.data)}
                     <br />
                     {r.horaInicio}–{r.horaFim}
                   </td>
                   <td
-                    style={{ maxWidth: 200, fontSize: "0.8rem", color: "var(--text-secondary)" }}
+                    style={{ maxWidth: 200, fontSize: "var(--text-secondary)", color: "var(--ink-soft)" }}
                     title={r.motivo}
                   >
                     {r.motivo.length > 60 ? `${r.motivo.slice(0, 60)}…` : r.motivo}

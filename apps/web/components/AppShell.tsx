@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import styles from "./Topbar.module.css";
 import { Topbar } from "./Topbar";
+import { useSidebarState } from "./SidebarState";
 
 // Mapa completo de rotas → título do breadcrumb. Antes cobria só três rotas (/conta,
 // /plataformas, /reservas): todas as demais telas — Calendário, Histórico, Relatórios,
@@ -28,12 +29,6 @@ const TITULOS: Array<[string, string]> = [
   ["/conta", "Minha Conta"],
 ];
 
-const PERFIL_LABEL: Record<string, string> = {
-  admin: "Admin",
-  gestor_setor: "Gestor de Setor",
-  colaborador: "Colaborador",
-};
-
 const DASHBOARD_TITULO: Record<string, string> = {
   admin: "Visão do Administrador",
   gestor_setor: "Visão do Setor",
@@ -42,7 +37,6 @@ const DASHBOARD_TITULO: Record<string, string> = {
 
 export interface AppShellProps {
   children: React.ReactNode;
-  nome?: string;
   perfil?: "admin" | "gestor_setor" | "colaborador";
 }
 
@@ -54,16 +48,13 @@ function resolverTitulo(pathname: string, perfil?: AppShellProps["perfil"]): str
   return encontrado ? encontrado[1] : "PlataformaRes";
 }
 
-export function AppShell({ children, nome, perfil }: AppShellProps) {
+export function AppShell({ children, perfil }: AppShellProps) {
   const pathname = usePathname();
+  const { collapsed } = useSidebarState();
 
   return (
-    <div className={styles.wrapper}>
-      <Topbar
-        titulo={resolverTitulo(pathname, perfil)}
-        nome={nome}
-        perfilLabel={perfil ? PERFIL_LABEL[perfil] : undefined}
-      />
+    <div className={`${styles.wrapper} ${collapsed ? styles.wrapperCollapsed : ""}`}>
+      <Topbar titulo={resolverTitulo(pathname, perfil)} />
       {/* id de destino do link "pular para o conteúdo" (ver globals.css) — permite a quem
           navega por teclado saltar a sidebar inteira a cada troca de página. */}
       <main id="conteudo-principal" className={styles.content}>

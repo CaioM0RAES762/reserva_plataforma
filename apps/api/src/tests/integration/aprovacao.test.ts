@@ -30,7 +30,7 @@ async function criarReserva(cookie: string, horaInicio: string, horaFim: string,
     method: "POST",
     url: "/api/v1/reservas",
     headers: { cookie },
-    payload: { plataformaId, data: DATA_RESERVA, horaInicio, horaFim, motivo, prioridade: "normal" },
+    payload: { plataformaId, data: DATA_RESERVA, horaInicio, horaFim, motivo, prioridade: "normal", quantidadePessoas: 1 },
   });
   expect(response.statusCode).toBe(201);
   return response.json().id as string;

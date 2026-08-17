@@ -542,8 +542,9 @@ export function DashboardClient({ usuarioId, usuarioNome, perfil, setorNome }: D
         </div>
       )}
 
-      <div className={styles.grid12}>
-        <div className={`${styles.panel} ${styles.colSpan8}`}>
+      <div className={styles.columns}>
+      <div className={styles.mainColumn}>
+        <div className={styles.panel}>
           <div className={styles.panelHeader}>
             <div>
               <div className={styles.panelEyebrow}>Operações · Hoje</div>
@@ -556,50 +557,55 @@ export function DashboardClient({ usuarioId, usuarioNome, perfil, setorNome }: D
             </div>
           </div>
           <div className={styles.panelBody}>
-            <div className={styles.timeline}>
-              <div className={styles.timelineRuler}>
-                {HORAS_RUA.map((h) => (
-                  <span key={h} className={styles.timelineTick}>
-                    {String(h).padStart(2, "0")}:00
-                  </span>
-                ))}
-              </div>
-              <div className={styles.timelineLane}>
-                {agenda?.hoje.filter((r) => dentroDaRegua(r.horaInicio, r.horaFim)).map((r) => {
-                  const left = posicaoNaRegua(r.horaInicio);
-                  const right = posicaoNaRegua(r.horaFim);
-                  const largura = Math.max(0.02, right - left);
-                  const classeCor =
-                    r.status === "em_uso"
-                      ? styles.barEmUso
-                      : r.status === "concluida"
-                        ? styles.barConcluida
-                        : checklistPendenteIds.has(r.id)
-                          ? styles.barChecklist
-                          : styles.barAgendada;
-                  return (
-                    <div
-                      key={r.id}
-                      className={`${styles.timelineBar} ${classeCor}`}
-                      style={{ left: `${left * 100}%`, width: `${largura * 100}%` }}
-                      title={`${r.plataformaNome} — ${r.horaInicio}–${r.horaFim}`}
-                    >
-                      <span className={styles.timelineBarTime}>
-                        {r.horaInicio}–{r.horaFim}
-                      </span>
-                      <span className={styles.timelineBarLabel}>{r.motivo || r.plataformaNome}</span>
+            {/* Painel vazio não precisa da régua horária inteira — o estado
+                "Nenhuma reserva para hoje" já é a informação, mostrar uma linha do
+                tempo vazia por cima só empurrava o card pra baixo à toa. */}
+            {agenda && agenda.hoje.length > 0 ? (
+              <div className={styles.timeline}>
+                <div className={styles.timelineRuler}>
+                  {HORAS_RUA.map((h) => (
+                    <span key={h} className={styles.timelineTick}>
+                      {String(h).padStart(2, "0")}:00
+                    </span>
+                  ))}
+                </div>
+                <div className={styles.timelineLane}>
+                  {agenda.hoje.filter((r) => dentroDaRegua(r.horaInicio, r.horaFim)).map((r) => {
+                    const left = posicaoNaRegua(r.horaInicio);
+                    const right = posicaoNaRegua(r.horaFim);
+                    const largura = Math.max(0.02, right - left);
+                    const classeCor =
+                      r.status === "em_uso"
+                        ? styles.barEmUso
+                        : r.status === "concluida"
+                          ? styles.barConcluida
+                          : checklistPendenteIds.has(r.id)
+                            ? styles.barChecklist
+                            : styles.barAgendada;
+                    return (
+                      <div
+                        key={r.id}
+                        className={`${styles.timelineBar} ${classeCor}`}
+                        style={{ left: `${left * 100}%`, width: `${largura * 100}%` }}
+                        title={`${r.plataformaNome} — ${r.horaInicio}–${r.horaFim}`}
+                      >
+                        <span className={styles.timelineBarTime}>
+                          {r.horaInicio}–{r.horaFim}
+                        </span>
+                        <span className={styles.timelineBarLabel}>{r.motivo || r.plataformaNome}</span>
+                      </div>
+                    );
+                  })}
+                  {agoraFracaoRegua !== null && (
+                    <div className={styles.nowMarker} style={{ left: `${agoraFracaoRegua * 100}%` }}>
+                      <span className={styles.nowLabel}>AGORA</span>
                     </div>
-                  );
-                })}
-                {agoraFracaoRegua !== null && (
-                  <div className={styles.nowMarker} style={{ left: `${agoraFracaoRegua * 100}%` }}>
-                    <span className={styles.nowLabel}>AGORA</span>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
-            </div>
-
-            {(!agenda || agenda.hoje.length === 0) && <div className={styles.empty}>Nenhuma reserva para hoje.</div>}
+            ) : (
+              <div className={styles.empty}>Nenhuma reserva para hoje.</div>
+            )}
 
             <div className={styles.agendaList}>
               {agenda?.hoje.map((r) => (
@@ -620,7 +626,149 @@ export function DashboardClient({ usuarioId, usuarioNome, perfil, setorNome }: D
           </div>
         </div>
 
-        <div className={`${styles.panel} ${styles.colSpan4}`}>
+        {ehAprovador ? (
+          <div className={styles.panel}>
+            <div className={styles.panelHeader}>
+              <div>
+                <div className={styles.panelEyebrow}>Ação Necessária</div>
+                <h2 className={styles.panelTitle}>Fila de aprovações</h2>
+              </div>
+              <span className={styles.panelHeaderMeta}>
+                {filaAprovacoes.length} pendentes{slaHorasAprovacao ? ` · SLA médio ${slaHorasAprovacao}h` : ""}
+                {atrasadasAprovacao > 0 ? ` · ${atrasadasAprovacao} atrasada${atrasadasAprovacao > 1 ? "s" : ""}` : ""}
+              </span>
+            </div>
+            <div className={styles.tableWrap}>
+              {filaAprovacoes.length === 0 ? (
+                <div className={styles.empty}>Nenhuma reserva aguardando aprovação.</div>
+              ) : (
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>Solicitação</th>
+                      <th>Setor</th>
+                      <th>Janela</th>
+                      <th>Plataforma</th>
+                      <th>Risco</th>
+                      <th>Aguardando</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filaAprovacoes.map((r) => (
+                      <tr key={r.id}>
+                        <td>
+                          <span className={styles.tablePrimary}>{nomeCurto(r.solicitanteNome)}</span>
+                          <span className={styles.tableCodigo}>{codigoSolicitacao(r.id)}</span>
+                        </td>
+                        <td>{r.setorNome}</td>
+                        <td className={styles.tableMono}>
+                          {formatarDataCurta(r.data)} · {r.horaInicio}–{r.horaFim}
+                        </td>
+                        <td>{plataformasPorId.get(r.plataformaId)?.codigo ?? r.plataformaNome}</td>
+                        <td>
+                          {requerChecklist(r.plataformaCategoria) ? (
+                            <span className={styles.riskBadge}>{CATEGORIA_NR[r.plataformaCategoria] ?? "NR"}</span>
+                          ) : (
+                            <span className={styles.tableSub}>—</span>
+                          )}
+                        </td>
+                        <td className={`${styles.tableMono} ${r.slaEstourado ? styles.tableHazard : ""}`}>
+                          {formatarAguardando(r.criadoEm)}
+                        </td>
+                        <td>
+                          <div className={styles.tableActions}>
+                            <Link href="/reservas/aprovacoes" className={styles.btnGhostSm}>
+                              Rever
+                            </Link>
+                            <button
+                              type="button"
+                              className={styles.btnSolidSm}
+                              disabled={aprovandoId === r.id}
+                              onClick={() => aprovarReserva(r.id)}
+                            >
+                              Aprovar
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className={styles.panel}>
+            <div className={styles.panelHeader}>
+              <div>
+                <div className={styles.panelEyebrow}>Agenda</div>
+                <h2 className={styles.panelTitle}>Minhas próximas reservas</h2>
+              </div>
+            </div>
+            <div className={styles.panelBody}>
+              {minhasProximas.length === 0 ? (
+                <div className={styles.empty}>Você não tem reservas nos próximos dias.</div>
+              ) : (
+                <div className={styles.agendaList}>
+                  {minhasProximas.map((r) => (
+                    <div key={r.id} className={styles.agendaRow}>
+                      <span className={styles.agendaTime}>
+                        {formatarDataCurta(r.data)} {r.horaInicio}
+                      </span>
+                      <div className={styles.agendaInfo}>
+                        <span className={styles.agendaTitle}>{r.plataformaNome}</span>
+                        <span className={styles.agendaMeta}>{r.motivo}</span>
+                      </div>
+                      <StatusPill item={r} checklistPendenteIds={checklistPendenteIds} />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {ehAprovador && (
+          <div className={styles.panel}>
+            <div className={styles.panelHeader}>
+              <div>
+                <div className={styles.panelEyebrow}>Últimos 6 meses</div>
+                <h2 className={styles.panelTitle}>Reservas x Concluídas</h2>
+              </div>
+            </div>
+            <div className={styles.panelBody}>
+              {trendData.length === 0 ? (
+                <div className={styles.empty}>Sem dados de tendência no período.</div>
+              ) : (
+                <ResponsiveContainer width="100%" height={288}>
+                  <AreaChart data={trendData} margin={{ top: 10, right: 20, left: 0, bottom: 10 }}>
+                    <defs>
+                      <linearGradient id="gReservas" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={COR_RESERVAS} stopOpacity={0.35} />
+                        <stop offset="100%" stopColor={COR_RESERVAS} stopOpacity={0} />
+                      </linearGradient>
+                      <linearGradient id="gConcluidas" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={COR_CONCLUIDAS} stopOpacity={0.25} />
+                        <stop offset="100%" stopColor={COR_CONCLUIDAS} stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="2 4" stroke={COR_GRADE} vertical={false} />
+                    <XAxis dataKey="mes" stroke={COR_EIXO} tickLine={false} axisLine={false} fontSize={11} />
+                    <YAxis stroke={COR_EIXO} tickLine={false} axisLine={false} fontSize={11} width={30} allowDecimals={false} />
+                    <Tooltip contentStyle={{ background: COR_TOOLTIP_BG, border: "none", borderRadius: 2, color: "#fff", fontSize: 12 }} />
+                    <Area type="monotone" dataKey="reservas" name="Reservas" stroke={COR_RESERVAS} strokeWidth={2} fill="url(#gReservas)" />
+                    <Area type="monotone" dataKey="concluidas" name="Concluídas" stroke={COR_CONCLUIDAS} strokeWidth={2} fill="url(#gConcluidas)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+        )}
+        </div>
+
+        <div className={styles.sideColumn}>
+        <div className={styles.panel}>
           <div className={styles.panelHeader}>
             <div>
               <div className={styles.panelEyebrow}>Frota</div>
@@ -686,113 +834,8 @@ export function DashboardClient({ usuarioId, usuarioNome, perfil, setorNome }: D
             </Link>
           </div>
         </div>
-      </div>
 
-      <div className={styles.grid12}>
-        {ehAprovador ? (
-          <div className={`${styles.panel} ${styles.colSpan8}`}>
-            <div className={styles.panelHeader}>
-              <div>
-                <div className={styles.panelEyebrow}>Ação Necessária</div>
-                <h2 className={styles.panelTitle}>Fila de aprovações</h2>
-              </div>
-              <span className={styles.panelHeaderMeta}>
-                {filaAprovacoes.length} pendentes{slaHorasAprovacao ? ` · SLA médio ${slaHorasAprovacao}h` : ""}
-                {atrasadasAprovacao > 0 ? ` · ${atrasadasAprovacao} atrasada${atrasadasAprovacao > 1 ? "s" : ""}` : ""}
-              </span>
-            </div>
-            <div className={styles.tableWrap}>
-              {filaAprovacoes.length === 0 ? (
-                <div className={styles.empty}>Nenhuma reserva aguardando aprovação.</div>
-              ) : (
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>Solicitação</th>
-                      <th>Setor</th>
-                      <th>Janela</th>
-                      <th>Plataforma</th>
-                      <th>Risco</th>
-                      <th>Aguardando</th>
-                      <th />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filaAprovacoes.map((r) => (
-                      <tr key={r.id}>
-                        <td>
-                          <span className={styles.tableCodigo}>{codigoSolicitacao(r.id)}</span>
-                          <span className={styles.tableSub}>{nomeCurto(r.solicitanteNome)}</span>
-                        </td>
-                        <td>{r.setorNome}</td>
-                        <td className={styles.tableMono}>
-                          {formatarDataCurta(r.data)} · {r.horaInicio}–{r.horaFim}
-                        </td>
-                        <td>{plataformasPorId.get(r.plataformaId)?.codigo ?? r.plataformaNome}</td>
-                        <td>
-                          {requerChecklist(r.plataformaCategoria) ? (
-                            <span className={styles.riskBadge}>{CATEGORIA_NR[r.plataformaCategoria] ?? "NR"}</span>
-                          ) : (
-                            <span className={styles.tableSub}>—</span>
-                          )}
-                        </td>
-                        <td className={`${styles.tableMono} ${r.slaEstourado ? styles.tableHazard : ""}`}>
-                          {formatarAguardando(r.criadoEm)}
-                        </td>
-                        <td>
-                          <div className={styles.tableActions}>
-                            <Link href="/reservas/aprovacoes" className={styles.btnGhostSm}>
-                              Rever
-                            </Link>
-                            <button
-                              type="button"
-                              className={styles.btnSolidSm}
-                              disabled={aprovandoId === r.id}
-                              onClick={() => aprovarReserva(r.id)}
-                            >
-                              Aprovar
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </div>
-        ) : (
-          <div className={`${styles.panel} ${styles.colSpan8}`}>
-            <div className={styles.panelHeader}>
-              <div>
-                <div className={styles.panelEyebrow}>Agenda</div>
-                <h2 className={styles.panelTitle}>Minhas próximas reservas</h2>
-              </div>
-            </div>
-            <div className={styles.panelBody}>
-              {minhasProximas.length === 0 ? (
-                <div className={styles.empty}>Você não tem reservas nos próximos dias.</div>
-              ) : (
-                <div className={styles.agendaList}>
-                  {minhasProximas.map((r) => (
-                    <div key={r.id} className={styles.agendaRow}>
-                      <span className={styles.agendaTime}>
-                        {formatarDataCurta(r.data)} {r.horaInicio}
-                      </span>
-                      <div className={styles.agendaInfo}>
-                        <span className={styles.agendaTitle}>{r.plataformaNome}</span>
-                        <span className={styles.agendaMeta}>{r.motivo}</span>
-                      </div>
-                      <StatusPill item={r} checklistPendenteIds={checklistPendenteIds} />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        <div className={`${styles.panel} ${styles.colSpan4} ${styles.alertPanel}`}>
+        <div className={`${styles.panel} ${styles.alertPanel}`}>
           {proximoChecklist ? (
             <>
               <div className={styles.alertHeader}>
@@ -841,46 +884,9 @@ export function DashboardClient({ usuarioId, usuarioNome, perfil, setorNome }: D
             </div>
           )}
         </div>
-      </div>
 
-      {ehAprovador && (
-        <div className={styles.grid12}>
-          <div className={`${styles.panel} ${styles.colSpan7}`}>
-            <div className={styles.panelHeader}>
-              <div>
-                <div className={styles.panelEyebrow}>Últimos 6 meses</div>
-                <h2 className={styles.panelTitle}>Reservas x Concluídas</h2>
-              </div>
-            </div>
-            <div className={styles.panelBody}>
-              {trendData.length === 0 ? (
-                <div className={styles.empty}>Sem dados de tendência no período.</div>
-              ) : (
-                <ResponsiveContainer width="100%" height={288}>
-                  <AreaChart data={trendData} margin={{ top: 10, right: 20, left: 0, bottom: 10 }}>
-                    <defs>
-                      <linearGradient id="gReservas" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor={COR_RESERVAS} stopOpacity={0.35} />
-                        <stop offset="100%" stopColor={COR_RESERVAS} stopOpacity={0} />
-                      </linearGradient>
-                      <linearGradient id="gConcluidas" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor={COR_CONCLUIDAS} stopOpacity={0.25} />
-                        <stop offset="100%" stopColor={COR_CONCLUIDAS} stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="2 4" stroke={COR_GRADE} vertical={false} />
-                    <XAxis dataKey="mes" stroke={COR_EIXO} tickLine={false} axisLine={false} fontSize={11} />
-                    <YAxis stroke={COR_EIXO} tickLine={false} axisLine={false} fontSize={11} width={30} allowDecimals={false} />
-                    <Tooltip contentStyle={{ background: COR_TOOLTIP_BG, border: "none", borderRadius: 2, color: "#fff", fontSize: 12 }} />
-                    <Area type="monotone" dataKey="reservas" name="Reservas" stroke={COR_RESERVAS} strokeWidth={2} fill="url(#gReservas)" />
-                    <Area type="monotone" dataKey="concluidas" name="Concluídas" stroke={COR_CONCLUIDAS} strokeWidth={2} fill="url(#gConcluidas)" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              )}
-            </div>
-          </div>
-
-          <div className={`${styles.panel} ${styles.colSpan5}`}>
+        {ehAprovador && (
+          <div className={styles.panel}>
             <div className={styles.panelHeader}>
               <div>
                 <div className={styles.panelEyebrow}>Frota · 30 dias</div>
@@ -916,8 +922,9 @@ export function DashboardClient({ usuarioId, usuarioNome, perfil, setorNome }: D
               </div>
             )}
           </div>
+        )}
         </div>
-      )}
+      </div>
 
       {perfil === "admin" && (
         <div className={styles.panel}>

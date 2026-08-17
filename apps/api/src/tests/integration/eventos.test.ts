@@ -181,6 +181,7 @@ describe("SSE — GET /api/v1/eventos (S10, SDD §3.4)", () => {
             data: "2026-10-05",
             horaInicio: "09:00",
             horaFim: "10:00",
+            quantidadePessoas: 1,
             motivo: "Reserva de teste do canal SSE — S10",
           },
         });

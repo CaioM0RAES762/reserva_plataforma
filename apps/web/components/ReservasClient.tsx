@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { CalendarPlus, Clock, Filter, MapPin, Search, TriangleAlert } from "lucide-react";
+import { CalendarPlus, Clock, MapPin, Search, TriangleAlert } from "lucide-react";
 import styles from "../app/(app)/reservas/page.module.css";
 import { apiFetch, mensagemDeErro } from "../lib/api";
 import { useDebounce } from "../lib/useDebounce";
@@ -19,6 +19,10 @@ interface ReservasClientProps {
   setorNome: string | null;
   perfil: "admin" | "gestor_setor" | "colaborador";
   setorId: string | null;
+  // Corrigir/melhorar Reservas: comparado ao `solicitanteId` de cada linha para
+  // destacar "minhas reservas" — sempre por id, nunca por nome (dois usuários podem
+  // ter nomes parecidos/iguais).
+  usuarioId: string;
 }
 
 const POR_PAGINA = 50;
@@ -33,6 +37,67 @@ const FILTROS_RAPIDOS: Array<{ chave: string; label: string }> = [
   { chave: "concluida", label: "Concluídas" },
   { chave: "cancelada", label: "Canceladas" },
 ];
+
+// Corrigir/melhorar Reservas: filtro de período substitui o antigo campo único "Data
+// específica" — a tela agora sempre opera sobre um intervalo real (dateFrom/dateTo, já
+// suportado por GET /reservas), nunca "todas as datas de uma vez", que é o que fazia
+// reservas de 2027 aparecerem misturadas com as da semana atual.
+type AtalhoPeriodo = "hoje" | "semana" | "7dias" | "30dias" | "personalizado";
+
+const ATALHOS_PERIODO: Array<{ chave: AtalhoPeriodo; label: string }> = [
+  { chave: "hoje", label: "Hoje" },
+  { chave: "semana", label: "Esta semana" },
+  { chave: "7dias", label: "Próximos 7 dias" },
+  { chave: "30dias", label: "Próximos 30 dias" },
+  { chave: "personalizado", label: "Personalizado" },
+];
+
+function paraISO(data: Date): string {
+  const ano = data.getFullYear();
+  const mes = String(data.getMonth() + 1).padStart(2, "0");
+  const dia = String(data.getDate()).padStart(2, "0");
+  return `${ano}-${mes}-${dia}`;
+}
+
+function somarDias(iso: string, dias: number): string {
+  const [ano, mes, dia] = iso.split("-").map(Number);
+  const data = new Date(ano, mes - 1, dia + dias);
+  return paraISO(data);
+}
+
+// Segunda a domingo — semana "de trabalho" do calendário brasileiro, mesmo critério
+// usado pelo Calendário (CalendarioClient) para a semana exibida.
+function inicioDaSemana(data: Date): string {
+  const diaSemana = data.getDay() || 7; // domingo (0) -> 7, para segunda ser sempre o piso
+  const segunda = new Date(data);
+  segunda.setDate(data.getDate() - (diaSemana - 1));
+  return paraISO(segunda);
+}
+
+function fimDaSemana(data: Date): string {
+  return somarDias(inicioDaSemana(data), 6);
+}
+
+function intervaloParaAtalho(atalho: AtalhoPeriodo, base: Date = new Date()): { inicio: string; fim: string } {
+  const hoje = paraISO(base);
+  switch (atalho) {
+    case "hoje":
+      return { inicio: hoje, fim: hoje };
+    case "semana":
+      return { inicio: inicioDaSemana(base), fim: fimDaSemana(base) };
+    case "7dias":
+      return { inicio: hoje, fim: somarDias(hoje, 6) };
+    case "30dias":
+      return { inicio: hoje, fim: somarDias(hoje, 29) };
+    case "personalizado":
+      return { inicio: hoje, fim: hoje };
+  }
+}
+
+function formatarDataCurta(iso: string): string {
+  const [, mes, dia] = iso.split("-");
+  return `${dia}/${mes}`;
+}
 
 function formatarDataCompleta(data: string): string {
   const [ano, mes, dia] = data.split("-").map(Number);
@@ -83,11 +148,13 @@ function codigoReserva(id: string): string {
   return `RS-${id.replace(/-/g, "").slice(0, 4).toUpperCase()}`;
 }
 
-export function ReservasClient({ solicitanteNome, setorNome, perfil, setorId }: ReservasClientProps) {
-  // Atalhos do Dashboard chegam aqui como ?status=agendada / ?data=AAAA-MM-DD (SDD §10 —
-  // "atalho para checklist pendente" etc.); lidos só na montagem, o usuário continua livre
-  // para trocar os filtros normalmente depois.
+export function ReservasClient({ solicitanteNome, setorNome, perfil, setorId, usuarioId }: ReservasClientProps) {
+  // Atalhos do Dashboard/Calendário chegam aqui como ?status=agendada / ?data=AAAA-MM-DD;
+  // lidos só na montagem, o usuário continua livre para trocar os filtros normalmente
+  // depois. `?data=` vira um período "Personalizado" de um dia só, em vez de perder o
+  // deep link agora que não existe mais um campo de data única.
   const searchParams = useSearchParams();
+  const dataDeepLink = searchParams.get("data");
   const [reservas, setReservas] = useState<Reserva[]>([]);
   const [total, setTotal] = useState(0);
   const [pagina, setPagina] = useState(0);
@@ -95,11 +162,26 @@ export function ReservasClient({ solicitanteNome, setorNome, perfil, setorId }: 
   const [erro, setErro] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
   const [statusFiltro, setStatusFiltro] = useState(() => searchParams.get("status") ?? "");
-  const [dataFiltro, setDataFiltro] = useState(() => searchParams.get("data") ?? "");
-  const [maisFiltrosAberto, setMaisFiltrosAberto] = useState(() => Boolean(searchParams.get("data")));
+  // Padrão: "esta semana" — antes a tela carregava sem filtro de período nenhum, então
+  // reservas de qualquer data (inclusive anos à frente) apareciam misturadas com as da
+  // semana atual, ordenadas por criação. Agora sempre existe um intervalo real.
+  const [atalhoPeriodo, setAtalhoPeriodo] = useState<AtalhoPeriodo>(() => (dataDeepLink ? "personalizado" : "semana"));
+  const [dataInicioFiltro, setDataInicioFiltro] = useState(
+    () => dataDeepLink ?? intervaloParaAtalho("semana").inicio
+  );
+  const [dataFimFiltro, setDataFimFiltro] = useState(() => dataDeepLink ?? intervaloParaAtalho("semana").fim);
   const [modalAberto, setModalAberto] = useState(false);
   const [reservaSelecionada, setReservaSelecionada] = useState<Reserva | null>(null);
   const [valoresIniciais, setValoresIniciais] = useState<ReservaValoresIniciais | undefined>(undefined);
+
+  function selecionarAtalho(atalho: AtalhoPeriodo) {
+    setAtalhoPeriodo(atalho);
+    if (atalho !== "personalizado") {
+      const { inicio, fim } = intervaloParaAtalho(atalho);
+      setDataInicioFiltro(inicio);
+      setDataFimFiltro(fim);
+    }
+  }
 
   // Só o texto digitado é adiado; escolher um filtro recarrega na hora.
   const buscaComAtraso = useDebounce(busca);
@@ -118,7 +200,11 @@ export function ReservasClient({ solicitanteNome, setorNome, perfil, setorId }: 
       const params = new URLSearchParams();
       if (buscaComAtraso) params.set("q", buscaComAtraso);
       if (statusFiltro) params.set("status", statusFiltro);
-      if (dataFiltro) params.set("data", dataFiltro);
+      // dateFrom/dateTo (não mais um único "data"): o backend já filtra por intervalo
+      // real (WHERE r.data >= @date_from AND r.data <= @date_to), a mesma rota que o
+      // Calendário já usa — não carregamos tudo para filtrar no cliente.
+      if (dataInicioFiltro) params.set("dateFrom", dataInicioFiltro);
+      if (dataFimFiltro) params.set("dateTo", dataFimFiltro);
       params.set("limit", String(POR_PAGINA));
       params.set("offset", String(pagina * POR_PAGINA));
 
@@ -138,7 +224,7 @@ export function ReservasClient({ solicitanteNome, setorNome, perfil, setorId }: 
     } finally {
       if (!controller.signal.aborted) setCarregando(false);
     }
-  }, [buscaComAtraso, statusFiltro, dataFiltro, pagina]);
+  }, [buscaComAtraso, statusFiltro, dataInicioFiltro, dataFimFiltro, pagina]);
 
   useEffect(() => {
     carregar();
@@ -150,7 +236,7 @@ export function ReservasClient({ solicitanteNome, setorNome, perfil, setorId }: 
   // resultado que agora tem 1 página só exibiria uma tabela vazia.
   useEffect(() => {
     setPagina(0);
-  }, [buscaComAtraso, statusFiltro, dataFiltro]);
+  }, [buscaComAtraso, statusFiltro, dataInicioFiltro, dataFimFiltro]);
 
   // Atualização em tempo real pelo canal SSE já existente: uma reserva aprovada por outro
   // usuário aparecia aqui só depois de recarregar a página na mão.
@@ -160,7 +246,8 @@ export function ReservasClient({ solicitanteNome, setorNome, perfil, setorId }: 
     },
   });
 
-  // Agrupamento por dia, preservando a ordem em que o backend devolveu (data DESC).
+  // Agrupamento por dia, preservando a ordem cronológica em que o backend devolveu
+  // (data/hora_inicio ASC) — só dentro do período selecionado.
   const grupos = useMemo(() => {
     const porData = new Map<string, Reserva[]>();
     for (const reserva of reservas) {
@@ -192,10 +279,17 @@ export function ReservasClient({ solicitanteNome, setorNome, perfil, setorId }: 
     await carregar();
   }
 
-  const temFiltroAtivo = Boolean(busca || statusFiltro || dataFiltro);
+  // "Filtro ativo" aqui se refere só a busca/status — período é sempre um filtro ativo
+  // agora (nunca "todas as datas"), então não entra nesta checagem de "algo pra limpar".
+  const temFiltroSecundarioAtivo = Boolean(busca || statusFiltro);
 
   function abrirDetalhe(reserva: Reserva) {
     setReservaSelecionada(reserva);
+  }
+
+  function abrirNovaReserva() {
+    setValoresIniciais(undefined);
+    setModalAberto(true);
   }
 
   return (
@@ -205,18 +299,55 @@ export function ReservasClient({ solicitanteNome, setorNome, perfil, setorId }: 
           <h1 className={styles.pageTitulo}>Reservas</h1>
           <p className={styles.pageSubtitulo}>Agende e acompanhe o uso de plataformas, salas e equipamentos.</p>
         </div>
-        <button
-          type="button"
-          className={styles.btnNovaReserva}
-          onClick={() => {
-            setValoresIniciais(undefined);
-            setModalAberto(true);
-          }}
-        >
+        <button type="button" className={styles.btnNovaReserva} onClick={abrirNovaReserva}>
           <CalendarPlus size={16} strokeWidth={2} aria-hidden="true" />
           Nova reserva
         </button>
       </header>
+
+      <div className={styles.periodoBarra} role="group" aria-label="Filtrar por período">
+        <div className={styles.chips}>
+          {ATALHOS_PERIODO.map((atalho) => (
+            <button
+              key={atalho.chave}
+              type="button"
+              className={`${styles.chip} ${atalhoPeriodo === atalho.chave ? styles.chipAtivo : ""}`}
+              onClick={() => selecionarAtalho(atalho.chave)}
+              aria-pressed={atalhoPeriodo === atalho.chave}
+            >
+              {atalho.label}
+            </button>
+          ))}
+        </div>
+        {atalhoPeriodo === "personalizado" ? (
+          <div className={styles.periodoCustom}>
+            <div className={styles.campoData}>
+              <label htmlFor="reservas-data-inicio">Data inicial</label>
+              <input
+                id="reservas-data-inicio"
+                type="date"
+                value={dataInicioFiltro}
+                max={dataFimFiltro || undefined}
+                onChange={(e) => setDataInicioFiltro(e.target.value)}
+              />
+            </div>
+            <div className={styles.campoData}>
+              <label htmlFor="reservas-data-fim">Data final</label>
+              <input
+                id="reservas-data-fim"
+                type="date"
+                value={dataFimFiltro}
+                min={dataInicioFiltro || undefined}
+                onChange={(e) => setDataFimFiltro(e.target.value)}
+              />
+            </div>
+          </div>
+        ) : (
+          <span className={styles.periodoResumo}>
+            {formatarDataCurta(dataInicioFiltro)} – {formatarDataCurta(dataFimFiltro)}
+          </span>
+        )}
+      </div>
 
       <div className={styles.barraFiltros}>
         <div className={styles.campoBusca}>
@@ -245,48 +376,20 @@ export function ReservasClient({ solicitanteNome, setorNome, perfil, setorId }: 
               {filtro.label}
             </button>
           ))}
-          <button
-            type="button"
-            className={`${styles.chip} ${styles.chipMaisFiltros} ${dataFiltro ? styles.chipAtivo : ""}`}
-            onClick={() => setMaisFiltrosAberto((aberto) => !aberto)}
-            aria-expanded={maisFiltrosAberto}
-            aria-controls="reservas-mais-filtros"
-          >
-            <Filter size={13} strokeWidth={1.75} aria-hidden="true" />
-            Mais filtros
-            <span className={styles.chipChevron} aria-hidden="true">
-              {maisFiltrosAberto ? "▴" : "▾"}
-            </span>
-          </button>
-        </div>
-      </div>
-
-      {maisFiltrosAberto && (
-        <div className={styles.painelMaisFiltros} id="reservas-mais-filtros">
-          <div className={styles.campoData}>
-            <label htmlFor="reservas-data">Data específica</label>
-            <input
-              id="reservas-data"
-              type="date"
-              value={dataFiltro}
-              onChange={(e) => setDataFiltro(e.target.value)}
-            />
-          </div>
-          {temFiltroAtivo && (
+          {temFiltroSecundarioAtivo && (
             <button
               type="button"
               className={styles.btnLimpar}
               onClick={() => {
                 setBusca("");
                 setStatusFiltro("");
-                setDataFiltro("");
               }}
             >
               Limpar filtros
             </button>
           )}
         </div>
-      )}
+      </div>
 
       {/* Contagem em aria-live: o resultado muda sozinho conforme os filtros, e quem usa
           leitor de tela não tem como perceber a tabela encolhendo. */}
@@ -317,27 +420,26 @@ export function ReservasClient({ solicitanteNome, setorNome, perfil, setorId }: 
         </div>
       ) : reservas.length === 0 ? (
         <div className={styles.vazio}>
-          <p className={styles.vazioTitulo}>
-            {temFiltroAtivo ? "Nenhuma reserva corresponde aos filtros" : "Nenhuma reserva por aqui ainda"}
-          </p>
-          <p className={styles.vazioTexto}>
-            {temFiltroAtivo
-              ? "Ajuste a busca ou volte para “Todas” para ver a agenda completa."
-              : "Use “Nova reserva” para agendar o primeiro uso de uma plataforma."}
-          </p>
-          {temFiltroAtivo && (
-            <button
-              type="button"
-              className={styles.btnLimpar}
-              onClick={() => {
-                setBusca("");
-                setStatusFiltro("");
-                setDataFiltro("");
-              }}
-            >
-              Limpar filtros
+          <p className={styles.vazioTitulo}>Nenhuma reserva encontrada neste período.</p>
+          <p className={styles.vazioTexto}>Tente alterar o período ou os filtros.</p>
+          <div className={styles.vazioAcoes}>
+            {temFiltroSecundarioAtivo && (
+              <button
+                type="button"
+                className={styles.btnLimpar}
+                onClick={() => {
+                  setBusca("");
+                  setStatusFiltro("");
+                }}
+              >
+                Limpar filtros
+              </button>
+            )}
+            <button type="button" className={styles.btnNovaReserva} onClick={abrirNovaReserva}>
+              <CalendarPlus size={16} strokeWidth={2} aria-hidden="true" />
+              Nova reserva
             </button>
-          )}
+          </div>
         </div>
       ) : (
         grupos.map(([data, itens]) => (
@@ -360,16 +462,20 @@ export function ReservasClient({ solicitanteNome, setorNome, perfil, setorId }: 
                   </tr>
                 </thead>
                 <tbody>
-                  {itens.map((r) => (
+                  {itens.map((r) => {
+                    // Comparação por id, nunca por nome (RN explícita desta correção —
+                    // dois usuários podem ter nomes iguais/parecidos).
+                    const minhaReserva = r.solicitanteId === usuarioId;
+                    return (
                     // A linha inteira abre o detalhe. Como <tr> não é focável por padrão,
                     // recebe role/tabIndex e responde a Enter/Espaço — antes, quem navega
                     // por teclado não conseguia abrir nenhuma reserva.
                     <tr
                       key={r.id}
-                      className={styles.linha}
+                      className={`${styles.linha} ${minhaReserva ? styles.linhaMinha : ""}`}
                       tabIndex={0}
                       role="button"
-                      aria-label={`Abrir reserva ${codigoReserva(r.id)} — ${r.plataformaNome}, ${r.horaInicio} às ${r.horaFim}`}
+                      aria-label={`Abrir reserva ${codigoReserva(r.id)} — ${r.plataformaNome}, ${r.horaInicio} às ${r.horaFim}${minhaReserva ? " (minha reserva)" : ""}`}
                       onClick={() => abrirDetalhe(r)}
                       onKeyDown={(evento) => {
                         if (evento.key === "Enter" || evento.key === " ") {
@@ -386,6 +492,7 @@ export function ReservasClient({ solicitanteNome, setorNome, perfil, setorId }: 
                           <span className={styles.responsavelTexto}>
                             <span className={styles.responsavelNome}>
                               {r.solicitanteNome}
+                              {minhaReserva && <span className={styles.seloMinha}>Minha reserva</span>}
                               {r.prioridade === "urgente" && (
                                 <span className={styles.seloUrgente}>
                                   <TriangleAlert size={11} strokeWidth={2.25} aria-hidden="true" />
@@ -420,7 +527,8 @@ export function ReservasClient({ solicitanteNome, setorNome, perfil, setorId }: 
                         <ReservaStatusBadge status={r.status} />
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

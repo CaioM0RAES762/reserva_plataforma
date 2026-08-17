@@ -8,7 +8,17 @@ const EMAIL_COLABORADOR_TI = "teste.reservas.ti@metalsider.com.br";
 const EMAIL_COLABORADOR_MANUTENCAO = "teste.reservas.manutencao@metalsider.com.br";
 const SENHA = "SenhaForte123";
 const CODIGO_PLATAFORMA = "PLT-S3-TESTE";
-const DATA_RESERVA = "2026-08-10";
+// Relativa a "agora", não hardcoded: mesmo padrão do ADR-04 de S14 (ver dataDaqui em
+// refinamento.test.ts) — a data fixa "2026-08-10" usada antes já virou passado com a
+// passagem do tempo real, o que faria toda reserva desta suíte ser rejeitada por
+// antecedência mínima (RN-RES-03), sem relação nenhuma com o que o teste verifica.
+// Deslocamento aleatório evita colidir com reservas deixadas por execuções anteriores.
+function dataDaqui(dias: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + dias);
+  return d.toISOString().slice(0, 10);
+}
+const DATA_RESERVA = dataDaqui(400 + Math.floor(Math.random() * 300));
 
 let app: FastifyInstance;
 let setorTiId: string;
@@ -130,6 +140,14 @@ afterAll(async () => {
     .query(
       `DELETE FROM LogAuditoria WHERE usuario_id IN ('${colaboradorTiId}', '${colaboradorManutencaoId}')`
     );
+  // FK_Notificacao_Usuario: os testes de capacidade/período abaixo aprovam reservas
+  // (para não empilhar "pendente" e esbarrar em RN-RES-05), e aprovar gera uma
+  // Notificacao para o solicitante — sem esta limpeza, o DELETE de Usuario falhava.
+  await pool
+    .request()
+    .query(
+      `DELETE FROM Notificacao WHERE usuario_id IN ('${colaboradorTiId}', '${colaboradorManutencaoId}')`
+    );
   await pool
     .request()
     .query(`DELETE FROM Usuario WHERE id IN ('${colaboradorTiId}', '${colaboradorManutencaoId}')`);
@@ -148,6 +166,7 @@ describe("Reservas (S3) — criação, conflito e escopo por setor", () => {
         data: DATA_RESERVA,
         horaInicio: "08:00",
         horaFim: "10:00",
+        quantidadePessoas: 1,
         motivo: "Manutenção preventiva do equipamento",
         prioridade: "normal",
       },
@@ -180,6 +199,7 @@ describe("Reservas (S3) — criação, conflito e escopo por setor", () => {
         data: DATA_RESERVA,
         horaInicio: "11:00",
         horaFim: "12:00",
+        quantidadePessoas: 1,
         motivo: "Teste sem setor",
       },
     });
@@ -208,6 +228,7 @@ describe("Reservas (S3) — criação, conflito e escopo por setor", () => {
         data: DATA_RESERVA,
         horaInicio: "09:00",
         horaFim: "11:00",
+        quantidadePessoas: 1,
         motivo: "Reserva conflitante — não deveria ser criada",
       },
     });
@@ -225,6 +246,7 @@ describe("Reservas (S3) — criação, conflito e escopo por setor", () => {
         data: DATA_RESERVA,
         horaInicio: "10:00",
         horaFim: "11:30",
+        quantidadePessoas: 1,
         motivo: "Reserva adjacente, sem sobreposição real",
       },
     });
@@ -270,6 +292,7 @@ describe("Reservas (S14) — Admin solicita reserva escolhendo o setor de destin
         data: DATA_RESERVA,
         horaInicio: "14:00",
         horaFim: "15:00",
+        quantidadePessoas: 1,
         motivo: "Reserva de Admin sem setor informado",
       },
     });
@@ -287,6 +310,7 @@ describe("Reservas (S14) — Admin solicita reserva escolhendo o setor de destin
         data: DATA_RESERVA,
         horaInicio: "15:00",
         horaFim: "16:00",
+        quantidadePessoas: 1,
         motivo: "Reserva de Admin para o setor TI",
         setorId: setorTiId,
       },
@@ -305,11 +329,235 @@ describe("Reservas (S14) — Admin solicita reserva escolhendo o setor de destin
         data: DATA_RESERVA,
         horaInicio: "16:00",
         horaFim: "17:00",
+        quantidadePessoas: 1,
         motivo: "Colaborador tentando forjar outro setor",
         setorId: setorManutencaoId,
       },
     });
     expect(response.statusCode).toBe(201);
     expect(response.json().setorId).toBe(setorTiId);
+  });
+});
+
+// Corrigir/melhorar Reservas: quantidade de pessoas validada contra a capacidade
+// oficial da plataforma, sempre lida do banco (nunca de um valor enviado pelo cliente).
+describe("Reservas — quantidade de pessoas x capacidade da plataforma", () => {
+  const CODIGO_PLATAFORMA_CAPACIDADE = "PLT-S3-CAPACIDADE";
+  let plataformaComCapacidadeId: string;
+  let plataformaSemCapacidadeId: string;
+
+  // Aprova a reserva logo após criar: sem isto, cada 201 deste bloco fica "pendente" e
+  // se acumula com os de outros describe() deste arquivo até estourar RN-RES-05
+  // (max_pendentes_por_setor, padrão 5) — um limite real do sistema, não um bug, mas
+  // que não tem nada a ver com o que estes testes verificam.
+  async function aprovar(id: string): Promise<void> {
+    const resposta = await app.inject({
+      method: "POST",
+      url: `/api/v1/reservas/${id}/aprovar`,
+      headers: { cookie: cookieAdmin },
+    });
+    expect(resposta.statusCode).toBe(200);
+  }
+
+  beforeAll(async () => {
+    const pool = await getPool();
+    await pool
+      .request()
+      .query(`DELETE FROM Plataforma WHERE codigo IN ('${CODIGO_PLATAFORMA_CAPACIDADE}', '${CODIGO_PLATAFORMA_CAPACIDADE}-2')`);
+    const comCapacidade = await pool
+      .request()
+      .input("codigo", sql.VarChar, CODIGO_PLATAFORMA_CAPACIDADE)
+      .input("nome", sql.NVarChar, "Plataforma com Capacidade Definida")
+      .input("capacidade", sql.Int, 4)
+      .query<{ id: string }>(
+        `INSERT INTO Plataforma (codigo, nome, capacidade) OUTPUT INSERTED.id VALUES (@codigo, @nome, @capacidade)`
+      );
+    plataformaComCapacidadeId = comCapacidade.recordset[0].id;
+
+    const semCapacidade = await pool
+      .request()
+      .input("codigo", sql.VarChar, `${CODIGO_PLATAFORMA_CAPACIDADE}-2`)
+      .input("nome", sql.NVarChar, "Plataforma sem Capacidade Cadastrada")
+      .query<{ id: string }>(
+        `INSERT INTO Plataforma (codigo, nome) OUTPUT INSERTED.id VALUES (@codigo, @nome)`
+      );
+    plataformaSemCapacidadeId = semCapacidade.recordset[0].id;
+  });
+
+  afterAll(async () => {
+    const pool = await getPool();
+    await pool
+      .request()
+      .query(
+        `DELETE FROM Reserva WHERE plataforma_id IN ('${plataformaComCapacidadeId}', '${plataformaSemCapacidadeId}')`
+      );
+    await pool
+      .request()
+      .query(`DELETE FROM Plataforma WHERE id IN ('${plataformaComCapacidadeId}', '${plataformaSemCapacidadeId}')`);
+  });
+
+  it("rejeita quantidade de pessoas acima da capacidade cadastrada (409)", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/reservas",
+      // Manutenção (não TI): as reservas de TI acumuladas pelos blocos anteriores deste
+      // arquivo já usam boa parte do limite de RN-RES-05 (max_pendentes_por_setor) —
+      // usar outro setor evita que este bloco esbarre nesse limite por acidente.
+      headers: { cookie: cookieColaboradorManutencao },
+      payload: {
+        plataformaId: plataformaComCapacidadeId,
+        data: DATA_RESERVA,
+        horaInicio: "08:00",
+        horaFim: "09:00",
+        quantidadePessoas: 5,
+        motivo: "Quantidade acima da capacidade — não deveria ser criada",
+      },
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json().erro).toMatch(/no máximo 4/i);
+  });
+
+  it("aceita quantidade de pessoas exatamente igual à capacidade cadastrada", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/reservas",
+      headers: { cookie: cookieColaboradorManutencao },
+      payload: {
+        plataformaId: plataformaComCapacidadeId,
+        data: DATA_RESERVA,
+        horaInicio: "09:00",
+        horaFim: "10:00",
+        quantidadePessoas: 4,
+        motivo: "Quantidade igual à capacidade — deve ser aceita",
+      },
+    });
+    expect(response.statusCode).toBe(201);
+    await aprovar(response.json().id);
+  });
+
+  it("não confia numa capacidade enviada pelo cliente — sempre busca a oficial no banco", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/reservas",
+      headers: { cookie: cookieColaboradorManutencao },
+      payload: {
+        plataformaId: plataformaComCapacidadeId,
+        data: DATA_RESERVA,
+        horaInicio: "10:00",
+        horaFim: "11:00",
+        quantidadePessoas: 10,
+        // Um valor de capacidade forjado no corpo da requisição não é um campo aceito
+        // pelo schema (capacidadeMaxima nem existe em criarReservaSchema) — mesmo que
+        // existisse, a rota nunca o leria; a capacidade vem exclusivamente do SELECT em
+        // Plataforma. Este teste documenta essa garantia.
+        capacidadeMaxima: 999,
+        motivo: "Tentativa de forjar capacidade via corpo da requisição",
+      },
+    });
+    expect(response.statusCode).toBe(409);
+  });
+
+  it("plataforma sem capacidade cadastrada não bloqueia a reserva por um teto inventado", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/reservas",
+      headers: { cookie: cookieColaboradorManutencao },
+      payload: {
+        plataformaId: plataformaSemCapacidadeId,
+        data: DATA_RESERVA,
+        horaInicio: "11:00",
+        horaFim: "12:00",
+        quantidadePessoas: 500,
+        motivo: "Sem capacidade cadastrada — não deve ser bloqueada arbitrariamente",
+      },
+    });
+    expect(response.statusCode).toBe(201);
+    await aprovar(response.json().id);
+  });
+
+  it("rejeita quantidade de pessoas menor que 1 (validação de schema)", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/reservas",
+      headers: { cookie: cookieColaboradorManutencao },
+      payload: {
+        plataformaId: plataformaComCapacidadeId,
+        data: DATA_RESERVA,
+        horaInicio: "12:00",
+        horaFim: "13:00",
+        quantidadePessoas: 0,
+        motivo: "Quantidade zero — deve ser rejeitada",
+      },
+    });
+    expect(response.statusCode).toBe(422);
+  });
+});
+
+// Corrigir/melhorar Reservas: a listagem sempre filtra por intervalo real (dateFrom/
+// dateTo) — antes a tela de Reservas carregava tudo sem filtro de período, o que fazia
+// reservas de anos à frente aparecerem misturadas com as da semana atual.
+describe("Reservas — filtro de período (dateFrom/dateTo) e ordenação cronológica", () => {
+  const CODIGO_PLATAFORMA_PERIODO = "PLT-S3-PERIODO";
+  let plataformaPeriodoId: string;
+  const dataDentro1 = dataDaqui(500);
+  const dataDentro2 = dataDaqui(505);
+  const dataForaAntes = dataDaqui(490);
+  const dataForaDepois = dataDaqui(520);
+
+  beforeAll(async () => {
+    const pool = await getPool();
+    await pool.request().query(`DELETE FROM Plataforma WHERE codigo = '${CODIGO_PLATAFORMA_PERIODO}'`);
+    const plataforma = await pool
+      .request()
+      .input("codigo", sql.VarChar, CODIGO_PLATAFORMA_PERIODO)
+      .input("nome", sql.NVarChar, "Plataforma de Teste — Período")
+      .query<{ id: string }>(`INSERT INTO Plataforma (codigo, nome) OUTPUT INSERTED.id VALUES (@codigo, @nome)`);
+    plataformaPeriodoId = plataforma.recordset[0].id;
+
+    async function criar(data: string, horaInicio: string, horaFim: string, motivo: string) {
+      const resposta = await app.inject({
+        method: "POST",
+        url: "/api/v1/reservas",
+        headers: { cookie: cookieColaboradorManutencao },
+        payload: { plataformaId: plataformaPeriodoId, data, horaInicio, horaFim, quantidadePessoas: 1, motivo },
+      });
+      expect(resposta.statusCode).toBe(201);
+      // Aprova logo em seguida para não empilhar "pendente" e esbarrar em RN-RES-05
+      // (max_pendentes_por_setor) — mesmo motivo do describe() de capacidade acima.
+      const aprovacao = await app.inject({
+        method: "POST",
+        url: `/api/v1/reservas/${resposta.json().id}/aprovar`,
+        headers: { cookie: cookieAdmin },
+      });
+      expect(aprovacao.statusCode).toBe(200);
+    }
+    // Fora do intervalo testado (antes) — não deve aparecer no resultado filtrado.
+    await criar(dataForaAntes, "08:00", "09:00", "Fora do período — antes");
+    // Dentro do intervalo, em ordem propositalmente “errada” de criação — a resposta
+    // filtrada precisa vir ordenada cronologicamente, não por ordem de inserção.
+    await criar(dataDentro2, "08:00", "09:00", "Dentro do período — segunda data");
+    await criar(dataDentro1, "08:00", "09:00", "Dentro do período — primeira data");
+    // Fora do intervalo testado (depois).
+    await criar(dataForaDepois, "08:00", "09:00", "Fora do período — depois");
+  });
+
+  afterAll(async () => {
+    const pool = await getPool();
+    await pool.request().query(`DELETE FROM Reserva WHERE plataforma_id = '${plataformaPeriodoId}'`);
+    await pool.request().query(`DELETE FROM Plataforma WHERE id = '${plataformaPeriodoId}'`);
+  });
+
+  it("retorna só as reservas dentro de [dateFrom, dateTo], em ordem cronológica", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/v1/reservas?dateFrom=${dataDentro1}&dateTo=${dataDentro2}`,
+      headers: { cookie: cookieAdmin },
+    });
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as Array<{ plataformaId: string; data: string; motivo: string }>;
+    const desteTeste = body.filter((r) => r.plataformaId === plataformaPeriodoId);
+    expect(desteTeste.map((r) => r.data)).toEqual([dataDentro1, dataDentro2]);
+    expect(desteTeste.some((r) => r.data === dataForaAntes)).toBe(false);
+    expect(desteTeste.some((r) => r.data === dataForaDepois)).toBe(false);
   });
 });

@@ -64,7 +64,7 @@ jobs:
       DB_TRUST_SERVER_CERTIFICATE: "true"
       REDIS_URL: redis://localhost:6379
       JWT_SECRET: ci-test-secret
-      SEED_ADMIN_EMAIL: admin@metalsider.com.br
+      SEED_ADMIN_EMAIL: caio.moraes@metalsider.com.br
       SEED_ADMIN_PASSWORD: CiAdminForte123
     steps:
       - uses: actions/checkout@v4

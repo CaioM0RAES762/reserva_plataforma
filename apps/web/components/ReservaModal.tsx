@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import { combinarDataHoraBrasilia, validarAntecedenciaMinima } from "@plataformares/shared";
 import styles from "../app/(app)/reservas/page.module.css";
 import { apiFetch, mensagemDeErro } from "../lib/api";
 import { useModalAcessivel } from "../lib/useModalAcessivel";
@@ -10,6 +11,7 @@ export interface ReservaFormValues {
   data: string;
   horaInicio: string;
   horaFim: string;
+  quantidadePessoas: number;
   motivo: string;
   prioridade: "normal" | "alta" | "urgente";
   recorrencia?: { quantidadeOcorrencias: number };
@@ -22,7 +24,15 @@ interface PlataformaOpcao {
   id: string;
   nome: string;
   status: string;
+  // null = capacidade ainda não cadastrada para esta plataforma (não confundir com 0).
+  capacidade: number | null;
 }
+
+// RN-RES-03: mesma regra do backend (validarJanelaReserva, apps/api) — usada aqui só
+// para feedback imediato no formulário. O backend permanece a fonte definitiva: mesmo
+// que este valor fique desatualizado em relação a uma mudança recente na configuração
+// do sistema, a criação da reserva é sempre revalidada no servidor.
+const ANTECEDENCIA_MINIMA_MINUTOS_PADRAO = 120;
 
 interface SetorOpcao {
   id: string;
@@ -68,6 +78,9 @@ export function ReservaModal({ solicitanteNome, setorNome, onClose, onSalvar, va
   const [data, setData] = useState(valoresIniciais?.data ?? hojeStr());
   const [horaInicio, setHoraInicio] = useState(valoresIniciais?.horaInicio ?? "");
   const [horaFim, setHoraFim] = useState(valoresIniciais?.horaFim ?? "");
+  // String (não number) para o campo poder ficar vazio enquanto o usuário apaga e
+  // redigita, sem o React forçar de volta para "1" a cada tecla.
+  const [quantidadePessoas, setQuantidadePessoas] = useState("1");
   const [motivo, setMotivo] = useState(valoresIniciais?.motivo ?? "");
   const [erro, setErro] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
@@ -127,7 +140,40 @@ export function ReservaModal({ solicitanteNome, setorNome, onClose, onSalvar, va
     return () => clearTimeout(timer);
   }, [plataformaId, data, horaInicio, horaFim]);
 
-  const bloqueado = horarioInvalido || conflitoMotivo !== null;
+  // RF/RN de capacidade: a plataforma selecionada informa o teto oficial (vindo do
+  // backend em /api/v1/plataformas) — nunca um valor calculado/hardcoded aqui.
+  const plataformaSelecionada = plataformas.find((p) => p.id === plataformaId) ?? null;
+  const capacidade = plataformaSelecionada?.capacidade ?? null;
+
+  const quantidadeNum = Number(quantidadePessoas);
+  const quantidadePreenchida = quantidadePessoas.trim() !== "";
+  const quantidadeValida = quantidadePreenchida && Number.isInteger(quantidadeNum) && quantidadeNum >= 1;
+  const excedeCapacidade = quantidadeValida && capacidade !== null && quantidadeNum > capacidade;
+  const erroQuantidade = !quantidadePreenchida
+    ? "Informe a quantidade de pessoas."
+    : !quantidadeValida
+      ? "Quantidade de pessoas deve ser um número inteiro de pelo menos 1."
+      : excedeCapacidade
+        ? `Esta plataforma comporta no máximo ${capacidade} pessoa(s).`
+        : null;
+
+  // RN-RES-03: mesmo cálculo do backend (packages/shared/datetime.ts), só para feedback
+  // imediato — recalculado a cada render, então acompanha o relógio enquanto o modal
+  // fica aberto.
+  const erroAntecedencia =
+    data && horaInicio
+      ? (() => {
+          const resultado = validarAntecedenciaMinima(
+            combinarDataHoraBrasilia(data, horaInicio),
+            new Date(),
+            ANTECEDENCIA_MINIMA_MINUTOS_PADRAO
+          );
+          return resultado.ok ? null : "Selecione um horário com pelo menos 2 horas de antecedência.";
+        })()
+      : null;
+
+  const bloqueado =
+    horarioInvalido || conflitoMotivo !== null || !!erroAntecedencia || !quantidadeValida || excedeCapacidade;
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -139,6 +185,14 @@ export function ReservaModal({ solicitanteNome, setorNome, onClose, onSalvar, va
     }
     if (exigeSelecaoDeSetor && !setorSelecionadoId) {
       setErro("Selecione o setor para o qual a reserva está sendo solicitada.");
+      return;
+    }
+    if (erroAntecedencia) {
+      setErro(erroAntecedencia);
+      return;
+    }
+    if (erroQuantidade) {
+      setErro(erroQuantidade);
       return;
     }
     if (bloqueado) {
@@ -153,6 +207,7 @@ export function ReservaModal({ solicitanteNome, setorNome, onClose, onSalvar, va
         data,
         horaInicio,
         horaFim,
+        quantidadePessoas: quantidadeNum,
         motivo: motivo.trim(),
         prioridade,
         recorrencia: repetirSemanalmente ? { quantidadeOcorrencias } : undefined,
@@ -256,8 +311,15 @@ export function ReservaModal({ solicitanteNome, setorNome, onClose, onSalvar, va
                   type="time"
                   value={horaInicio}
                   onChange={(e) => setHoraInicio(e.target.value)}
+                  aria-invalid={erroAntecedencia ? true : undefined}
+                  aria-describedby={erroAntecedencia ? "rf-start-erro" : undefined}
                   required
                 />
+                {erroAntecedencia && (
+                  <span id="rf-start-erro" className={styles.fieldError} role="alert">
+                    {erroAntecedencia}
+                  </span>
+                )}
               </div>
               <div className={styles.formGroup}>
                 <label htmlFor="rf-end">Horário Final *</label>
@@ -266,8 +328,45 @@ export function ReservaModal({ solicitanteNome, setorNome, onClose, onSalvar, va
                   type="time"
                   value={horaFim}
                   onChange={(e) => setHoraFim(e.target.value)}
+                  aria-invalid={horarioInvalido ? true : undefined}
+                  aria-describedby={horarioInvalido ? "rf-end-erro" : undefined}
                   required
                 />
+                {horarioInvalido && (
+                  <span id="rf-end-erro" className={styles.fieldError} role="alert">
+                    O horário final deve ser após o horário inicial.
+                  </span>
+                )}
+              </div>
+              <div className={styles.formGroup}>
+                <label htmlFor="rf-quantidade">Quantidade de Pessoas *</label>
+                <input
+                  id="rf-quantidade"
+                  type="number"
+                  min={1}
+                  step={1}
+                  inputMode="numeric"
+                  value={quantidadePessoas}
+                  onChange={(e) => setQuantidadePessoas(e.target.value)}
+                  aria-invalid={erroQuantidade ? true : undefined}
+                  aria-describedby={erroQuantidade ? "rf-quantidade-erro" : undefined}
+                  required
+                />
+                {erroQuantidade && (
+                  <span id="rf-quantidade-erro" className={styles.fieldError} role="alert">
+                    {erroQuantidade}
+                  </span>
+                )}
+              </div>
+              <div className={styles.formGroup}>
+                <label>Capacidade da Plataforma</label>
+                <p className={styles.capacidadeInfo}>
+                  {!plataformaSelecionada
+                    ? "Selecione uma plataforma para ver a capacidade."
+                    : capacidade === null
+                      ? "Capacidade não cadastrada"
+                      : `Capacidade máxima: ${capacidade} pessoa(s)`}
+                </p>
               </div>
               <div className={`${styles.formGroup} ${styles.formGroupFull}`}>
                 <label htmlFor="rf-motive">Motivo / Descrição *</label>
@@ -291,7 +390,7 @@ export function ReservaModal({ solicitanteNome, setorNome, onClose, onSalvar, va
                 </label>
                 {repetirSemanalmente && (
                   <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
-                    <label htmlFor="rf-ocorrencias" style={{ fontSize: "0.8rem" }}>
+                    <label htmlFor="rf-ocorrencias" style={{ fontSize: "var(--text-secondary)" }}>
                       Quantidade de ocorrências (2–12)
                     </label>
                     <input

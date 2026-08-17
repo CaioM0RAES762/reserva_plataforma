@@ -36,7 +36,8 @@
   --sector-rh: #BE185D;
   --sector-qualidade: #065F46;
 
-  --sidebar-width: 288px;
+  --sidebar-width-expanded: 288px;
+  --sidebar-width-collapsed: 72px;
   --topbar-h: 64px;
   --radius: 10px;
   --radius-sm: 6px;
@@ -75,11 +76,57 @@
   --ind-radius-sm: 2px;
   --ind-radius-md: 4px;
   --ind-radius-lg: 6px;
+
+  /* ============================================================
+     Escala tipográfica semântica — S15 (refinamento visual).
+     Consolida a personalidade do auth (Fraunces + Archivo, ver
+     app/(auth)/**) no restante do produto. Root fica em 15px, então os
+     valores abaixo estão em rem com o equivalente aproximado em px
+     comentado — não são números arbitrários por tela, são o vocabulário
+     de tamanho inteiro do app. Usar estes tokens em vez de valores soltos
+     (0.7rem, 0.78rem, 0.82rem...) é o que dá "consistência entre páginas".
+
+     Display (var(--font-display), Fraunces) — títulos e caráter editorial:
+       --text-hero          ~33–46px  saudação/hero do Dashboard
+       --text-page-title    ~29–38px  título principal de página ("Reservas" etc.)
+       --text-section-title ~23px     título de seção importante
+       --text-panel-title   ~19.5px   título de card/painel
+
+     Interface (var(--font-sans), Archivo) — leitura e dados:
+       --text-body-lg   ~15.8px  parágrafo/corpo de destaque (subtítulo de página)
+       --text-body      15px     corpo padrão de UI
+       --text-secondary ~14.1px  texto secundário ainda confortável de ler
+       --text-meta      ~13px    metadado (linha auxiliar sob um dado principal)
+       --text-eyebrow   12px     overline/eyebrow uppercase (peso 600)
+       --text-micro     ~11.5px  só para contadores/tags genuinamente decorativos
+     ============================================================ */
+  --text-hero: clamp(2.2rem, 3.4vw, 3.07rem);
+  --text-page-title: clamp(1.93rem, 2.6vw, 2.53rem);
+  --text-section-title: 1.53rem;
+  --text-panel-title: 1.3rem;
+
+  --text-body-lg: 1.05rem;
+  --text-body: 1rem;
+  --text-secondary: 0.94rem;
+  --text-meta: 0.87rem;
+  --text-eyebrow: 0.8rem;
+  --text-micro: 0.767rem;
+
+  --tracking-eyebrow: 0.12em;
+  --tracking-label: 0.05em;
+
+  /* Alturas de controle — botão/input padrão, compacto (ações em tabela) e de
+     formulário importante, alinhadas à sensação de toque do auth. */
+  --control-h-lg: 50px;
+  --control-h: 44px;
+  --control-h-compact: 34px;
 }
 
 /* --font-sans / --font-mono / --font-display são injetadas pelo next/font/google
    via className no <html> (ver app/layout.tsx) — não redefinir aqui para não
-   sobrescrever o font-family gerado (:root tem especificidade maior que html). */
+   sobrescrever o font-family gerado (:root tem especificidade maior que html). Hoje
+   --font-sans carrega Archivo e --font-display carrega Fraunces: a mesma dupla usada
+   no auth, unificando a identidade tipográfica do produto (ver app/layout.tsx). */
 html { font-size: 15px; }
 body {
   font-family: var(--font-sans, var(--font));
@@ -94,7 +141,7 @@ a { cursor: pointer; text-decoration: none; color: inherit; }
 button { cursor: pointer; font-family: inherit; }
 input, select, textarea {
   font-family: inherit;
-  font-size: 0.9rem;
+  font-size: var(--text-body);
   color: var(--text);
 }
 

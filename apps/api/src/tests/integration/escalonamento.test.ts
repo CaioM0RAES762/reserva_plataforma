@@ -37,6 +37,7 @@ async function criarReservaUrgente(horaInicio: string, horaFim: string): Promise
       data: DATA_RESERVA,
       horaInicio,
       horaFim,
+      quantidadePessoas: 1,
       motivo: "Teste S7 — escalonamento de SLA",
       prioridade: "urgente",
     },

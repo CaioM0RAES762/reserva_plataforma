@@ -13,16 +13,16 @@
 
 .title {
   font-family: var(--font-display);
-  font-weight: 400;
-  font-size: 1.05rem;
+  font-weight: 500;
+  font-size: var(--text-panel-title);
   color: var(--ink);
 }
 
 .statusBadge {
-  font-size: 0.64rem;
-  font-weight: 500;
+  font-size: var(--text-micro);
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-label);
   padding: 3px 9px;
   border-radius: var(--ind-radius-sm);
   border: 1px solid transparent;
@@ -53,9 +53,10 @@
 }
 
 .itemDescricao {
-  font-size: 0.82rem;
+  font-size: var(--text-body);
+  font-weight: 500;
   color: var(--ink);
-  line-height: 1.4;
+  line-height: 1.45;
 }
 
 .itemObrigatorio {
@@ -70,9 +71,9 @@
 }
 
 .toggleBtn {
-  font-size: 0.72rem;
+  font-size: var(--text-secondary);
   font-weight: 500;
-  padding: 5px 10px;
+  padding: 6px 12px;
   border-radius: var(--ind-radius-sm);
   border: 1px solid var(--hairline);
   background: var(--paper-elev);
@@ -103,8 +104,8 @@
 
 .observacao textarea {
   width: 100%;
-  font-size: 0.78rem;
-  padding: 7px 9px;
+  font-size: var(--text-secondary);
+  padding: 8px 10px;
   border: 1px solid var(--hairline);
   border-radius: var(--ind-radius-sm);
   background: var(--paper);
@@ -118,7 +119,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 0.75rem;
+  font-size: var(--text-meta);
   color: var(--ink-soft);
 }
 
@@ -137,7 +138,7 @@
 }
 
 .aviso {
-  font-size: 0.78rem;
+  font-size: var(--text-meta);
   color: var(--ink-muted);
   margin-top: 8px;
 }

@@ -8,12 +8,12 @@
 }
 .header h1 {
   font-family: var(--font-display);
-  font-weight: 400;
-  font-size: clamp(1.6rem, 2.4vw, 2rem);
-  letter-spacing: -0.01em;
+  font-weight: 500;
+  font-size: var(--text-page-title);
+  letter-spacing: -0.015em;
   color: var(--ink);
 }
-.header p { font-size: 0.85rem; color: var(--ink-muted); margin-top: 4px; }
+.header p { font-size: var(--text-body-lg); color: var(--ink-soft); margin-top: 6px; }
 
 .filterBar {
   display: flex;
@@ -26,22 +26,24 @@
 .search {
   flex: 1;
   min-width: 180px;
-  padding: 9px 12px;
+  min-height: var(--control-h);
+  padding: 0 14px;
   border: 1px solid var(--hairline);
   border-radius: var(--ind-radius-sm);
   background: var(--paper-elev);
-  font-size: 0.85rem;
+  font-size: var(--text-body);
   color: var(--ink);
 }
 .search::placeholder { color: var(--ink-muted); }
 .search:focus { outline: none; border-color: var(--ink-muted); }
 
 .filterBar select {
-  padding: 9px 10px;
+  min-height: var(--control-h);
+  padding: 0 12px;
   border: 1px solid var(--hairline);
   border-radius: var(--ind-radius-sm);
   background: var(--paper-elev);
-  font-size: 0.82rem;
+  font-size: var(--text-secondary);
   color: var(--ink-soft);
 }
 .filterBar select:focus { outline: none; border-color: var(--ink-muted); }
@@ -52,7 +54,7 @@
   padding: 10px 12px;
   border: 1px solid var(--hairline);
   border-radius: var(--ind-radius-sm);
-  font-size: 0.82rem;
+  font-size: var(--text-secondary);
   margin-bottom: 12px;
 }
 
@@ -64,14 +66,14 @@
   overflow-x: auto;
 }
 
-.table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.table { width: 100%; border-collapse: collapse; font-size: var(--text-secondary); }
 .table th {
   text-align: left;
-  padding: 10px 16px;
-  font-size: 0.62rem;
-  font-weight: 500;
+  padding: 11px 16px;
+  font-size: var(--text-eyebrow);
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.16em;
+  letter-spacing: var(--tracking-label);
   color: var(--ink-muted);
   border-bottom: 1px solid var(--hairline);
   white-space: nowrap;
@@ -79,20 +81,20 @@
 .table th:first-child, .table td:first-child { padding-left: 20px; }
 .table th:last-child, .table td:last-child { padding-right: 20px; }
 .table td {
-  padding: 12px 16px;
+  padding: 13px 16px;
   color: var(--ink-soft);
   border-bottom: 1px solid var(--hairline);
   vertical-align: middle;
 }
 .table tbody tr:last-child td { border-bottom: none; }
 .table tbody tr:hover { background: color-mix(in oklch, var(--ink) 4%, transparent); }
-.table td strong { color: var(--ink); font-weight: 500; }
+.table td strong { color: var(--ink); font-weight: 600; }
 
 .empty {
   text-align: center;
   padding: 32px;
   color: var(--ink-muted);
-  font-size: 0.83rem;
+  font-size: var(--text-secondary);
   background: var(--paper-elev);
   border: 1px solid var(--hairline);
   border-radius: var(--ind-radius-md);
@@ -139,7 +141,7 @@
   align-items: center;
   justify-content: center;
   color: var(--ink-muted);
-  font-size: 0.78rem;
+  font-size: var(--text-secondary);
   letter-spacing: 0.04em;
   background: repeating-linear-gradient(
     135deg,
@@ -171,21 +173,21 @@
 
 .cardEyebrow {
   font-family: var(--font-mono, monospace);
-  font-size: 0.7rem;
+  font-size: var(--text-micro);
   color: var(--ink-muted);
   letter-spacing: 0.06em;
 }
 
 .cardTitle {
   font-family: var(--font-display);
-  font-weight: 400;
-  font-size: 1.18rem;
+  font-weight: 500;
+  font-size: 1.35rem;
   color: var(--ink);
   margin: 0;
 }
 
 .cardSubtitle {
-  font-size: 0.8rem;
+  font-size: var(--text-secondary);
   color: var(--ink-muted);
   margin-top: -4px;
 }
@@ -201,14 +203,14 @@
 .cardMetaItem { display: flex; flex-direction: column; gap: 2px; }
 
 .cardMetaLabel {
-  font-size: 0.6rem;
-  font-weight: 500;
+  font-size: var(--text-eyebrow);
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: var(--tracking-eyebrow);
   color: var(--ink-muted);
 }
 
-.cardMetaValue { font-size: 0.85rem; color: var(--ink-soft); }
+.cardMetaValue { font-size: var(--text-secondary); font-weight: 500; color: var(--ink-soft); }
 
 .cardNormas {
   position: absolute;
@@ -219,9 +221,9 @@
 }
 
 .normaPill {
-  padding: 3px 7px;
+  padding: 3px 8px;
   border-radius: var(--ind-radius-sm);
-  font-size: 0.62rem;
+  font-size: var(--text-micro);
   font-weight: 600;
   letter-spacing: 0.03em;
   color: var(--paper);
@@ -243,7 +245,7 @@
   justify-content: space-between;
 }
 
-.utilPercent { font-size: 0.78rem; font-weight: 500; color: var(--ink-soft); }
+.utilPercent { font-size: var(--text-secondary); font-weight: 500; color: var(--ink-soft); }
 
 .utilTrack {
   height: 5px;
@@ -267,18 +269,18 @@
 }
 
 .cardEventoTexto {
-  font-size: 0.82rem;
+  font-size: var(--text-secondary);
   color: var(--ink);
-  font-weight: 500;
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.cardEventoDetalhe { font-size: 0.74rem; color: var(--ink-muted); }
+.cardEventoDetalhe { font-size: var(--text-meta); color: var(--ink-muted); }
 
 .cardNote {
-  font-size: 0.78rem;
+  font-size: var(--text-secondary);
   color: var(--ink-soft);
   padding-top: 8px;
   border-top: 1px solid var(--hairline);
@@ -324,7 +326,7 @@
 .imagePreviewImg { width: 100%; height: 100%; object-fit: cover; }
 
 .imagePreviewPlaceholder {
-  font-size: 0.68rem;
+  font-size: var(--text-micro);
   text-align: center;
   color: var(--ink-muted);
   padding: 0 8px;
@@ -336,12 +338,13 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  min-height: var(--control-h);
   background: var(--ink);
   color: var(--paper);
   border: 1px solid var(--ink);
   border-radius: var(--ind-radius-sm);
-  padding: 9px 16px;
-  font-size: 0.83rem;
+  padding: 0 18px;
+  font-size: var(--text-secondary);
   font-weight: 500;
 }
 .btnPrimary:hover { background: var(--ink-soft); }
@@ -351,8 +354,9 @@
   background: transparent;
   color: var(--ink-soft);
   border: none;
-  padding: 8px 14px;
-  font-size: 0.85rem;
+  padding: 0 14px;
+  min-height: var(--control-h);
+  font-size: var(--text-secondary);
   font-weight: 500;
   border-radius: var(--ind-radius-sm);
 }
@@ -362,9 +366,10 @@
   background: none;
   border: 1px solid var(--hairline);
   color: var(--ink-soft);
-  padding: 5px 10px;
+  min-height: var(--control-h-compact);
+  padding: 0 12px;
   border-radius: var(--ind-radius-sm);
-  font-size: 0.75rem;
+  font-size: var(--text-meta);
   font-weight: 500;
 }
 .btnIcon:hover { border-color: var(--ink-muted); color: var(--ink); }
@@ -373,9 +378,10 @@
   background: none;
   border: 1px solid var(--hairline);
   color: var(--hazard);
-  padding: 5px 10px;
+  min-height: var(--control-h-compact);
+  padding: 0 12px;
   border-radius: var(--ind-radius-sm);
-  font-size: 0.75rem;
+  font-size: var(--text-meta);
   font-weight: 500;
 }
 .btnIconDanger:hover { background: var(--safety-soft); border-color: var(--hazard); }
@@ -411,7 +417,7 @@
   padding: 18px 22px;
   border-bottom: 1px solid var(--hairline);
 }
-.modalHeader h3 { font-family: var(--font-display); font-weight: 400; font-size: 1.15rem; color: var(--ink); }
+.modalHeader h3 { font-family: var(--font-display); font-weight: 500; font-size: var(--text-panel-title); color: var(--ink); }
 
 .modalClose {
   background: none;
@@ -444,21 +450,22 @@
 .formGroupFull { grid-column: 1 / -1; }
 
 .formGroup label {
-  font-size: 0.68rem;
-  font-weight: 500;
+  font-size: var(--text-eyebrow);
+  font-weight: 600;
   color: var(--ink-muted);
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: var(--tracking-eyebrow);
 }
 
 .formGroup input,
 .formGroup select,
 .formGroup textarea {
-  padding: 9px 12px;
+  min-height: var(--control-h);
+  padding: 10px 13px;
   border: 1px solid var(--hairline);
   border-radius: var(--ind-radius-sm);
   background: var(--paper-elev);
-  font-size: 0.88rem;
+  font-size: var(--text-body);
   color: var(--ink);
   resize: vertical;
 }

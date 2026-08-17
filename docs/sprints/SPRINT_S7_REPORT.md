@@ -155,7 +155,7 @@ Composição do delta em relação a S6 (147 testes): +20 em `unit/aprovacao.tes
 
 - [x] **Captura de tela da "Fila de Aprovações" para os 3 perfis, comprovando o escopo correto de cada um** — coletadas via browser real (login efetivo com cada usuário, navegação real para `/reservas/aprovacoes`), com 2 reservas de demonstração pré-cadastradas (uma `normal` em plataforma de risco baixo, outra `urgente` em plataforma de risco alto retroagida no tempo para exibir o badge de SLA estourado):
   - **Gestor de Setor TI** (`gestor.ti@metalsider.com.br`): título "Reservas pendentes do seu setor que ainda aguardam sua decisão"; tabela mostra as 2 reservas do setor TI; badge "SLA estourado" visível na reserva urgente; item "Fila de Aprovações" destacado no menu.
-  - **Admin** (`admin@metalsider.com.br`): título "Todas as reservas pendentes, incluindo as que aguardam segunda aprovação"; mesma tabela (escopo global — só havia reservas do setor TI no ambiente de teste).
+  - **Admin** (`caio.moraes@metalsider.com.br`): título "Todas as reservas pendentes, incluindo as que aguardam segunda aprovação"; mesma tabela (escopo global — só havia reservas do setor TI no ambiente de teste).
   - **Colaborador** (`colaborador.ti@metalsider.com.br`): item "Fila de Aprovações" **não aparece no menu lateral** (filtrado por perfil); acesso direto à URL mostra a mensagem "Seu perfil (Colaborador) não aprova reservas. Fale com o Gestor do seu setor ou com o Admin." — sem erro, sem quebra de layout.
   - Dashboard do Admin confirmado mostrando o novo card "Pendências de Aprovação: 2", clicável para a Fila.
 

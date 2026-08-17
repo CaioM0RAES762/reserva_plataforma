@@ -44,6 +44,7 @@ async function criarReserva(
       data: DATA_RESERVA,
       horaInicio,
       horaFim,
+      quantidadePessoas: 1,
       motivo: "Teste S8 — checklist de segurança",
       prioridade: "normal",
     },

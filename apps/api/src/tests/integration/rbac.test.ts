@@ -15,7 +15,7 @@ const EMAIL_COLABORADOR_MANUTENCAO = "teste.rbac.manutencao@metalsider.com.br";
 const SENHA = "SenhaForte123";
 // Admin próprio deste arquivo — não depende de SEED_ADMIN_EMAIL/SEED_ADMIN_PASSWORD
 // (podem não estar definidas no .env), mesmo padrão dos colaboradores abaixo.
-const EMAIL_ADMIN_TESTE = "teste.rbac.admin@metalsider.com.br";
+const EMAIL_ADMIN_TESTE = "teste.rbac.caio.moraes@metalsider.com.br";
 const SENHA_ADMIN_TESTE = "SenhaAdminTeste123";
 const CODIGO_PLATAFORMA = "PLT-S6-RBAC";
 const DATA_RESERVA = "2026-09-15";
@@ -45,6 +45,7 @@ async function criarReservaPendente(cookie: string, horaInicio: string, horaFim:
       data: DATA_RESERVA,
       horaInicio,
       horaFim,
+      quantidadePessoas: 1,
       motivo: "Reserva de evidência da suite RBAC (S6)",
       prioridade: "normal",
     },
@@ -468,6 +469,7 @@ describe("RBAC (S6) — POST/GET /api/v1/reservas e /reservas/conflitos (Todos a
         data: DATA_RESERVA,
         horaInicio: "08:00",
         horaFim: "09:00",
+        quantidadePessoas: 1,
         motivo: "Sem sessão",
       },
     });
@@ -484,6 +486,7 @@ describe("RBAC (S6) — POST/GET /api/v1/reservas e /reservas/conflitos (Todos a
         data: DATA_RESERVA,
         horaInicio: "13:00",
         horaFim: "14:00",
+        quantidadePessoas: 1,
         motivo: "Admin não tem setor vinculado",
       },
     });

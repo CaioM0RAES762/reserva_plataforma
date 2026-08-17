@@ -8,23 +8,24 @@
 }
 .header h1 {
   font-family: var(--font-display);
-  font-weight: 400;
-  font-size: clamp(1.6rem, 2.4vw, 2rem);
-  letter-spacing: -0.01em;
+  font-weight: 500;
+  font-size: var(--text-page-title);
+  letter-spacing: -0.015em;
   color: var(--ink);
 }
-.header p { font-size: 0.85rem; color: var(--ink-muted); margin-top: 4px; }
+.header p { font-size: var(--text-body-lg); color: var(--ink-soft); margin-top: 6px; }
 
 .btnPrimary {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  min-height: var(--control-h);
   background: var(--ink);
   color: var(--paper);
   border: 1px solid var(--ink);
   border-radius: var(--ind-radius-sm);
-  padding: 9px 16px;
-  font-size: 0.83rem;
+  padding: 0 18px;
+  font-size: var(--text-secondary);
   font-weight: 500;
   white-space: nowrap;
 }
@@ -36,7 +37,7 @@
   padding: 10px 12px;
   border: 1px solid var(--hairline);
   border-radius: var(--ind-radius-sm);
-  font-size: 0.82rem;
+  font-size: var(--text-secondary);
   margin-bottom: 12px;
 }
 
@@ -56,8 +57,9 @@
   color: var(--ink);
   border: 1px solid var(--hairline);
   border-radius: var(--ind-radius-sm);
-  padding: 8px 14px;
-  font-size: 0.82rem;
+  min-height: var(--control-h-compact);
+  padding: 0 15px;
+  font-size: var(--text-secondary);
   font-weight: 500;
   display: flex;
   align-items: center;
@@ -72,9 +74,9 @@
   margin-left: 6px;
   line-height: 1.25;
 }
-.weekLabel { font-weight: 500; font-size: 0.9rem; color: var(--ink); }
+.weekLabel { font-weight: 600; font-size: var(--text-body); color: var(--ink); }
 .monthLabel {
-  font-size: 0.68rem;
+  font-size: var(--text-meta);
   color: var(--ink-muted);
 }
 
@@ -87,7 +89,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 0.72rem;
+  font-size: var(--text-meta);
   font-weight: 500;
   color: var(--ink-muted);
   padding: 4px 10px 4px 8px;
@@ -124,16 +126,16 @@
   border-right: 1px solid var(--hairline);
   padding: 10px 6px;
   text-align: center;
-  font-size: 0.66rem;
-  font-weight: 500;
+  font-size: var(--text-eyebrow);
+  font-weight: 600;
   color: var(--ink-muted);
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: var(--tracking-eyebrow);
 }
 .calHeaderCell.today { background: var(--safety-soft); color: var(--safety); }
 .calHeaderDate {
   font-family: var(--font-mono);
-  font-size: 1.05rem;
+  font-size: 1.1rem;
   font-weight: 500;
   display: block;
   color: var(--ink);
@@ -149,7 +151,7 @@
   position: absolute;
   right: 6px;
   font-family: var(--font-mono);
-  font-size: 0.66rem;
+  font-size: var(--text-micro);
   color: var(--ink-muted);
 }
 
@@ -194,8 +196,8 @@
 .calEvent {
   position: absolute;
   border-radius: var(--ind-radius-sm);
-  padding: 3px 6px;
-  font-size: 0.68rem;
+  padding: 3px 7px;
+  font-size: var(--text-micro);
   font-weight: 500;
   cursor: pointer;
   line-height: 1.3;
@@ -213,9 +215,9 @@
 }
 .calEventPlatform { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .calEventSector { opacity: 0.8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.calEventTime { opacity: 0.7; font-size: 0.63rem; }
+.calEventTime { opacity: 0.75; font-size: 0.66rem; }
 
-.empty { text-align: center; padding: 32px; color: var(--ink-muted); font-size: 0.83rem; }
+.empty { text-align: center; padding: 32px; color: var(--ink-muted); font-size: var(--text-secondary); }
 
 /* S9 — RF-CAL-01: bloqueio de agenda (manutenção/feriado) visualmente distinto de
    reservas normais: hachurado diagonal em vez de bloco sólido colorido por setor. */
@@ -232,7 +234,7 @@
   position: absolute;
   left: 2px;
   right: 2px;
-  font-size: 0.62rem;
+  font-size: var(--text-micro);
   font-weight: 500;
   color: var(--ink-muted);
   padding: 2px 4px;
@@ -262,7 +264,7 @@
   border-radius: var(--ind-radius-md);
   box-shadow: var(--shadow-lg, 0 10px 30px rgba(0, 0, 0, 0.18));
   padding: 10px 12px;
-  font-size: 0.78rem;
+  font-size: var(--text-secondary);
   color: var(--ink);
   max-width: 240px;
   pointer-events: none;

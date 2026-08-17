@@ -85,7 +85,7 @@ Testes de integração rodaram contra o SQL Server real (`metalsider-sqlserver`,
 ```
 $ curl -s -i -X POST http://localhost:3333/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"admin@metalsider.com.br","senha":"AdminForte123"}'
+  -d '{"email":"caio.moraes@metalsider.com.br","senha":"AdminForte123"}'
 
 HTTP/1.1 200 OK
 access-control-allow-origin: http://localhost:3000
@@ -94,7 +94,7 @@ content-type: application/json; charset=utf-8
 set-cookie: token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...; Path=/; HttpOnly; SameSite=Strict
 content-length: 433
 
-{"token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIyNzUyRDI0Mi0zMTZELTQ3MTctQkNCNi00MUI5MUYwNEUxQjciLCJlbWFpbCI6ImFkbWluQG1ldGFsc2lkZXIuY29tLmJyIiwicGVyZmlsIjoiYWRtaW4iLCJzZXRvcklkIjpudWxsLCJpYXQiOjE3ODM1OTc5MDAsImV4cCI6MTc4MzYyNjcwMH0.KjX221zsdAxzVE5UnHsIYekICjdLSwlyRES3o8faYwU","usuario":{"id":"2752D242-316D-4717-BCB6-41B91F04E1B7","nome":"Administrador","email":"admin@metalsider.com.br","perfil":"admin","setorId":null}}
+{"token":"<token>","usuario":{"id":"2752D242-316D-4717-BCB6-41B91F04E1B7","nome":"Administrador","email":"caio.moraes@metalsider.com.br","perfil":"admin","setorId":null}}
 ```
 
 Cookie retornado com `HttpOnly` + `SameSite=Strict` conforme §12 do SDD (o `secure` flag só é ativado com `NODE_ENV=production`, condição padrão em ambiente de desenvolvimento HTTP).

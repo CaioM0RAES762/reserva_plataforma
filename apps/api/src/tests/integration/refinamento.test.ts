@@ -8,7 +8,7 @@ import { hashPassword } from "../../utils/password.js";
 // Cada bloco abaixo falharia no código anterior — nenhum deles tinha teste algum, que é
 // exatamente o motivo de terem passado despercebidos por 14 sprints.
 
-const EMAIL_ADMIN = process.env.SEED_ADMIN_EMAIL ?? "admin@metalsider.com.br";
+const EMAIL_ADMIN = process.env.SEED_ADMIN_EMAIL ?? "caio.moraes@metalsider.com.br";
 const SENHA_ADMIN = process.env.SEED_ADMIN_PASSWORD ?? "AdminForte123";
 const EMAIL_COLAB = "colaborador.refinamento@metalsider.com.br";
 const SENHA_COLAB = "SenhaForte123";
@@ -106,6 +106,7 @@ describe("Criação concorrente de reserva (RN-RES-02 sob concorrência)", () =>
       data,
       horaInicio: "08:00",
       horaFim: "09:00",
+      quantidadePessoas: 1,
       motivo: "Teste de corrida na checagem de conflito (RN-RES-02)",
       prioridade: "normal" as const,
     };
@@ -154,6 +155,7 @@ describe("Criação concorrente de reserva (RN-RES-02 sob concorrência)", () =>
         data,
         horaInicio: "10:00",
         horaFim: "11:00",
+        quantidadePessoas: 1,
         motivo: "Teste de recarga por id do registro inserido",
         prioridade: "normal",
       },

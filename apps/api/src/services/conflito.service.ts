@@ -1,3 +1,5 @@
+import { combinarDataHoraBrasilia, validarAntecedenciaMinima } from "@plataformares/shared";
+
 export interface ReservaExistente {
   id: string;
   horaInicio: string;
@@ -163,13 +165,19 @@ export function validarJanelaReserva(
   }
 
   // RN-RES-03: antecedência mínima para solicitar a reserva.
-  const inicioReserva = combinarDataHora(dados.data, dados.horaInicio).getTime();
-  const antecedenciaMinimaMs = regras.antecedenciaMinimaHoras * 60 * 60 * 1000;
-  if (inicioReserva - agora.getTime() < antecedenciaMinimaMs) {
-    return {
-      ok: false,
-      erro: `Reservas exigem antecedência mínima de ${regras.antecedenciaMinimaHoras} hora(s).`,
-    };
+  //
+  // BUG CORRIGIDO: `combinarDataHora` (acima, usada pelo resto deste arquivo) rotula a
+  // data+hora de Brasília como se já fosse UTC via Date.UTC(...) — correto quando o OUTRO
+  // lado da comparação foi construído do mesmo jeito (bloqueio de agenda), mas errado
+  // aqui, onde o outro lado é `agora`, um instante real. Comparar um valor "rotulado
+  // errado" contra um instante real introduzia um desvio de 3h (offset de Brasília),
+  // fazendo a regra de "2 horas" exigir na prática 5 horas. `combinarDataHoraBrasilia`
+  // faz a conversão de fuso de verdade, então o resultado pode ser comparado direto
+  // contra `agora`.
+  const inicioReserva = combinarDataHoraBrasilia(dados.data, dados.horaInicio);
+  const antecedencia = validarAntecedenciaMinima(inicioReserva, agora, regras.antecedenciaMinimaHoras * 60);
+  if (!antecedencia.ok) {
+    return antecedencia;
   }
 
   return { ok: true };

@@ -110,6 +110,7 @@ describe("Notificações in-app (S10 — RF-NOT-01/02)", () => {
         data: "2026-10-06",
         horaInicio: "09:00",
         horaFim: "10:00",
+        quantidadePessoas: 1,
         motivo: "Reserva de teste de notificação in-app — S10",
       },
     });
@@ -175,6 +176,7 @@ describe("Notificações in-app (S10 — RF-NOT-01/02)", () => {
         data: "2026-10-13",
         horaInicio: "09:00",
         horaFim: "10:00",
+        quantidadePessoas: 1,
         motivo: "Segunda reserva de teste de notificação in-app — S10",
       },
     });

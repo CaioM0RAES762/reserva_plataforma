@@ -1,5 +1,5 @@
 .sidebar {
-  width: var(--sidebar-width);
+  width: var(--sidebar-width-expanded);
   background: var(--ind-sidebar);
   color: var(--ind-sidebar-foreground);
   display: flex;
@@ -10,6 +10,8 @@
   bottom: 0;
   z-index: 100;
   font-family: var(--font-sans);
+  overflow-x: hidden;
+  transition: width 180ms ease;
 }
 
 /* Link "pular para o conteúdo": invisível até receber foco pelo teclado, quando aparece
@@ -43,7 +45,12 @@
 }
 
 @media (max-width: 900px) {
-  .sidebar {
+  /* O drawer mobile é sempre a largura cheia, mesmo que o usuário tenha recolhido a
+     sidebar no desktop — recolher e off-canvas são dois comportamentos independentes
+     (RNF-04); a preferência de desktop nunca deve virar uma coluna de 72px no celular. */
+  .sidebar,
+  .sidebar.collapsed {
+    width: var(--sidebar-width-expanded);
     transform: translateX(-100%);
     transition: transform 0.2s ease;
   }
@@ -73,7 +80,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 24px 20px 20px;
+  padding: 26px 20px 22px;
   border-bottom: 1px solid var(--ind-sidebar-border);
 }
 
@@ -92,71 +99,50 @@
   font-weight: 600;
 }
 
-.brandText { display: flex; flex-direction: column; min-width: 0; }
+.brandText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  max-width: 220px;
+  overflow: hidden;
+  opacity: 1;
+  transition: opacity 120ms ease, max-width 160ms ease 60ms;
+}
 .brandName {
   font-family: var(--font-display);
-  font-weight: 400;
-  font-size: 1.2rem;
+  font-weight: 500;
+  font-size: 1.33rem;
   letter-spacing: -0.01em;
   color: #fff;
+  white-space: nowrap;
 }
 .brandSub {
-  font-size: 0.64rem;
-  font-weight: 400;
+  font-size: var(--text-eyebrow);
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.2em;
-  color: rgba(255, 255, 255, 0.4);
-  margin-top: 3px;
-}
-
-.profile {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--ind-sidebar-border);
-}
-
-.profileAvatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: var(--ind-sidebar-accent);
-  border: 1px solid var(--ind-sidebar-border);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-mono);
-  font-weight: 500;
-  font-size: 0.86rem;
-  color: #fff;
-  flex-shrink: 0;
-}
-
-.profileInfo { flex: 1; min-width: 0; }
-.profileName {
-  display: block;
-  font-size: 0.92rem;
-  font-weight: 500;
-  color: #fff;
+  letter-spacing: var(--tracking-eyebrow);
+  color: rgba(255, 255, 255, 0.42);
+  margin-top: 4px;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
-.profileRole { display: block; font-size: 0.74rem; color: rgba(255, 255, 255, 0.45); margin-top: 2px; }
 
-.nav { flex: 1; padding: 16px 14px; overflow-y: auto; }
-.navGroup { margin-bottom: 10px; }
+.nav { flex: 1; padding: 18px 14px; overflow-y: auto; overflow-x: hidden; }
+.navGroup { margin-bottom: 14px; }
 .navLabel {
   display: block;
-  font-size: 0.66rem;
-  font-weight: 400;
+  font-size: var(--text-eyebrow);
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.2em;
-  color: rgba(255, 255, 255, 0.3);
+  letter-spacing: var(--tracking-eyebrow);
+  color: rgba(255, 255, 255, 0.34);
   padding: 0 12px;
-  margin-bottom: 8px;
-  margin-top: 12px;
+  margin-bottom: 10px;
+  margin-top: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  opacity: 1;
+  max-height: 24px;
+  transition: opacity 100ms ease, max-height 160ms ease 60ms, margin 160ms ease 60ms;
 }
 
 .navItem {
@@ -164,16 +150,29 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 12px;
+  padding: 11px 12px;
   border-radius: var(--ind-radius-sm);
-  font-size: 0.92rem;
+  font-size: var(--text-secondary);
   font-weight: 500;
   color: var(--ind-sidebar-foreground);
-  transition: background 0.15s, color 0.15s;
-  margin-bottom: 2px;
+  transition: background 0.15s, color 0.15s, justify-content 0s, padding 180ms ease;
+  margin-bottom: 3px;
 }
 .navItem:hover { background: rgba(255, 255, 255, 0.06); color: #fff; }
+.navItem:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.65);
+  outline-offset: -2px;
+}
 .navItem svg { flex-shrink: 0; }
+
+.navItemLabel {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  opacity: 1;
+  max-width: 200px;
+  transition: opacity 120ms ease, max-width 160ms ease 60ms;
+}
 
 .navItem.active {
   background: var(--ind-sidebar-accent);
@@ -194,13 +193,14 @@
 .navBadge {
   margin-left: auto;
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: var(--text-micro);
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.6);
+  color: rgba(255, 255, 255, 0.62);
   background: rgba(255, 255, 255, 0.08);
   padding: 1px 7px;
   border-radius: 10px;
   flex-shrink: 0;
+  transition: all 160ms ease;
 }
 .navItem.active .navBadge { color: #fff; background: rgba(255, 255, 255, 0.14); }
 
@@ -208,47 +208,106 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 12px;
+  padding: 11px 12px;
   border-radius: var(--ind-radius-sm);
-  font-size: 0.92rem;
+  font-size: var(--text-secondary);
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.28);
-  margin-bottom: 2px;
+  color: rgba(255, 255, 255, 0.3);
+  margin-bottom: 3px;
   cursor: default;
+  transition: padding 180ms ease;
 }
 .navItemDisabled svg { flex-shrink: 0; }
 .navSoonTag {
   margin-left: auto;
-  font-size: 0.6rem;
+  font-size: var(--text-micro);
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.05em;
   background: rgba(255, 255, 255, 0.08);
-  padding: 2px 6px;
+  padding: 2px 7px;
   border-radius: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  opacity: 1;
+  max-width: 80px;
+  transition: opacity 100ms ease, max-width 160ms ease 60ms;
 }
 
 .footer {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 16px 20px;
+  padding: 14px 12px;
   border-top: 1px solid var(--ind-sidebar-border);
+  transition: padding 180ms ease;
 }
-.statusDot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--signal);
-  flex-shrink: 0;
-  animation: pulse-dot 2s ease-in-out infinite;
-}
-@keyframes pulse-dot {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
-}
-.versionTag {
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  color: rgba(255, 255, 255, 0.35);
+
+/* ============================================================
+   Sidebar recolhida — só no desktop (>900px). Recolher e o off-canvas
+   mobile são comportamentos independentes; esta regra nunca deve valer
+   abaixo do breakpoint mobile, mesmo que a preferência salva seja
+   "recolhida" (ver bloco @media max-width:900px acima, que força a
+   largura cheia de propósito).
+   ============================================================ */
+@media (min-width: 901px) {
+  .sidebar.collapsed { width: var(--sidebar-width-collapsed); }
+
+  .sidebar.collapsed .brand {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
+  .sidebar.collapsed .brandText {
+    opacity: 0;
+    max-width: 0;
+    pointer-events: none;
+    transition: opacity 100ms ease, max-width 160ms ease;
+  }
+
+  .sidebar.collapsed .nav {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  .sidebar.collapsed .navLabel {
+    opacity: 0;
+    max-height: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+    pointer-events: none;
+    transition: opacity 100ms ease, max-height 160ms ease, margin 160ms ease;
+  }
+
+  .sidebar.collapsed .navItem,
+  .sidebar.collapsed .navItemDisabled {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
+  .sidebar.collapsed .navItemLabel,
+  .sidebar.collapsed .navSoonTag {
+    opacity: 0;
+    max-width: 0;
+    pointer-events: none;
+    transition: opacity 100ms ease, max-width 160ms ease;
+  }
+  /* O contador de pendências vira um selo compacto sobre o ícone em vez de
+     desaparecer — "0 aprovações pendentes" continua um indicador realmente
+     necessário mesmo sem rótulo de texto ao lado. */
+  .sidebar.collapsed .navBadge {
+    position: absolute;
+    top: 4px;
+    right: 12px;
+    left: auto;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 3px;
+    font-size: 9px;
+    line-height: 16px;
+    border-radius: 50%;
+    text-align: center;
+  }
+
+  .sidebar.collapsed .footer {
+    padding: 14px 8px;
+  }
 }

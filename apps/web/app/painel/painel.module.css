@@ -2,7 +2,11 @@
   min-height: 100vh;
   background: #0B1220;
   color: #F0F4FA;
-  font-family: var(--font);
+  /* Kiosk de chão de fábrica, não é uma tela de desktop: mantém a tipografia grande e
+     bold já calibrada para leitura a distância. Só a família muda, para Archivo (o
+     grotesco do resto do produto) em vez da pilha genérica do sistema — mesma
+     identidade, sem mexer na escala pensada para RF-TV-01. */
+  font-family: var(--font-sans);
   padding: 28px 40px;
   display: flex;
   flex-direction: column;

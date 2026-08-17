@@ -11,7 +11,7 @@ const DURACAO_MS = 30_000;
 const USUARIOS_SIMULTANEOS = 50;
 const CONEXOES_SSE = 10;
 
-const ADMIN = { email: "admin@metalsider.com.br", senha: "AdminForte123" };
+const ADMIN = { email: "caio.moraes@metalsider.com.br", senha: "AdminForte123" };
 
 async function login() {
   const resp = await fetch(`${API}/api/v1/auth/login`, {

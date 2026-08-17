@@ -135,6 +135,7 @@ beforeAll(async () => {
       data: DATA_RESERVA,
       horaInicio: "08:00",
       horaFim: "09:00",
+      quantidadePessoas: 1,
       motivo: "Teste S11 — anexos",
       prioridade: "normal",
     },

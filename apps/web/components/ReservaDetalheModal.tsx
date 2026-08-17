@@ -75,6 +75,9 @@ export interface ReservaDetalhe {
   id: string;
   setorId: string;
   setorNome: string;
+  // Corrigir/melhorar Reservas: usado para destacar "minhas reservas" na listagem —
+  // comparação sempre por id, nunca por nome (ver ReservasClient).
+  solicitanteId: string;
   solicitanteNome: string;
   plataformaId: string;
   plataformaNome: string;
@@ -83,6 +86,7 @@ export interface ReservaDetalhe {
   data: string;
   horaInicio: string;
   horaFim: string;
+  quantidadePessoas: number;
   motivo: string;
   prioridade: "normal" | "alta" | "urgente";
   status: string;
@@ -273,7 +277,7 @@ export function ReservaDetalheModal({
               </h3>
               <ReservaStatusBadge status={reserva.status} />
             </div>
-            <span style={{ fontSize: "0.78rem", color: "var(--ink-muted)" }}>
+            <span style={{ fontSize: "var(--text-meta)", color: "var(--ink-muted)" }}>
               {reserva.setorNome} · {formatarData(reserva.data)} · {reserva.horaInicio}–{reserva.horaFim}
             </span>
           </div>
@@ -410,7 +414,7 @@ export function ReservaDetalheModal({
             />
           )}
           {exigeChecklist && reserva.status === "agendada" && !checklistLiberaUso && (
-            <p style={{ color: "var(--red)", fontSize: "0.8rem", marginTop: 8 }}>
+            <p style={{ color: "var(--red)", fontSize: "var(--text-secondary)", marginTop: 8 }}>
               O botão &quot;Iniciar Uso&quot; fica bloqueado até o checklist de segurança acima ser preenchido com
               todos os itens obrigatórios conformes (RN-RES-12).
             </p>
@@ -431,7 +435,7 @@ export function ReservaDetalheModal({
 
           {etapaConcluir === "perguntar" && (
             <div className={styles.formGroup} style={{ marginTop: 14, gap: 10 }}>
-              <span style={{ fontSize: "0.85rem", fontWeight: 600 }}>
+              <span style={{ fontSize: "var(--text-body)", fontWeight: 600 }}>
                 Houve alguma ocorrência ou avaria durante o uso? (RF-RES-16)
               </span>
               <div style={{ display: "flex", gap: 8 }}>
