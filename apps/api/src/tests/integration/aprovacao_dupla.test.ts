@@ -105,13 +105,19 @@ beforeAll(async () => {
     );
   plataformaSimplesId = plataformaSimples.recordset[0].id;
 
+  // categoria 'patio' (não 'elevatoria'/'andaime') de propósito: este arquivo testa
+  // dupla aprovação por RISCO (RN-RES-08), não checklist — 'elevatoria' agora exigiria
+  // checklist finalizado antes de aprovar (RN-CHK-03, ver routes/reservas.ts), o que
+  // bloquearia estes testes por um motivo que não é o que eles verificam. 'risco' é
+  // uma coluna independente da categoria (pode ser definida explicitamente), então dá
+  // pra manter risco=alto sem entrar em categoria com checklist obrigatório.
   const plataformaRiscoAlto = await pool
     .request()
     .input("codigo", sql.VarChar, CODIGO_PLATAFORMA_RISCO_ALTO)
-    .input("nome", sql.NVarChar, "Plataforma Elevatória de Teste S7 (risco alto)")
+    .input("nome", sql.NVarChar, "Plataforma de Teste S7 (risco alto, sem checklist)")
     .query<{ id: string }>(
       `INSERT INTO Plataforma (codigo, nome, categoria, risco) OUTPUT INSERTED.id
-       VALUES (@codigo, @nome, 'elevatoria', 'alto')`
+       VALUES (@codigo, @nome, 'patio', 'alto')`
     );
   plataformaRiscoAltoId = plataformaRiscoAlto.recordset[0].id;
 

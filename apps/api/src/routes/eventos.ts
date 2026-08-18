@@ -1,35 +1,30 @@
 import type { FastifyInstance } from "fastify";
 import { verificarToken } from "../utils/jwt.js";
 import { enviarHeartbeat, registrarClienteSSE, removerClienteSSE } from "../services/eventos.service.js";
-import { validarTokenDispositivo } from "../services/painelToken.service.js";
 import { isAllowedOrigin } from "../utils/cors.js";
 
 const HEARTBEAT_MS = 20_000;
 
-// SDD §3.4 / §11: canal único de eventos em tempo real. Autenticação dupla — cookie JWT
-// (usuário logado, RF-NOT-01) OU token de dispositivo via querystring (Painel TV, RF-TV-02)
-// — sem exigir sessão de usuário para o dispositivo, conforme SDD §12.
+// SDD §3.4 / §11: canal único de eventos em tempo real, consumido por Central de Operações,
+// Reservas, Calendário, Checklists e pelo sino de notificações.
+//
+// A autenticação era dupla — cookie JWT OU token de dispositivo via querystring. O segundo
+// caminho existia exclusivamente para o Painel TV, que foi removido do produto; sem ele,
+// aceitar um token na querystring seria apenas uma superfície de autenticação a mais sem
+// nenhum consumidor.
 export async function eventosRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/v1/eventos", async (request, reply) => {
-    let usuarioId: string | null = null;
-
     const token = request.cookies?.token;
+    let usuarioId: string | null = null;
     if (token) {
       try {
         usuarioId = verificarToken(token).sub;
       } catch {
-        // cookie inválido/expirado — cai para a tentativa de token de dispositivo abaixo
+        // cookie inválido/expirado — tratado como não autenticado abaixo
       }
     }
-
     if (!usuarioId) {
-      const { token: deviceToken } = request.query as { token?: string };
-      const tokenValido = deviceToken ? await validarTokenDispositivo(deviceToken) : null;
-      if (!tokenValido) {
-        return reply.status(401).send({ erro: "Não autenticado." });
-      }
-      // usuarioId permanece null: cliente do tipo "dispositivo" (Painel TV), só recebe
-      // eventos globais (ver publicarEventoGlobal em eventos.service.ts).
+      return reply.status(401).send({ erro: "Não autenticado." });
     }
 
     // reply.hijack() entrega o controle da resposta HTTP crua ao handler — necessário
@@ -52,7 +47,7 @@ export async function eventosRoutes(app: FastifyInstance): Promise<void> {
       "Cache-Control": "no-cache",
       Connection: "keep-alive",
       // Proxies corporativos com buffer (nginx e afins) só entregam o stream em blocos —
-      // e o Painel TV parece congelado até o buffer encher. Este header desliga o buffer.
+      // a tela parece congelada até o buffer encher. Este header desliga o buffer.
       "X-Accel-Buffering": "no",
     });
     // Sem Nagle, cada evento sai imediatamente em vez de esperar acumular no socket.

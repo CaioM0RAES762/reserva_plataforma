@@ -30,7 +30,7 @@ describe("eventos.service — pub/sub SSE (S10, SDD §3.4)", () => {
     removerClienteSSE(idB);
   });
 
-  it("publicarEventoGlobal escreve em todos os clientes conectados, inclusive dispositivos (usuarioId null — Painel TV)", () => {
+  it("publicarEventoGlobal escreve em todos os clientes conectados, inclusive os sem usuário associado (usuarioId null)", () => {
     const replyUsuario = criarReplyFake();
     const replyDispositivo = criarReplyFake();
     const id1 = registrarClienteSSE("USR-X", replyUsuario);

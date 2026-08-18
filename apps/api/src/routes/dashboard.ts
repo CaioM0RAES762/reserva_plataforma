@@ -47,14 +47,31 @@ async function contarPendenciasAprovacao(
   return 0;
 }
 
-// RN-RES-12/RF-RES-10 (requerChecklist): categoria elevatória/andaime exige checklist
-// preenchido antes do início de uso. "Pendente" aqui = reserva já agendada cuja
-// plataforma exige checklist e que ainda não tem nenhum ChecklistPreenchido — é
-// exatamente o que bloqueia "Iniciar Uso" (ver checklist.ts), então serve como atalho
-// acionável de verdade, não um número decorativo.
+// Correção do fluxo de Checklist (RF-CHK-06/RN-CHK-03): o checklist agora é portão da
+// APROVAÇÃO, não mais do início de uso — "pendente" aqui é uma reserva ainda "pendente"
+// (aguardando decisão) cuja plataforma resolve para algum ChecklistTemplate ativo e cujo
+// checklist não está finalizado. É exatamente o que bloqueia POST /aprovar (ver
+// routes/reservas.ts, buscarEstadoChecklist), não mais um número decorativo.
+// "Exige checklist" agora é a configuração explícita da plataforma (exige_checklist +
+// checklist_template_id ativo), não mais o template herdado da categoria — mesma regra de
+// resolverTemplateEfetivo em checklist.service.ts.
 const WHERE_CHECKLIST_PENDENTE = `
-  WHERE r.status = 'agendada' AND p.categoria IN ('elevatoria', 'andaime')
-    AND NOT EXISTS (SELECT 1 FROM ChecklistPreenchido cp WHERE cp.reserva_id = r.id)`;
+  WHERE r.status = 'pendente'
+    AND EXISTS (
+      SELECT 1 FROM ChecklistTemplate tpl
+      WHERE tpl.id = p.checklist_template_id AND tpl.ativo = 1 AND p.exige_checklist = 1
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM ChecklistPreenchido cp WHERE cp.reserva_id = r.id AND cp.finalizado_em IS NOT NULL
+    )`;
+
+// O contador exibido ao lado de "Checklists NR-18/35" no menu precisa significar "o que
+// exige minha atenção hoje". Contando o histórico inteiro, ele virava um número grande e
+// estático (reservas antigas nunca preenchidas) que ninguém conseguia zerar — deixava de
+// ser um sinal de ação. Recorte: reservas de hoje em diante, que é o que ainda dá para
+// executar.
+const WHERE_CHECKLIST_PENDENTE_ATUAL = `${WHERE_CHECKLIST_PENDENTE}
+    AND r.data >= CAST(GETDATE() AS DATE)`;
 
 export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
   // GET /dashboard/kpis (SDD §10/§11): KPIs agregados, escopo por perfil.
@@ -100,7 +117,7 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
     const whereChecklistSetor = aplicarEscopoSetor(checklistRequest, perfil, setorId, "r");
     const checklistPromise = checklistRequest.query<{ total: number }>(
       `SELECT COUNT(*) AS total FROM Reserva r JOIN Plataforma p ON p.id = r.plataforma_id
-       ${WHERE_CHECKLIST_PENDENTE}${whereChecklistSetor}`
+       ${WHERE_CHECKLIST_PENDENTE_ATUAL}${whereChecklistSetor}`
     );
 
     const [plataformasResult, pendenciasAprovacao, reservasHojeResult, proximos7Result, checklistResult] =

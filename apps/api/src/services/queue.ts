@@ -81,3 +81,59 @@ export async function agendarEscalonamentoRepetitivo(): Promise<void> {
     { repeat: { every: ESCALONAMENTO_INTERVALO_MS }, jobId: ESCALONAMENTO_JOB_ID }
   );
 }
+
+// Automação de início/finalização de reserva — mesmo padrão de job repetitivo do
+// escalonamento de SLA acima, reaproveitando a infraestrutura BullMQ/Redis que o projeto já
+// tem (nenhuma tecnologia nova foi introduzida para isto).
+//
+// Por que no backend e não com setInterval no navegador: a regra precisa valer com a
+// aplicação fechada. Uma reserva 15:00–16:30 tem de virar "em uso" às 15:00 mesmo que
+// ninguém esteja com a tela aberta — e um timer no cliente ainda multiplicaria a mesma
+// transição por aba aberta.
+export const AUTOMACAO_QUEUE_NAME = "automacao-reserva";
+export const AUTOMACAO_JOB_ID = "automacao-reserva-repetitivo";
+// Um minuto: é a menor granularidade que os horários de reserva têm (HH:MM), então
+// verificar com mais frequência não antecipa nada. O atraso máximo entre o horário
+// agendado e a transição é, portanto, de até 1 minuto.
+const AUTOMACAO_INTERVALO_MS = 60 * 1000;
+
+export const automacaoQueue = new Queue(AUTOMACAO_QUEUE_NAME, { connection });
+
+export function iniciarAutomacaoWorker(): Worker {
+  const worker = new Worker(
+    AUTOMACAO_QUEUE_NAME,
+    async () => {
+      const { processarAutomacaoReservas } = await import("./automacaoReserva.service.js");
+      const resumo = await processarAutomacaoReservas();
+      if (resumo.iniciadas.length > 0 || resumo.concluidas.length > 0) {
+        console.log(
+          `[AUTOMACAO] ${resumo.iniciadas.length} reserva(s) iniciada(s), ${resumo.concluidas.length} concluída(s).`
+        );
+      }
+    },
+    { connection }
+  );
+  worker.on("failed", (job, err) => {
+    console.error(`[AUTOMACAO] execução ${job?.id ?? "?"} falhou: ${err.message}`);
+  });
+  worker.on("error", (err) => {
+    console.error(`[AUTOMACAO] erro no worker: ${err.message}`);
+  });
+  return worker;
+}
+
+export async function agendarAutomacaoRepetitiva(): Promise<void> {
+  await automacaoQueue.add(
+    "processar",
+    {},
+    {
+      repeat: { every: AUTOMACAO_INTERVALO_MS },
+      jobId: AUTOMACAO_JOB_ID,
+      // Uma execução perdida não deve se acumular como fila de trabalho atrasado: cada
+      // execução recalcula o estado atual do zero, então a próxima já cobre o que a
+      // anterior deixou passar.
+      removeOnComplete: true,
+      removeOnFail: 50,
+    }
+  );
+}

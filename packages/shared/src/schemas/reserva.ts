@@ -12,10 +12,15 @@ export const reservaPublicaSchema = z.object({
   solicitanteNome: z.string(),
   plataformaId: z.string().uuid(),
   plataformaNome: z.string(),
-  // S8 (RN-RES-12): usada pelo frontend para decidir se mostra a seção de Checklist
-  // de Segurança e para espelhar o bloqueio de "Iniciar Uso" — o backend é sempre a
-  // fonte de verdade (rota /reservas/:id/status revalida via requerChecklist).
   plataformaCategoria: z.enum(CATEGORIAS_PLATAFORMA),
+  // Correção do fluxo de Checklist: resolvido pelo backend (template específico da
+  // plataforma OU default da categoria — nunca mais uma lista fixa de categorias no
+  // frontend). O checklist agora é portão da APROVAÇÃO, não do início de uso — ver
+  // POST /reservas/:id/aprovar. O backend é sempre a fonte de verdade; estes campos só
+  // espelham o estado para a UI decidir o que mostrar sem round-trip extra.
+  requerChecklist: z.boolean(),
+  checklistFinalizadoEm: z.string().nullable(),
+  checklistTodosConformes: z.boolean().nullable(),
   // Onde a plataforma fica — exibido junto ao motivo na coluna "Recurso" da listagem.
   plataformaLocalizacao: z.string().nullable(),
   data: z.string(),
@@ -35,6 +40,11 @@ export const reservaPublicaSchema = z.object({
   // S9 (RF-RES-03): presente quando a reserva faz parte de uma série semanal — usado
   // pelo frontend para exibir a ação "Cancelar série" no Detalhe da Reserva.
   recorrenciaId: z.string().uuid().nullable(),
+  // Automação decidida no momento da criação (herda o padrão da plataforma, com override
+  // opcional). Quem executa a transição é o worker do backend — estes campos só refletem a
+  // configuração para a UI mostrar o que vai acontecer.
+  inicioAutomatico: z.boolean(),
+  fimAutomatico: z.boolean(),
   criadoEm: z.string(),
   atualizadoEm: z.string(),
 });
@@ -69,6 +79,11 @@ export const criarReservaSchema = z
     // qual setor está solicitando. Ignorado pelo backend para Gestor/Colaborador, que
     // sempre usam o setor da própria sessão (nunca confiam no body para esses perfis).
     setorId: z.string().uuid("Selecione um setor válido.").optional(),
+    // Automação. Omitidos = o backend herda o padrão configurado na plataforma; enviados =
+    // override explícito desta reserva. A decisão fica CONGELADA na reserva no momento da
+    // criação, então mudar o padrão da plataforma depois não altera reservas já existentes.
+    inicioAutomatico: z.boolean().optional(),
+    fimAutomatico: z.boolean().optional(),
   })
   .refine((dados) => dados.horaFim > dados.horaInicio, {
     message: "O horário final deve ser após o horário inicial.",

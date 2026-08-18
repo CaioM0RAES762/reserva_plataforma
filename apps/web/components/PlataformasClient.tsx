@@ -8,6 +8,7 @@ import { useDebounce } from "../lib/useDebounce";
 import { useEventosSSE } from "../lib/useEventosSSE";
 import { StatusBadge } from "./StatusBadge";
 import { PlataformaModal, type PlataformaEditavel, type PlataformaFormValues } from "./PlataformaModal";
+import { ChecklistTemplatesModal } from "./ChecklistTemplatesModal";
 
 interface EventoAtivoPlataforma {
   texto: string;
@@ -32,6 +33,12 @@ interface Plataforma {
   utilizacao30d: number | null;
   evento: EventoAtivoPlataforma | null;
   normas: string[];
+  exigeChecklist: boolean;
+  checklistTemplateId: string | null;
+  checklistTemplateNome: string | null;
+  checklistTotalQuestoes: number | null;
+  inicioAutomaticoPadrao: boolean;
+  fimAutomaticoPadrao: boolean;
 }
 
 export function PlataformasClient({ isAdmin }: { isAdmin: boolean }) {
@@ -42,6 +49,9 @@ export function PlataformasClient({ isAdmin }: { isAdmin: boolean }) {
   const [statusFiltro, setStatusFiltro] = useState("");
   const [modalAberto, setModalAberto] = useState(false);
   const [editando, setEditando] = useState<PlataformaEditavel | null>(null);
+  // Atalho "Editar template" do card: abre o editor de templates direto no template
+  // vinculado, sem passar pelo formulário do equipamento.
+  const [templateEmEdicao, setTemplateEmEdicao] = useState<string | null>(null);
 
   // Só a busca por texto é adiada; trocar o filtro de status responde imediatamente.
   const buscaComAtraso = useDebounce(busca);
@@ -80,11 +90,12 @@ export function PlataformasClient({ isAdmin }: { isAdmin: boolean }) {
   async function handleSalvar(valores: PlataformaFormValues) {
     const { status: novoStatus, ...campos } = valores;
     if (editando) {
-      // O formulário não expõe categoria/risco — sem isso, o zod aplicaria o default
-      // ("outro"/"baixo") e apagaria a classificação real da plataforma a cada edição.
+      // `risco` continua fora do formulário — sem reenviá-lo, o zod aplicaria o default
+      // ("baixo") e apagaria a classificação real da plataforma a cada edição. `categoria`
+      // agora vem do próprio formulário.
       await apiFetch(`/api/v1/plataformas/${editando.id}`, {
         method: "PUT",
-        body: JSON.stringify({ ...campos, categoria: editando.categoria, risco: editando.risco }),
+        body: JSON.stringify({ ...campos, risco: editando.risco }),
       });
       if (novoStatus && novoStatus !== editando.status) {
         await apiFetch(`/api/v1/plataformas/${editando.id}/status`, {
@@ -128,9 +139,6 @@ export function PlataformasClient({ isAdmin }: { isAdmin: boolean }) {
           <div style={{ display: "flex", gap: 8 }}>
             <Link href="/plataformas/bloqueios" className={styles.btnGhost}>
               Bloqueios de Agenda
-            </Link>
-            <Link href="/plataformas/painel-tv" className={styles.btnGhost}>
-              Painel TV
             </Link>
             <button
               className={styles.btnPrimary}
@@ -272,6 +280,29 @@ export function PlataformasClient({ isAdmin }: { isAdmin: boolean }) {
                     </div>
                   )}
 
+                  {/* Configuração de segurança visível direto no card, com atalho para o
+                      mesmo editor de templates da área de Checklists — "esta plataforma
+                      exige checklist?" é a pergunta que explica o fluxo da reserva dela. */}
+                  {p.exigeChecklist && p.checklistTemplateNome && (
+                    <div className={styles.cardChecklist}>
+                      <span className={styles.cardMetaLabel}>Checklist de segurança</span>
+                      <span className={styles.cardChecklistNome}>{p.checklistTemplateNome}</span>
+                      <span className={styles.cardChecklistMeta}>
+                        {p.checklistTotalQuestoes ?? 0}{" "}
+                        {p.checklistTotalQuestoes === 1 ? "questão" : "questões"}
+                      </span>
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          className={styles.cardChecklistAcao}
+                          onClick={() => setTemplateEmEdicao(p.checklistTemplateId)}
+                        >
+                          Editar template
+                        </button>
+                      )}
+                    </div>
+                  )}
+
                   {p.evento ? (
                     <div className={styles.cardEvento}>
                       <span className={styles.cardEventoTexto}>{p.evento.texto}</span>
@@ -312,6 +343,18 @@ export function PlataformasClient({ isAdmin }: { isAdmin: boolean }) {
             setEditando(null);
           }}
           onSalvar={handleSalvar}
+        />
+      )}
+
+      {templateEmEdicao && (
+        <ChecklistTemplatesModal
+          templateIdInicial={templateEmEdicao}
+          onClose={() => {
+            setTemplateEmEdicao(null);
+            void carregar();
+          }}
+          // A contagem de questões aparece no card — precisa acompanhar a edição.
+          onAlterado={() => void carregar()}
         />
       )}
     </section>

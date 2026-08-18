@@ -15,6 +15,8 @@ export interface ReservaFormValues {
   motivo: string;
   prioridade: "normal" | "alta" | "urgente";
   recorrencia?: { quantidadeOcorrencias: number };
+  inicioAutomatico: boolean;
+  fimAutomatico: boolean;
   // S14 (RF-RES-01): só preenchido quando quem solicita é Admin (sem setor_id próprio,
   // RN-USR-01) — ver seletor de "Setor Solicitante" mais abaixo.
   setorId?: string;
@@ -26,6 +28,13 @@ interface PlataformaOpcao {
   status: string;
   // null = capacidade ainda não cadastrada para esta plataforma (não confundir com 0).
   capacidade: number | null;
+  // Padrões de automação do equipamento — pré-selecionam as opções abaixo quando a
+  // plataforma é escolhida. A decisão final é a gravada nesta reserva.
+  inicioAutomaticoPadrao: boolean;
+  fimAutomaticoPadrao: boolean;
+  // Exibe no formulário que esta reserva vai passar pela etapa de checklist.
+  exigeChecklist: boolean;
+  checklistTemplateNome: string | null;
 }
 
 // RN-RES-03: mesma regra do backend (validarJanelaReserva, apps/api) — usada aqui só
@@ -88,6 +97,12 @@ export function ReservaModal({ solicitanteNome, setorNome, onClose, onSalvar, va
   const [horarioInvalido, setHorarioInvalido] = useState(false);
   const [repetirSemanalmente, setRepetirSemanalmente] = useState(false);
   const [quantidadeOcorrencias, setQuantidadeOcorrencias] = useState(4);
+  // Automação: nasce com o padrão da plataforma escolhida e pode ser sobrescrita aqui. O
+  // valor final fica gravado NA RESERVA — quem executa a transição no horário é o worker
+  // do backend, nunca um timer no navegador.
+  const [inicioAutomatico, setInicioAutomatico] = useState(false);
+  const [fimAutomatico, setFimAutomatico] = useState(false);
+  const [automacaoTocada, setAutomacaoTocada] = useState(false);
   // S14 (RF-RES-01): Admin não tem setor_id de sessão (RN-USR-01) — precisa escolher o
   // setor de destino da reserva. `setorNome === null` é como o resto do app já identifica
   // "sou Admin" nesta tela (ver Sidebar/Topbar).
@@ -144,6 +159,14 @@ export function ReservaModal({ solicitanteNome, setorNome, onClose, onSalvar, va
   // backend em /api/v1/plataformas) — nunca um valor calculado/hardcoded aqui.
   const plataformaSelecionada = plataformas.find((p) => p.id === plataformaId) ?? null;
   const capacidade = plataformaSelecionada?.capacidade ?? null;
+
+  // Trocar de plataforma reaplica os padrões de automação dela — a menos que o usuário já
+  // tenha mexido nas caixas, caso em que a escolha explícita dele é preservada.
+  useEffect(() => {
+    if (!plataformaSelecionada || automacaoTocada) return;
+    setInicioAutomatico(plataformaSelecionada.inicioAutomaticoPadrao);
+    setFimAutomatico(plataformaSelecionada.fimAutomaticoPadrao);
+  }, [plataformaSelecionada, automacaoTocada]);
 
   const quantidadeNum = Number(quantidadePessoas);
   const quantidadePreenchida = quantidadePessoas.trim() !== "";
@@ -212,6 +235,8 @@ export function ReservaModal({ solicitanteNome, setorNome, onClose, onSalvar, va
         prioridade,
         recorrencia: repetirSemanalmente ? { quantidadeOcorrencias } : undefined,
         setorId: exigeSelecaoDeSetor ? setorSelecionadoId : undefined,
+        inicioAutomatico,
+        fimAutomatico,
       });
     } catch (err) {
       setErro(mensagemDeErro(err, "Erro ao criar reserva."));
@@ -233,7 +258,7 @@ export function ReservaModal({ solicitanteNome, setorNome, onClose, onSalvar, va
             ✕
           </button>
         </div>
-        <form onSubmit={handleSubmit}>
+        <form className={styles.modalForm} onSubmit={handleSubmit}>
           <div className={styles.modalBody}>
             {erro && (
               <div className={styles.error} role="alert">
@@ -406,6 +431,39 @@ export function ReservaModal({ solicitanteNome, setorNome, onClose, onSalvar, va
                     />
                   </div>
                 )}
+              </div>
+
+              {/* AUTOMAÇÃO — duas caixas, sem tela nova nem configuração aninhada. O padrão
+                  vem da plataforma; aqui só se sobrescreve quando for o caso. */}
+              <div className={`${styles.formGroup} ${styles.formGroupFull}`}>
+                <label className={styles.grupoRotulo}>Automação</label>
+                <label className={styles.opcaoCheck}>
+                  <input
+                    type="checkbox"
+                    checked={inicioAutomatico}
+                    onChange={(e) => {
+                      setInicioAutomatico(e.target.checked);
+                      setAutomacaoTocada(true);
+                    }}
+                  />
+                  Iniciar automaticamente no horário agendado
+                </label>
+                <label className={styles.opcaoCheck}>
+                  <input
+                    type="checkbox"
+                    checked={fimAutomatico}
+                    onChange={(e) => {
+                      setFimAutomatico(e.target.checked);
+                      setAutomacaoTocada(true);
+                    }}
+                  />
+                  Finalizar automaticamente no horário final
+                </label>
+                <p className={styles.opcaoAjuda}>
+                  {plataformaSelecionada?.exigeChecklist
+                    ? "O início automático só ocorre com o checklist de segurança concluído e sem não conformidade impeditiva. Iniciar e finalizar manualmente continua possível."
+                    : "Iniciar e finalizar manualmente continua possível a qualquer momento."}
+                </p>
               </div>
             </div>
 

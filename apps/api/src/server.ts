@@ -2,7 +2,13 @@ import "dotenv/config";
 import { buildApp } from "./app.js";
 import { closePool } from "./db/pool.js";
 import { encerrarBrowserRelatorios } from "./services/relatorioExport.service.js";
-import { agendarEscalonamentoRepetitivo, iniciarEmailWorker, iniciarEscalonamentoWorker } from "./services/queue.js";
+import {
+  agendarAutomacaoRepetitiva,
+  agendarEscalonamentoRepetitivo,
+  iniciarAutomacaoWorker,
+  iniciarEmailWorker,
+  iniciarEscalonamentoWorker,
+} from "./services/queue.js";
 import { logConfiguracaoEmail, testarConexaoEmail, validarConfiguracaoEmailNoBoot } from "./services/email.service.js";
 
 async function main() {
@@ -19,6 +25,11 @@ async function main() {
   iniciarEmailWorker();
   iniciarEscalonamentoWorker();
   await agendarEscalonamentoRepetitivo();
+
+  // Início/finalização automática de reservas no horário agendado — roda no servidor, não
+  // depende de nenhum navegador aberto.
+  iniciarAutomacaoWorker();
+  await agendarAutomacaoRepetitiva();
 
   // "Editei o .env" e "o processo que atende as requisições está usando esse .env" são
   // afirmações diferentes — múltiplas instâncias, cwd errado ou um processo antigo ainda

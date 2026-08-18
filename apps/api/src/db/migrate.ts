@@ -83,7 +83,22 @@ function splitBatches(script: string): string[] {
         .map((statement) => statement.trim())
         .filter((statement) => statement.length > 0);
     })
-    .filter((statement) => !/^(--[^\n]*\s*)+$/.test(statement));
+    .filter(apenasComentarios);
+}
+
+// Descarta pedaços que só contêm comentário (nada a executar). A versão anterior testava
+// `/^(--[^\n]*\s*)+$/`, que sofre backtracking catastrófico: numa linha separadora
+// (`-- -----------------`), o `--` do grupo repetido casa em dezenas de posições dentro da
+// própria sequência de hífens, e o motor tenta todas as partições antes de desistir — uma
+// migration com esse tipo de separador travava o `migrate:up` indefinidamente, sem erro nem
+// log. Verificar linha a linha custa tempo linear e expressa a mesma intenção.
+function apenasComentarios(statement: string): boolean {
+  return statement
+    .split(/\r?\n/)
+    .some((linha) => {
+      const conteudo = linha.trim();
+      return conteudo.length > 0 && !conteudo.startsWith("--");
+    });
 }
 
 function checksumDe(conteudo: string): string {

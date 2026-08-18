@@ -11,7 +11,7 @@ const config: sql.config = {
     encrypt: process.env.DB_ENCRYPT === "true",
     trustServerCertificate: process.env.DB_TRUST_SERVER_CERTIFICATE !== "false",
   },
-  // RNF-03 (50 usuários simultâneos + Painel TV): o padrão do driver é max 10 conexões.
+  // RNF-03 (50 usuários simultâneos): o padrão do driver é max 10 conexões.
   // Uma tela como o Dashboard dispara até 8 requisições em paralelo, e várias rotas
   // (KPIs, agenda) fazem 3–5 consultas concorrentes cada — com 10 conexões, requisições
   // ficavam enfileiradas esperando o pool sob carga, inflando o p95 sem que o banco

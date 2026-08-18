@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import styles from "../app/(app)/plataformas/page.module.css";
 import { apiFetch } from "../lib/api";
+import { useTravarScrollDaPagina } from "../lib/useTravarScrollDaPagina";
 
 interface Bloqueio {
   id: string;
@@ -48,6 +49,9 @@ export function BloqueiosClient() {
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [modalAberto, setModalAberto] = useState(false);
+  // Com o modal aberto, a rolagem acontece dentro do corpo dele — a listagem de bloqueios
+  // atrás do overlay não pode rolar junto.
+  useTravarScrollDaPagina(modalAberto);
 
   const [plataformaId, setPlataformaId] = useState("");
   const [dataInicio, setDataInicio] = useState("");
@@ -216,14 +220,14 @@ export function BloqueiosClient() {
             if (event.target === event.currentTarget) setModalAberto(false);
           }}
         >
-          <div className={styles.modal}>
+          <div className={`${styles.modal} ${styles.modalWide}`}>
             <div className={styles.modalHeader}>
               <h3>Novo Bloqueio de Agenda</h3>
               <button type="button" className={styles.modalClose} onClick={() => setModalAberto(false)}>
                 ✕
               </button>
             </div>
-            <form onSubmit={handleSubmit}>
+            <form className={styles.modalForm} onSubmit={handleSubmit}>
               <div className={styles.modalBody}>
                 {erroForm && <div className={styles.error}>{erroForm}</div>}
                 <div className={styles.formGrid}>

@@ -1,10 +1,10 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { PainelTokensClient } from "../../../../components/PainelTokensClient";
+import { ChecklistsClient } from "../../../components/ChecklistsClient";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3335";
 
-export default async function PainelTvAdminPage() {
+export default async function ChecklistsPage() {
   const cookieStore = await cookies();
   const token = cookieStore.get("token")?.value;
   const response = await fetch(`${API_URL}/api/v1/conta`, {
@@ -17,9 +17,8 @@ export default async function PainelTvAdminPage() {
   }
 
   const usuario = await response.json();
-  if (usuario.perfil !== "admin") {
-    redirect("/plataformas");
-  }
 
-  return <PainelTokensClient />;
+  // `usuarioId` alimenta o destaque de "meu checklist" (comparação por id, nunca por nome);
+  // `isAdmin` libera a ação administrativa "Gerenciar templates".
+  return <ChecklistsClient usuarioId={usuario.id} isAdmin={usuario.perfil === "admin"} />;
 }

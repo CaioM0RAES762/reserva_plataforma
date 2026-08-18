@@ -7,21 +7,21 @@ import { useSidebarState } from "./SidebarState";
 
 // Mapa completo de rotas → título do breadcrumb. Antes cobria só três rotas (/conta,
 // /plataformas, /reservas): todas as demais telas — Calendário, Histórico, Relatórios,
-// Fila de Aprovações, Bloqueios, Painel TV e as quatro de Administração — exibiam o
-// literal "PlataformaRes" no lugar do próprio nome, deixando o usuário sem referência de
-// onde estava.
+// Fila de Aprovações, Bloqueios e as quatro de Administração — exibiam o literal
+// "PlataformaRes" no lugar do próprio nome, deixando o usuário sem referência de onde
+// estava.
 //
 // Ordenado do mais específico para o mais genérico, porque a resolução é por prefixo:
 // /reservas/aprovacoes precisa vencer /reservas.
 const TITULOS: Array<[string, string]> = [
   ["/reservas/aprovacoes", "Fila de Aprovações"],
   ["/plataformas/bloqueios", "Bloqueios de Agenda"],
-  ["/plataformas/painel-tv", "Painel TV"],
   ["/administracao/usuarios", "Usuários"],
   ["/administracao/setores", "Setores"],
   ["/administracao/configuracoes", "Configurações"],
   ["/administracao/auditoria", "Auditoria"],
   ["/plataformas", "Frota"],
+  ["/checklists", "Checklists NR-18/35"],
   ["/reservas", "Reservas"],
   ["/calendario", "Calendário"],
   ["/historico", "Histórico"],

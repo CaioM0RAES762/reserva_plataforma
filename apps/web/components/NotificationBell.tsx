@@ -54,7 +54,7 @@ export function NotificationBell() {
   }, [conectado, carregar]);
 
   // RNF-10: ao reconectar após uma queda, sincroniza a lista imediatamente — evita perder
-  // notificações que chegaram durante a janela sem conexão (ver mesmo fix no Painel TV).
+  // notificações que chegaram durante a janela sem conexão.
   useEffect(() => {
     if (conectado) {
       carregar();

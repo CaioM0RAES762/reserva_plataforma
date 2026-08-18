@@ -578,6 +578,16 @@
   background: color-mix(in oklch, var(--caution) 22%, transparent);
   color: color-mix(in oklch, var(--caution) 70%, var(--ink));
 }
+/* Correção do fluxo de Checklist: situação do checklist na Fila de Aprovações (item 9 da
+   tarefa) — o aprovador precisa ver de cara se pode decidir ou se falta o checklist. */
+.seloChecklistPendente {
+  background: color-mix(in oklch, var(--hazard) 12%, transparent);
+  color: var(--hazard);
+}
+.seloChecklistOk {
+  background: color-mix(in oklch, var(--signal) 14%, transparent);
+  color: var(--signal);
+}
 
 /* Texto de apoio dentro de formulários (explica uma regra sem parecer erro). */
 .hint {
@@ -644,39 +654,30 @@
 .btnDanger:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ---------- Modal ---------- */
+/* Shell do modal: geometria compartilhada em components/Modal.module.css. */
 .modalOverlay {
-  position: fixed;
-  inset: 0;
-  background: color-mix(in oklch, var(--ink) 45%, transparent);
-  z-index: 200;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
+  composes: overlay from "../../../components/Modal.module.css";
 }
 
 .modal {
-  background: var(--paper-elev);
-  border: 1px solid var(--hairline);
-  border-radius: var(--ind-radius-md);
-  /* min(900px, calc(100vw - 48px)): cabe os dois campos por linha confortavelmente em
-     desktop sem nunca encostar nas bordas da viewport em telas menores — o overlay
-     ao redor já reserva 20px de cada lado (.modalOverlay), então 48px de folga total
-     garante que o modal nunca force scroll horizontal na página. */
-  width: min(900px, calc(100vw - 48px));
-  max-height: 90vh;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+  composes: dialog from "../../../components/Modal.module.css";
+  composes: dialogLarge from "../../../components/Modal.module.css";
 }
 
+/* Aplicado no <form> que envolve corpo + rodape. Sem ele o <form> fica como filho flex
+   sem estilo, o `flex:1` do corpo deixa de valer, `overflow-y:auto` nunca dispara e o fim
+   do formulario (incluindo "Criar Reserva") era cortado pela caixa com overflow:hidden. */
+.modalForm {
+  composes: form from "../../../components/Modal.module.css";
+}
+
+
 .modalHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  composes: header from "../../../components/Modal.module.css";
   padding: 18px 22px;
   border-bottom: 1px solid var(--hairline);
 }
+
 .modalHeader h3 { font-family: var(--font-display); font-weight: 500; font-size: var(--text-panel-title); color: var(--ink); }
 
 .modalClose {
@@ -690,16 +691,17 @@
 }
 .modalClose:hover { background: color-mix(in oklch, var(--ink) 6%, transparent); color: var(--ink); }
 
-.modalBody { padding: 20px 22px; overflow-y: auto; flex: 1; }
+.modalBody {
+  composes: body from "../../../components/Modal.module.css";
+  padding: 20px 22px;
+}
 .modalFooter {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
+  composes: footer from "../../../components/Modal.module.css";
   padding: 14px 22px;
   border-top: 1px solid var(--hairline);
   background: color-mix(in oklch, var(--ink) 2%, transparent);
 }
+
 
 .formGrid {
   display: grid;
@@ -711,7 +713,12 @@
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 14px 20px;
 }
-.formGroup { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.formGroup {
+  composes: campo from "../../../components/Modal.module.css";
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
 .formGroupFull { grid-column: 1 / -1; }
 .formGroupHalf { grid-column: span 1; }
 
@@ -767,6 +774,41 @@
   padding: 0 2px;
   font-size: var(--text-body);
   color: var(--ink-soft);
+}
+
+/* Bloco de opções (Automação) no formulário de reserva — mesma tipografia de rótulo dos
+   demais campos, com as caixas alinhadas em coluna. */
+.grupoRotulo {
+  font-size: var(--text-micro);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--ink-muted);
+}
+
+.opcaoCheck {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 3px 0;
+  font-size: var(--text-body);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.opcaoCheck input {
+  accent-color: var(--ink);
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.opcaoAjuda {
+  margin: 4px 0 0 25px;
+  font-size: var(--text-meta);
+  color: var(--ink-muted);
+  line-height: 1.45;
 }
 
 .conflictAlert {

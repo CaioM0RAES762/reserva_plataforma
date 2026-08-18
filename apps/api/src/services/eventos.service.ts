@@ -3,7 +3,7 @@ import type { FastifyReply } from "fastify";
 
 // SDD §3.4 — canal único de comunicação em tempo real (SSE). Um cliente é ou um usuário
 // autenticado (usuarioId preenchido — recebe eventos pessoais como notificacao.nova) ou
-// um dispositivo do Painel TV (usuarioId nulo — recebe apenas os eventos globais, nunca
+// um cliente sem usuário associado (usuarioId nulo — recebe apenas os eventos globais, nunca
 // notificações pessoais de outro usuário).
 interface ClienteSSE {
   id: string;
@@ -60,7 +60,7 @@ export function publicarEventoUsuario(usuarioId: string, tipo: string, dados: un
 }
 
 // Eventos globais: reserva.status_alterado e plataforma.status_alterado — consumidos por
-// Dashboard, Painel TV e Calendário de qualquer usuário/dispositivo conectado (SDD §3.4).
+// Central de Operações, Reservas e Calendário de qualquer usuário conectado (SDD §3.4).
 export function publicarEventoGlobal(tipo: string, dados: unknown): number {
   let entregues = 0;
   for (const cliente of [...clientes.values()]) {

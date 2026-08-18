@@ -7,17 +7,39 @@ import { apiFetch } from "../lib/api";
 import { useModalAcessivel } from "../lib/useModalAcessivel";
 import { ReservaStatusBadge } from "./ReservaStatusBadge";
 import { PriorityBadge } from "./PriorityBadge";
-import { ChecklistSeguranca } from "./ChecklistSeguranca";
+import { ChecklistFillModal, type ChecklistResumo } from "./ChecklistFillModal";
 import { AnexosComentarios } from "./AnexosComentarios";
 
 // Passo a passo do caminho feliz — cancelada/rejeitada são estados terminais à parte
 // (ver terminalBanner) e não aparecem aqui, pois quebram a progressão linear.
-const ETAPAS_STEPPER = [
-  { status: "pendente", label: "Solicitada" },
-  { status: "agendada", label: "Aprovada" },
-  { status: "em_uso", label: "Em uso" },
-  { status: "concluida", label: "Concluída" },
-] as const;
+//
+// "Checklist" só entra quando a reserva exige um (reserva.requerChecklist) — o checklist
+// agora é portão da APROVAÇÃO (RN-CHK-03), não mais do início de uso, então a etapa fica
+// entre "Solicitada" e "Aprovada". Nenhuma dessas chaves é o `status` real da reserva no
+// banco (que continua só pendente/agendada/em_uso/concluida/...) — "checklist" é uma
+// sub-fase de status="pendente", distinguida por chaveEtapaAtiva() abaixo usando o estado
+// do checklist, não um valor novo de status.
+type EtapaChave = "solicitada" | "checklist" | "aprovada" | "em_uso" | "concluida";
+
+function montarEtapas(requerChecklist: boolean): Array<{ chave: EtapaChave; label: string }> {
+  const etapas: Array<{ chave: EtapaChave; label: string }> = [{ chave: "solicitada", label: "Solicitada" }];
+  if (requerChecklist) etapas.push({ chave: "checklist", label: "Checklist" });
+  etapas.push(
+    { chave: "aprovada", label: "Aprovada" },
+    { chave: "em_uso", label: "Em uso" },
+    { chave: "concluida", label: "Concluída" }
+  );
+  return etapas;
+}
+
+function chaveEtapaAtiva(status: string, requerChecklist: boolean, checklistPronto: boolean): EtapaChave {
+  if (status === "pendente") {
+    return requerChecklist && !checklistPronto ? "checklist" : "aprovada";
+  }
+  if (status === "agendada") return "aprovada";
+  if (status === "em_uso") return "em_uso";
+  return "concluida";
+}
 
 function IconCalendario() {
   return (
@@ -66,11 +88,6 @@ function IconBandeira() {
   );
 }
 
-// S8 (RN-RES-12): categorias de plataforma cujo checklist de segurança é obrigatório
-// antes de "em_uso" — mantido em espelho do backend (checklist.service.ts, requerChecklist)
-// só para a UI decidir se deve bloquear o botão "Iniciar Uso"; o backend revalida sempre.
-const CATEGORIAS_COM_CHECKLIST_OBRIGATORIO = ["elevatoria", "andaime"];
-
 export interface ReservaDetalhe {
   id: string;
   setorId: string;
@@ -98,6 +115,14 @@ export interface ReservaDetalhe {
   // S9 (RF-RES-03): presente quando a reserva faz parte de uma série semanal.
   recorrenciaId?: string | null;
   criadoEm: string;
+  // Correção do fluxo de Checklist: resolvido pelo backend (template específico da
+  // plataforma OU default da categoria) — nunca mais uma lista fixa de categorias no
+  // frontend. O checklist é portão da APROVAÇÃO (RN-CHK-03); estes campos só espelham o
+  // estado já salvo no momento em que a lista/detalhe foi carregada — o resumo ao vivo
+  // (após abrir/editar o checklist neste modal) vem do estado local checklistResumo.
+  requerChecklist: boolean;
+  checklistFinalizadoEm: string | null;
+  checklistTodosConformes: boolean | null;
 }
 
 interface ReservaDetalheModalProps {
@@ -133,7 +158,16 @@ export function ReservaDetalheModal({
   const [erro, setErro] = useState<string | null>(null);
   const [mostrarFormRejeicao, setMostrarFormRejeicao] = useState(false);
   const [motivoRejeicao, setMotivoRejeicao] = useState("");
-  const [checklistTodosConformes, setChecklistTodosConformes] = useState<boolean | null>(null);
+  // Inicializado com o que a lista/detalhe já tinha carregado; atualizado ao vivo pelo
+  // ChecklistFillModal (onAtualizado) sem precisar fechar este modal nem refazer a busca
+  // da reserva inteira — ver ChecklistFillModal.tsx.
+  const [checklistResumo, setChecklistResumo] = useState<ChecklistResumo>({
+    finalizadoEm: reserva.checklistFinalizadoEm,
+    todosConformes: reserva.checklistTodosConformes,
+    totalItens: 0,
+    totalRespondidos: 0,
+  });
+  const [checklistModalAberto, setChecklistModalAberto] = useState(false);
   // RF-RES-16/UC-04: ao concluir o uso, pergunta se houve ocorrência/avaria antes de
   // finalizar — "perguntando" não bloqueia estruturalmente a conclusão em duas chamadas
   // (POST /ocorrencia, depois PATCH /status concluir), mas garante que a ocorrência fique
@@ -155,12 +189,14 @@ export function ReservaDetalheModal({
     noEscopo &&
     reserva.status === "pendente" &&
     !(perfil === "gestor_setor" && reserva.aprovadoPorNome !== null);
-  // RF-RES-10/RN-RES-12: plataforma elevatória/andaime só inicia uso com checklist
-  // aprovado (todosConformes === true). Enquanto o checklist ainda carrega (null),
-  // deixamos o backend ser o árbitro final — o botão some se a chamada retornar bloqueio.
-  const exigeChecklist = CATEGORIAS_COM_CHECKLIST_OBRIGATORIO.includes(reserva.plataformaCategoria);
-  const checklistLiberaUso = !exigeChecklist || checklistTodosConformes === true;
-  const podeIniciarUso = ehAprovador && noEscopo && reserva.status === "agendada" && checklistLiberaUso;
+  // RF-CHK-06/RN-CHK-03: o checklist agora é portão da APROVAÇÃO, não mais do início de
+  // uso — "pronto" cobre tanto "não exige checklist" quanto "exige e já foi finalizado
+  // sem não conformidade". O backend revalida sempre; isto só decide se o botão Aprovar
+  // fica habilitado, com o motivo explicado ao usuário em vez de um 409 sem contexto.
+  const checklistPronto =
+    !reserva.requerChecklist || (checklistResumo.finalizadoEm !== null && checklistResumo.todosConformes === true);
+  const aprovarBloqueadoPeloChecklist = podeAprovarRejeitar && reserva.requerChecklist && !checklistPronto;
+  const podeIniciarUso = ehAprovador && noEscopo && reserva.status === "agendada" && checklistPronto;
   const podeConcluir = ehAprovador && noEscopo && reserva.status === "em_uso";
   const podeCancelar = ["pendente", "agendada", "em_uso"].includes(reserva.status) && noEscopo;
   // S9 (RF-RES-03): "Cancelar série" só faz sentido enquanto a própria ocorrência ainda
@@ -301,23 +337,27 @@ export function ReservaDetalheModal({
             </div>
           ) : (
             <div className={local.stepper}>
-              {ETAPAS_STEPPER.map((etapa, i) => {
-                const indiceAtual = ETAPAS_STEPPER.findIndex((e) => e.status === reserva.status);
-                // A última etapa ("Concluída") é um estado final, não "em andamento" — ao
-                // chegar nela, ela também aparece como concluída (✓), não numerada.
-                const ultimaEtapa = i === ETAPAS_STEPPER.length - 1;
-                const estado =
-                  i < indiceAtual || (i === indiceAtual && ultimaEtapa) ? "done" : i === indiceAtual ? "active" : "";
-                return (
-                  <div key={etapa.status} style={{ display: "contents" }}>
-                    {i > 0 && <div className={`${local.stepperConnector} ${i <= indiceAtual ? local.done : ""}`} />}
-                    <div className={`${local.stepperStep} ${local[estado] ?? ""}`}>
-                      <div className={local.stepperDot}>{estado === "done" ? <IconChecagem /> : i + 1}</div>
-                      <span className={local.stepperLabel}>{etapa.label}</span>
+              {(() => {
+                const etapas = montarEtapas(reserva.requerChecklist);
+                const chaveAtiva = chaveEtapaAtiva(reserva.status, reserva.requerChecklist, checklistPronto);
+                const indiceAtual = etapas.findIndex((e) => e.chave === chaveAtiva);
+                return etapas.map((etapa, i) => {
+                  // A última etapa ("Concluída") é um estado final, não "em andamento" — ao
+                  // chegar nela, ela também aparece como concluída (✓), não numerada.
+                  const ultimaEtapa = i === etapas.length - 1;
+                  const estado =
+                    i < indiceAtual || (i === indiceAtual && ultimaEtapa) ? "done" : i === indiceAtual ? "active" : "";
+                  return (
+                    <div key={etapa.chave} style={{ display: "contents" }}>
+                      {i > 0 && <div className={`${local.stepperConnector} ${i <= indiceAtual ? local.done : ""}`} />}
+                      <div className={`${local.stepperStep} ${local[estado] ?? ""}`}>
+                        <div className={local.stepperDot}>{estado === "done" ? <IconChecagem /> : i + 1}</div>
+                        <span className={local.stepperLabel}>{etapa.label}</span>
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                });
+              })()}
             </div>
           )}
 
@@ -406,17 +446,38 @@ export function ReservaDetalheModal({
 
           <p className={local.motivoBlock}>{reserva.motivo}</p>
 
-          {["agendada", "em_uso", "concluida"].includes(reserva.status) && (
-            <ChecklistSeguranca
-              reservaId={reserva.id}
-              somenteLeitura={checklistSomenteLeitura}
-              onAtualizado={setChecklistTodosConformes}
-            />
+          {reserva.requerChecklist && (
+            <div className={local.checklistCard}>
+              <div className={local.checklistCardHeader}>
+                <span className={local.checklistCardTitle}>Checklist de Segurança</span>
+                <span
+                  className={`${local.checklistBadge} ${
+                    checklistResumo.finalizadoEm
+                      ? checklistResumo.todosConformes
+                        ? local.checklistBadgeOk
+                        : local.checklistBadgeBloqueado
+                      : local.checklistBadgePendente
+                  }`}
+                >
+                  {checklistResumo.finalizadoEm ? (checklistResumo.todosConformes ? "Concluído" : "Não conforme") : "Pendente"}
+                </span>
+              </div>
+              {checklistResumo.finalizadoEm && (
+                <p className={local.checklistCardMeta}>
+                  Finalizado em {new Date(checklistResumo.finalizadoEm).toLocaleString("pt-BR")}
+                  {checklistResumo.todosConformes === false &&
+                    " — revise a plataforma antes de aprovar esta reserva (RN-CHK-02)."}
+                </p>
+              )}
+              <button type="button" className={styles.btnGhost} onClick={() => setChecklistModalAberto(true)}>
+                {checklistResumo.finalizadoEm ? "Ver checklist" : "Preencher checklist"}
+              </button>
+            </div>
           )}
-          {exigeChecklist && reserva.status === "agendada" && !checklistLiberaUso && (
+          {aprovarBloqueadoPeloChecklist && !mostrarFormRejeicao && (
             <p style={{ color: "var(--red)", fontSize: "var(--text-secondary)", marginTop: 8 }}>
-              O botão &quot;Iniciar Uso&quot; fica bloqueado até o checklist de segurança acima ser preenchido com
-              todos os itens obrigatórios conformes (RN-RES-12).
+              O botão &quot;Aprovar&quot; fica bloqueado até o checklist de segurança acima ser finalizado sem
+              itens obrigatórios não conformes (RN-CHK-03).
             </p>
           )}
 
@@ -515,7 +576,13 @@ export function ReservaDetalheModal({
               >
                 Rejeitar
               </button>
-              <button type="button" className={styles.btnPrimary} disabled={executando} onClick={aprovar}>
+              <button
+                type="button"
+                className={styles.btnPrimary}
+                disabled={executando || aprovarBloqueadoPeloChecklist}
+                title={aprovarBloqueadoPeloChecklist ? "Finalize o checklist de segurança antes de aprovar." : undefined}
+                onClick={aprovar}
+              >
                 Aprovar
               </button>
             </>
@@ -562,6 +629,16 @@ export function ReservaDetalheModal({
           )}
         </div>
       </div>
+
+      {checklistModalAberto && (
+        <ChecklistFillModal
+          reservaId={reserva.id}
+          plataformaNome={reserva.plataformaNome}
+          somenteLeitura={checklistSomenteLeitura}
+          onClose={() => setChecklistModalAberto(false)}
+          onAtualizado={setChecklistResumo}
+        />
+      )}
     </div>
   );
 }

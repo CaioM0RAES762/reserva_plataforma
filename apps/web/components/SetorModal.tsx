@@ -64,7 +64,7 @@ export function SetorModal({ setor, onClose, onSalvar }: SetorModalProps) {
             ✕
           </button>
         </div>
-        <form onSubmit={handleSubmit}>
+        <form className={styles.modalForm} onSubmit={handleSubmit}>
           <div className={styles.modalBody}>
             {erro && (
               <div className={styles.error} role="alert">

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, type RefObject } from "react";
+import { useTravarScrollDaPagina } from "./useTravarScrollDaPagina.js";
 
 const SELETOR_FOCAVEIS = [
   "a[href]",
@@ -39,6 +40,10 @@ export function useModalAcessivel(aoFechar: () => void, idBase: string): ModalAc
 
   // Guardado em ref para que o efeito de teclado não seja recriado a cada render quando o
   // chamador passa uma arrow function inline (o caso de todos os modais do app).
+  // Trava da rolagem do fundo: implementacao unica, compartilhada com os modais que nao
+  // usam este hook completo (ver useTravarScrollDaPagina).
+  useTravarScrollDaPagina(true);
+
   const aoFecharRef = useRef(aoFechar);
   useEffect(() => {
     aoFecharRef.current = aoFechar;
@@ -51,10 +56,6 @@ export function useModalAcessivel(aoFechar: () => void, idBase: string): ModalAc
     const dialogo = refDialogo.current;
     const primeiroFocavel = dialogo?.querySelector<HTMLElement>(SELETOR_FOCAVEIS);
     (primeiroFocavel ?? dialogo)?.focus();
-
-    // Trava a rolagem do fundo enquanto o modal está aberto.
-    const overflowAnterior = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
 
     function aoTeclar(evento: KeyboardEvent) {
       if (evento.key === "Escape") {
@@ -82,7 +83,6 @@ export function useModalAcessivel(aoFechar: () => void, idBase: string): ModalAc
     document.addEventListener("keydown", aoTeclar, true);
     return () => {
       document.removeEventListener("keydown", aoTeclar, true);
-      document.body.style.overflow = overflowAnterior;
       // Devolve o foco a quem abriu o modal (o botão "Nova Reserva", a linha da tabela…).
       refOrigemDoFoco.current?.focus?.();
     };

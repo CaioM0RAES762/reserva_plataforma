@@ -184,36 +184,27 @@
 .btnIconDanger:hover { background: var(--safety-soft); border-color: var(--hazard); }
 
 /* ---------- Modal ---------- */
+/* Shell do modal: geometria compartilhada em ./Modal.module.css. */
 .modalOverlay {
-  position: fixed;
-  inset: 0;
-  background: color-mix(in oklch, var(--ink) 45%, transparent);
-  z-index: 200;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
+  composes: overlay from "./Modal.module.css";
 }
 
 .modal {
-  background: var(--paper-elev);
-  border: 1px solid var(--hairline);
-  border-radius: var(--ind-radius-md);
-  width: 100%;
-  max-width: 560px;
-  max-height: 90vh;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+  composes: dialog from "./Modal.module.css";
 }
 
+/* Reata a cadeia flex quando ha um <form> entre a caixa e o corpo rolavel (Setor/Usuario). */
+.modalForm {
+  composes: form from "./Modal.module.css";
+}
+
+
 .modalHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  composes: header from "./Modal.module.css";
   padding: 18px 22px;
   border-bottom: 1px solid var(--hairline);
 }
+
 .modalHeader h3 { font-family: var(--font-display); font-weight: 500; font-size: var(--text-panel-title); color: var(--ink); }
 
 .modalClose {
@@ -227,23 +218,31 @@
 }
 .modalClose:hover { background: color-mix(in oklch, var(--ink) 6%, transparent); color: var(--ink); }
 
-.modalBody { padding: 20px 22px; overflow-y: auto; flex: 1; }
+.modalBody {
+  composes: body from "./Modal.module.css";
+  padding: 20px 22px;
+}
 .modalFooter {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
+  composes: footer from "./Modal.module.css";
   padding: 14px 22px;
   border-top: 1px solid var(--hairline);
   background: color-mix(in oklch, var(--ink) 2%, transparent);
 }
 
+
 .formGrid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* minmax(0, 1fr): coluna de grid tem min-width:auto e nao encolhe abaixo do conteudo
+     mais largo — um <select> adota a largura da opcao mais longa e estoura a coluna. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 14px;
 }
-.formGroup { display: flex; flex-direction: column; gap: 6px; }
+.formGroup {
+  composes: campo from "./Modal.module.css";
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
 .formGroupFull { grid-column: 1 / -1; }
 
 .formGroup label {
@@ -257,6 +256,9 @@
 .formGroup input,
 .formGroup select,
 .formGroup textarea {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   min-height: var(--control-h);
   padding: 10px 13px;
   border: 1px solid var(--hairline);

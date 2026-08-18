@@ -1,5 +1,6 @@
 export * from "./enums.js";
 export * from "./datetime.js";
+export * from "./agendaLanes.js";
 export * from "./schemas/paginacao.js";
 export * from "./schemas/auth.js";
 export * from "./schemas/usuario.js";
@@ -9,7 +10,6 @@ export * from "./schemas/setor.js";
 export * from "./schemas/checklist.js";
 export * from "./schemas/bloqueio.js";
 export * from "./schemas/notificacao.js";
-export * from "./schemas/painel.js";
 export * from "./schemas/anexo.js";
 export * from "./schemas/comentario.js";
 export * from "./schemas/ocorrencia.js";

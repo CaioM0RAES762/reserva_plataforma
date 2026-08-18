@@ -14,7 +14,6 @@ import { checklistRoutes } from "./routes/checklist.js";
 import { bloqueiosRoutes } from "./routes/bloqueios.js";
 import { eventosRoutes } from "./routes/eventos.js";
 import { notificacoesRoutes } from "./routes/notificacoes.js";
-import { painelRoutes } from "./routes/painel.js";
 import { anexosRoutes } from "./routes/anexos.js";
 import { comentariosRoutes } from "./routes/comentarios.js";
 import { ocorrenciasRoutes } from "./routes/ocorrencias.js";
@@ -100,7 +99,6 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(bloqueiosRoutes);
   await app.register(eventosRoutes);
   await app.register(notificacoesRoutes);
-  await app.register(painelRoutes);
   await app.register(anexosRoutes);
   await app.register(comentariosRoutes);
   await app.register(ocorrenciasRoutes);

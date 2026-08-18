@@ -1,21 +1,33 @@
-.wrap {
-  margin-top: 18px;
-  padding-top: 16px;
-  border-top: 1px solid var(--hairline);
+.aviso {
+  font-size: var(--text-meta);
+  color: var(--ink-muted);
+  margin-top: 8px;
 }
 
-.header {
+.progressoBar {
+  margin-bottom: 16px;
+}
+
+.progressoHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 10px;
+  font-size: var(--text-secondary);
+  color: var(--ink-soft);
+  margin-bottom: 6px;
 }
 
-.title {
-  font-family: var(--font-display);
-  font-weight: 500;
-  font-size: var(--text-panel-title);
-  color: var(--ink);
+.progressoTrack {
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--ink) 8%, transparent);
+  overflow: hidden;
+}
+
+.progressoFill {
+  height: 100%;
+  background: var(--signal);
+  transition: width 0.2s ease;
 }
 
 .statusBadge {
@@ -26,6 +38,7 @@
   padding: 3px 9px;
   border-radius: var(--ind-radius-sm);
   border: 1px solid transparent;
+  white-space: nowrap;
 }
 
 .statusOk { color: var(--signal); background: color-mix(in oklch, var(--signal) 14%, transparent); border-color: color-mix(in oklch, var(--signal) 35%, transparent); }
@@ -48,8 +61,16 @@
 .itemHeader {
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.itemNumero {
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  color: var(--ink-muted);
+  flex-shrink: 0;
+  padding-top: 1px;
 }
 
 .itemDescricao {
@@ -67,7 +88,7 @@
 .toggleGroup {
   display: flex;
   gap: 6px;
-  flex-shrink: 0;
+  flex-wrap: wrap;
 }
 
 .toggleBtn {
@@ -96,6 +117,12 @@
   background: color-mix(in oklch, var(--hazard) 12%, transparent);
   border-color: var(--hazard);
   color: var(--hazard);
+}
+
+.toggleNaoAplicavelAtivo {
+  background: color-mix(in oklch, var(--ink) 10%, transparent);
+  border-color: var(--ink-muted);
+  color: var(--ink-soft);
 }
 
 .observacao {
@@ -129,21 +156,4 @@
   border-radius: var(--ind-radius-sm);
   object-fit: cover;
   border: 1px solid var(--hairline);
-}
-
-.footer {
-  margin-top: 12px;
-  display: flex;
-  justify-content: flex-end;
-}
-
-.aviso {
-  font-size: var(--text-meta);
-  color: var(--ink-muted);
-  margin-top: 8px;
-}
-
-.avisoBloqueio {
-  color: var(--hazard);
-  font-weight: 500;
 }

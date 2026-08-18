@@ -197,8 +197,11 @@ beforeAll(async () => {
     .input("id", sql.UniqueIdentifier, reservaHojeSetorBId)
     .query("UPDATE Reserva SET data = CAST(GETDATE() AS DATE) WHERE id = @id");
 
-  // Reserva agendada (aprovada pelo Admin em etapa única — RN-RES-08) sem checklist
-  // preenchido: é o caso que DEVE aparecer em /dashboard/checklists-pendentes.
+  // Correção do fluxo de Checklist: o checklist agora é portão da APROVAÇÃO
+  // (RN-CHK-03), não mais do início de uso — então "checklist pendente" deixou de
+  // exigir status "agendada": esta reserva fica "pendente" mesmo (aprovar sem
+  // checklist finalizado seria bloqueado, 409) e É JUSTAMENTE o caso que deve
+  // aparecer em /dashboard/checklists-pendentes.
   const criacaoAgendadaSemChecklist = await app.inject({
     method: "POST",
     url: "/api/v1/reservas",
@@ -215,17 +218,12 @@ beforeAll(async () => {
   });
   expect(criacaoAgendadaSemChecklist.statusCode).toBe(201);
   reservaAgendadaSemChecklistSetorAId = criacaoAgendadaSemChecklist.json().id;
-  const aprovacao1 = await app.inject({
-    method: "POST",
-    url: `/api/v1/reservas/${reservaAgendadaSemChecklistSetorAId}/aprovar`,
-    headers: { cookie: cookieAdmin },
-  });
-  expect(aprovacao1.statusCode).toBe(200);
-  expect(aprovacao1.json().status).toBe("agendada");
 
-  // Reserva agendada COM checklist já preenchido (inserido direto via SQL, mesma
+  // Reserva aprovada COM checklist já finalizado (inserido direto via SQL, mesma
   // técnica já usada por outras suítes para isolar o teste do fluxo completo de
-  // checklist.ts) — NÃO deve aparecer em /dashboard/checklists-pendentes.
+  // checklist.ts) — finalizado_em precisa estar preenchido ANTES de aprovar, senão o
+  // gate de aprovação (RN-CHK-03) bloqueia com 409. NÃO deve aparecer em
+  // /dashboard/checklists-pendentes.
   const criacaoComChecklist = await app.inject({
     method: "POST",
     url: "/api/v1/reservas",
@@ -242,20 +240,20 @@ beforeAll(async () => {
   });
   expect(criacaoComChecklist.statusCode).toBe(201);
   reservaComChecklistSetorAId = criacaoComChecklist.json().id;
+  await pool
+    .request()
+    .input("reserva_id", sql.UniqueIdentifier, reservaComChecklistSetorAId)
+    .input("preenchido_por_id", sql.UniqueIdentifier, colaboradorAId)
+    .query(
+      `INSERT INTO ChecklistPreenchido (reserva_id, preenchido_por_id, todos_conformes, finalizado_em)
+       VALUES (@reserva_id, @preenchido_por_id, 1, SYSUTCDATETIME())`
+    );
   const aprovacao2 = await app.inject({
     method: "POST",
     url: `/api/v1/reservas/${reservaComChecklistSetorAId}/aprovar`,
     headers: { cookie: cookieAdmin },
   });
   expect(aprovacao2.statusCode).toBe(200);
-  await pool
-    .request()
-    .input("reserva_id", sql.UniqueIdentifier, reservaComChecklistSetorAId)
-    .input("preenchido_por_id", sql.UniqueIdentifier, colaboradorAId)
-    .query(
-      `INSERT INTO ChecklistPreenchido (reserva_id, preenchido_por_id, todos_conformes)
-       VALUES (@reserva_id, @preenchido_por_id, 1)`
-    );
 });
 
 afterAll(async () => {
@@ -312,7 +310,10 @@ describe("Dashboard (S15 — reescrita: kpis expandidos, agenda, checklists pend
     // Setor A tem exatamente 1 reserva de "hoje" fabricada neste arquivo; como o setor é
     // exclusivo deste teste, nenhuma outra suíte pode ter inserido reservas nele.
     expect(respostaGestorA.json().reservasHoje).toBe(1);
-    expect(respostaGestorA.json().checklistsPendentes).toBe(1);
+    // 2, não 1: o checklist agora é portão da aprovação (RN-CHK-03), então toda reserva
+    // "pendente" numa plataforma que exige checklist conta — reservaHojeSetorAId (nunca
+    // aprovada) E reservaAgendadaSemChecklistSetorAId, ambas sem checklist finalizado.
+    expect(respostaGestorA.json().checklistsPendentes).toBe(2);
   });
 
   it("GET /dashboard/agenda (Admin) inclui as reservas de hoje dos dois setores", async () => {
@@ -369,11 +370,15 @@ describe("Dashboard (S15 — reescrita: kpis expandidos, agenda, checklists pend
     const ids = response.json().map((r: { id: string }) => r.id);
     expect(ids).toContain(reservaAgendadaSemChecklistSetorAId);
 
+    // Colaborador B não vê nada do Setor A — mas vê a própria reservaHojeSetorBId, que
+    // também é "pendente" numa plataforma que exige checklist e nunca foi finalizada
+    // (o mesmo motivo que faz reservaHojeSetorAId contar para o Gestor A acima).
     const respostaColaboradorB = await app.inject({
       method: "GET",
       url: "/api/v1/dashboard/checklists-pendentes",
       headers: { cookie: cookieColaboradorB },
     });
-    expect(respostaColaboradorB.json()).toEqual([]);
+    const idsColaboradorB = respostaColaboradorB.json().map((r: { id: string }) => r.id);
+    expect(idsColaboradorB).toEqual([reservaHojeSetorBId]);
   });
 });

@@ -16,6 +16,7 @@ import {
   ArrowUpRight,
   AlertTriangle,
 } from "lucide-react";
+import { calcularLanes, contarLanes } from "@plataformares/shared";
 import styles from "../app/(app)/dashboard/page.module.css";
 import { apiFetch } from "../lib/api";
 import { useEventosSSE } from "../lib/useEventosSSE";
@@ -39,10 +40,6 @@ const CATEGORIA_NR: Record<string, string> = {
   elevatoria: "NR-35",
   andaime: "NR-18",
 };
-
-function requerChecklist(categoria: string): boolean {
-  return categoria === "elevatoria" || categoria === "andaime";
-}
 
 interface Kpis {
   totalPlataformas: number;
@@ -69,6 +66,11 @@ interface ReservaAgenda {
   motivo: string;
   prioridade: string;
   status: string;
+  // Correção do fluxo de Checklist: resolvido pelo backend (template da plataforma OU
+  // default da categoria) — nunca mais uma lista fixa de categorias no frontend.
+  requerChecklist: boolean;
+  checklistFinalizadoEm: string | null;
+  checklistTodosConformes: boolean | null;
 }
 
 interface Agenda {
@@ -219,6 +221,18 @@ function dentroDaRegua(horaInicio: string, horaFim: string): boolean {
   return hf > HORA_INICIO_RUA && hi < HORA_FIM_RUA;
 }
 
+function paraMinutos(horaStr: string): number {
+  const [h, m] = horaStr.split(":").map(Number);
+  return h * 60 + m;
+}
+
+// Correção da Agenda em curso: altura de cada lane (barra + respiro vertical) e altura
+// mínima (1 lane) do contêiner — usadas tanto para posicionar cada barra (top = lane *
+// ALTURA_LANE) quanto para dimensionar o contêiner conforme a quantidade de lanes
+// realmente usada naquele dia, em vez de uma altura fixa que sobrepunha reservas.
+const ALTURA_LANE = 44;
+const ALTURA_MINIMA_TIMELINE = 64;
+
 const STATUS_PILL: Record<string, { label: string; classe: string }> = {
   concluida: { label: "Concluída", classe: "pillConcluida" },
   em_uso: { label: "Em Campo", classe: "pillEmUso" },
@@ -227,7 +241,10 @@ const STATUS_PILL: Record<string, { label: string; classe: string }> = {
 };
 
 function StatusPill({ item, checklistPendenteIds }: { item: ReservaAgenda; checklistPendenteIds: Set<string> }) {
-  if (item.status === "agendada" && checklistPendenteIds.has(item.id)) {
+  // Correção do fluxo de Checklist: o checklist agora é portão da APROVAÇÃO (RN-CHK-03),
+  // então uma reserva com checklist pendente fica em status "pendente", não mais
+  // "agendada" — /dashboard/checklists-pendentes já reflete essa regra no backend.
+  if (item.status === "pendente" && checklistPendenteIds.has(item.id)) {
     return <span className={`${styles.pill} ${styles.pillChecklist}`}>Checklist Pendente</span>;
   }
   const info = STATUS_PILL[item.status] ?? { label: item.status, classe: "pillAgendada" };
@@ -440,6 +457,19 @@ export function DashboardClient({ usuarioId, usuarioNome, perfil, setorNome }: D
     return (h + m / 60 - HORA_INICIO_RUA) / 11;
   }, []);
 
+  // Correção da Agenda em curso: reservas que se sobrepõem no horário ganham lanes
+  // (linhas) diferentes em vez de disputar a mesma faixa — ver calcularLanes em
+  // @plataformares/shared (algoritmo puro, testado por apps/api).
+  const reservasDaReguaComLane = useMemo(() => {
+    const reservasNaRegua = (agenda?.hoje ?? []).filter((r) => dentroDaRegua(r.horaInicio, r.horaFim));
+    return calcularLanes(reservasNaRegua, (r) => ({
+      inicioMinutos: paraMinutos(r.horaInicio),
+      fimMinutos: paraMinutos(r.horaFim),
+    }));
+  }, [agenda]);
+  const numeroDeLanes = Math.max(1, contarLanes(reservasDaReguaComLane));
+  const alturaTimeline = Math.max(ALTURA_MINIMA_TIMELINE, numeroDeLanes * ALTURA_LANE);
+
   if (carregando) {
     return (
       <section>
@@ -562,6 +592,16 @@ export function DashboardClient({ usuarioId, usuarioNome, perfil, setorNome }: D
                 tempo vazia por cima só empurrava o card pra baixo à toa. */}
             {agenda && agenda.hoje.length > 0 ? (
               <div className={styles.timeline}>
+                {/* AGORA span da régua até o fundo das lanes — fica fora de .timelineLanes
+                    de propósito (como irmão da régua) para a linha vertical atravessar as
+                    duas sem precisar duplicar o cálculo de posição em dois lugares. O
+                    espaço reservado no topo de .timeline (ver CSS) é onde o rótulo "AGORA"
+                    fica, sem colidir com os números da régua logo abaixo. */}
+                {agoraFracaoRegua !== null && (
+                  <div className={styles.nowMarker} style={{ left: `${agoraFracaoRegua * 100}%` }}>
+                    <span className={styles.nowLabel}>AGORA</span>
+                  </div>
+                )}
                 <div className={styles.timelineRuler}>
                   {HORAS_RUA.map((h) => (
                     <span key={h} className={styles.timelineTick}>
@@ -569,8 +609,8 @@ export function DashboardClient({ usuarioId, usuarioNome, perfil, setorNome }: D
                     </span>
                   ))}
                 </div>
-                <div className={styles.timelineLane}>
-                  {agenda.hoje.filter((r) => dentroDaRegua(r.horaInicio, r.horaFim)).map((r) => {
+                <div className={styles.timelineLane} style={{ height: `${alturaTimeline}px` }}>
+                  {reservasDaReguaComLane.map(({ item: r, lane }) => {
                     const left = posicaoNaRegua(r.horaInicio);
                     const right = posicaoNaRegua(r.horaFim);
                     const largura = Math.max(0.02, right - left);
@@ -586,7 +626,7 @@ export function DashboardClient({ usuarioId, usuarioNome, perfil, setorNome }: D
                       <div
                         key={r.id}
                         className={`${styles.timelineBar} ${classeCor}`}
-                        style={{ left: `${left * 100}%`, width: `${largura * 100}%` }}
+                        style={{ left: `${left * 100}%`, width: `${largura * 100}%`, top: `${lane * ALTURA_LANE}px` }}
                         title={`${r.plataformaNome} — ${r.horaInicio}–${r.horaFim}`}
                       >
                         <span className={styles.timelineBarTime}>
@@ -596,11 +636,6 @@ export function DashboardClient({ usuarioId, usuarioNome, perfil, setorNome }: D
                       </div>
                     );
                   })}
-                  {agoraFracaoRegua !== null && (
-                    <div className={styles.nowMarker} style={{ left: `${agoraFracaoRegua * 100}%` }}>
-                      <span className={styles.nowLabel}>AGORA</span>
-                    </div>
-                  )}
                 </div>
               </div>
             ) : (
@@ -667,7 +702,7 @@ export function DashboardClient({ usuarioId, usuarioNome, perfil, setorNome }: D
                         </td>
                         <td>{plataformasPorId.get(r.plataformaId)?.codigo ?? r.plataformaNome}</td>
                         <td>
-                          {requerChecklist(r.plataformaCategoria) ? (
+                          {r.requerChecklist ? (
                             <span className={styles.riskBadge}>{CATEGORIA_NR[r.plataformaCategoria] ?? "NR"}</span>
                           ) : (
                             <span className={styles.tableSub}>—</span>

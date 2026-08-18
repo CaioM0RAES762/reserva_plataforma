@@ -268,6 +268,53 @@
   border-top: 1px solid var(--hairline);
 }
 
+/* Bloco "Checklist de segurança" do card da Frota — mesma régua e hierarquia do bloco de
+   evento acima, com a faixa lateral em laranja de segurança para diferenciar sem virar
+   alerta. */
+.cardChecklist {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--hairline);
+  border-left: 3px solid var(--safety);
+  border-radius: var(--ind-radius-sm);
+  background: color-mix(in oklch, var(--safety) 5%, transparent);
+}
+
+.cardChecklistNome {
+  font-size: var(--text-secondary);
+  color: var(--ink);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cardChecklistMeta {
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--ink-muted);
+}
+
+.cardChecklistAcao {
+  align-self: flex-start;
+  margin-top: 6px;
+  padding: 0;
+  background: none;
+  border: none;
+  border-bottom: 1px solid currentColor;
+  color: var(--ink-soft);
+  font-family: inherit;
+  font-size: var(--text-micro);
+  font-weight: 550;
+  cursor: pointer;
+}
+.cardChecklistAcao:hover { color: var(--ink); }
+
 .cardEventoTexto {
   font-size: var(--text-secondary);
   color: var(--ink);
@@ -387,33 +434,38 @@
 .btnIconDanger:hover { background: var(--safety-soft); border-color: var(--hazard); }
 
 /* ---------- Modal ---------- */
+/* Shell do modal: geometria (largura, altura máxima, cadeia de rolagem) vem de
+   components/Modal.module.css — fonte única compartilhada com Reservas e Administração.
+   Aqui ficam só a moldura visual e os espaçamentos próprios desta área. */
 .modalOverlay {
-  position: fixed;
-  inset: 0;
-  background: color-mix(in oklch, var(--ink) 45%, transparent);
-  z-index: 200;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
+  composes: overlay from "../../../components/Modal.module.css";
 }
 
 .modal {
-  background: var(--paper-elev);
-  border: 1px solid var(--hairline);
-  border-radius: var(--ind-radius-md);
-  width: 100%;
-  max-width: 560px;
-  max-height: 90vh;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+  composes: dialog from "../../../components/Modal.module.css";
+}
+
+/* "Editar Plataforma" tem formulário longo de duas colunas (código, nome, localização,
+   capacidade, categoria, ficha técnica, status, observações, Segurança e Automação) —
+   a largura maior evita que os pares de campos fiquem espremidos. */
+.modalLarge {
+  composes: dialogLarge from "../../../components/Modal.module.css";
+}
+
+/* "Novo Bloqueio de Agenda": três campos curtos + motivo. Largura intermediária, o
+   suficiente para os dois datetime-local ficarem inteiros lado a lado. */
+.modalWide {
+  composes: dialogWide from "../../../components/Modal.module.css";
+}
+
+/* Aplicado no <form> que envolve corpo + rodapé: sem isto o corpo não rola e o fim do
+   formulário fica cortado (ver comentário em Modal.module.css). */
+.modalForm {
+  composes: form from "../../../components/Modal.module.css";
 }
 
 .modalHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  composes: header from "../../../components/Modal.module.css";
   padding: 18px 22px;
   border-bottom: 1px solid var(--hairline);
 }
@@ -430,12 +482,13 @@
 }
 .modalClose:hover { background: color-mix(in oklch, var(--ink) 6%, transparent); color: var(--ink); }
 
-.modalBody { padding: 20px 22px; overflow-y: auto; flex: 1; }
+.modalBody {
+  composes: body from "../../../components/Modal.module.css";
+  padding: 20px 22px;
+}
+
 .modalFooter {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
+  composes: footer from "../../../components/Modal.module.css";
   padding: 14px 22px;
   border-top: 1px solid var(--hairline);
   background: color-mix(in oklch, var(--ink) 2%, transparent);
@@ -443,10 +496,19 @@
 
 .formGrid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* minmax(0, 1fr) e nao 1fr: uma coluna de grid tem min-width:auto por padrao e nunca
+     encolhe abaixo do conteudo do filho mais largo. O <select> de plataformas adota a
+     largura da opcao mais longa (ha nomes com mais de 40 caracteres), o que estourava a
+     coluna e forcava a barra de rolagem horizontal do modal "Novo Bloqueio". */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 14px;
 }
-.formGroup { display: flex; flex-direction: column; gap: 6px; }
+.formGroup {
+  composes: campo from "../../../components/Modal.module.css";
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
 .formGroupFull { grid-column: 1 / -1; }
 
 .formGroup label {
@@ -460,6 +522,13 @@
 .formGroup input,
 .formGroup select,
 .formGroup textarea {
+  /* width:100% + min-width:0 mantem o controle preso a largura da coluna. Sem isso o
+     <select> segue a largura da opcao mais longa e estoura o grid (mesma correcao ja
+     aplicada na folha de Reservas). Nao usa `composes` porque a regra tem seletor
+     agrupado, e `composes` exige uma unica classe simples. */
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   min-height: var(--control-h);
   padding: 10px 13px;
   border: 1px solid var(--hairline);

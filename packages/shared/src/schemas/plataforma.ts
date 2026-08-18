@@ -36,6 +36,16 @@ export const plataformaPublicaSchema = z.object({
   evento: eventoAtivoPlataformaSchema.nullable(),
   // NR-18/NR-35 — derivados de categoria/altura máxima, não é um campo cadastrado à parte.
   normas: z.array(z.string()),
+  // Configuração de segurança: "esta plataforma exige checklist antes da aprovação" é uma
+  // decisão EXPLÍCITA do cadastro do equipamento, nunca inferida da categoria/nome/código.
+  exigeChecklist: z.boolean(),
+  checklistTemplateId: z.string().uuid().nullable(),
+  checklistTemplateNome: z.string().nullable(),
+  checklistTotalQuestoes: z.number().int().nonnegative().nullable(),
+  // Só pré-preenchem o formulário de nova reserva — a decisão que o job de automação lê é
+  // sempre a gravada na própria reserva.
+  inicioAutomaticoPadrao: z.boolean(),
+  fimAutomaticoPadrao: z.boolean(),
   criadoEm: z.string(),
   atualizadoEm: z.string(),
 });
@@ -60,6 +70,17 @@ export const criarPlataformaSchema = z.object({
   imagemBase64: z.string().regex(DATA_URL_REGEX, "Formato inválido — esperado data URL base64.").optional(),
   // Só relevante na edição: remove a imagem atual quando nenhuma nova é enviada.
   removerImagem: z.boolean().optional(),
+  // Seção "Segurança" do cadastro. `exigeChecklist: true` sem `checklistTemplateId` é
+  // rejeitado no refine abaixo — "exige checklist mas não diz qual" produziria uma
+  // plataforma impossível de aprovar, já que não haveria questões para responder.
+  exigeChecklist: z.boolean().default(false),
+  checklistTemplateId: z.string().uuid().nullable().optional(),
+  // Seção "Automação" do cadastro — padrões herdados por novas reservas desta plataforma.
+  inicioAutomaticoPadrao: z.boolean().default(false),
+  fimAutomaticoPadrao: z.boolean().default(false),
+}).refine((dados) => !dados.exigeChecklist || Boolean(dados.checklistTemplateId), {
+  message: "Selecione o template de checklist exigido por esta plataforma.",
+  path: ["checklistTemplateId"],
 });
 export type CriarPlataformaInput = z.infer<typeof criarPlataformaSchema>;
 

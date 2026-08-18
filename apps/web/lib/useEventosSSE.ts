@@ -20,7 +20,7 @@ const BACKOFF_MAXIMO_MS = 30000;
 type Ouvinte = (tipo: string, dados: unknown) => void;
 
 // ---------------------------------------------------------------------------
-// Conexão SSE compartilhada por processo (uma por token), não por componente.
+// Conexão SSE compartilhada por processo, não por componente.
 //
 // Cada uso do hook abria seu próprio EventSource. Com o sino de notificações sempre
 // montado no Topbar, mais o Dashboard, a lista de Reservas, a Fila de Aprovações e a
@@ -30,7 +30,7 @@ type Ouvinte = (tipo: string, dados: unknown) => void;
 // travar as requisições comuns da API. No servidor, o efeito é o mesmo multiplicado —
 // cada conexão é uma entrada viva no Map de clientes e um timer de heartbeat.
 //
-// Agora existe UMA conexão por token: os componentes apenas assinam e desassinam dela.
+// Agora existe UMA conexão por processo: os componentes apenas assinam e desassinam dela.
 // ---------------------------------------------------------------------------
 interface Canal {
   eventSource: EventSource | null;
@@ -66,17 +66,14 @@ function definirEstado(canal: Canal, conectado: boolean): void {
   }
 }
 
-function conectar(chave: string, token?: string): void {
+function conectar(chave: string): void {
   const canal = obterCanal(chave);
   if (canal.eventSource || canal.ouvintes.size === 0) {
     return;
   }
 
   const url = new URL(`${API_URL}/api/v1/eventos`);
-  if (token) {
-    url.searchParams.set("token", token);
-  }
-  const eventSource = new EventSource(url.toString(), { withCredentials: !token });
+  const eventSource = new EventSource(url.toString(), { withCredentials: true });
   canal.eventSource = eventSource;
 
   eventSource.onopen = () => {
@@ -114,7 +111,7 @@ function conectar(chave: string, token?: string): void {
     // RNF-10: reconexão automática com backoff exponencial.
     const atraso = Math.min(BACKOFF_INICIAL_MS * 2 ** canal.tentativa, BACKOFF_MAXIMO_MS);
     canal.tentativa += 1;
-    canal.timer = setTimeout(() => conectar(chave, token), atraso);
+    canal.timer = setTimeout(() => conectar(chave), atraso);
   };
 }
 
@@ -134,15 +131,13 @@ function desconectarSeOcioso(chave: string): void {
 }
 
 export interface UseEventosSSEOptions {
-  // Painel TV (dispositivo, sem sessão de usuário) — quando ausente, usa cookie JWT.
-  token?: string;
   ativo?: boolean;
   onEvento: (tipo: string, dados: unknown) => void;
 }
 
 // O consumidor decide o que fazer quando `conectado` fica false por tempo prolongado
-// (ex.: cair para polling — ver NotificationBell.tsx e app/painel/PainelClient.tsx).
-export function useEventosSSE({ token, ativo = true, onEvento }: UseEventosSSEOptions): { conectado: boolean } {
+// (ex.: cair para polling — ver NotificationBell.tsx).
+export function useEventosSSE({ ativo = true, onEvento }: UseEventosSSEOptions): { conectado: boolean } {
   const [conectado, setConectado] = useState(false);
   const onEventoRef = useRef(onEvento);
 
@@ -159,7 +154,7 @@ export function useEventosSSE({ token, ativo = true, onEvento }: UseEventosSSEOp
       return;
     }
 
-    const chave = token ?? "sessao";
+    const chave = "sessao";
     const canal = obterCanal(chave);
 
     const ouvinte: Ouvinte = (tipo, dados) => onEventoRef.current(tipo, dados);
@@ -168,7 +163,7 @@ export function useEventosSSE({ token, ativo = true, onEvento }: UseEventosSSEOp
     // Assinantes que chegam depois da conexão já estabelecida precisam do estado atual.
     setConectado(canal.conectado);
 
-    conectar(chave, token);
+    conectar(chave);
 
     return () => {
       canal.ouvintes.delete(ouvinte);
@@ -177,7 +172,7 @@ export function useEventosSSE({ token, ativo = true, onEvento }: UseEventosSSEOp
       // derruba e reabre o canal a cada troca de página.
       desconectarSeOcioso(chave);
     };
-  }, [ativo, token]);
+  }, [ativo]);
 
   return { conectado };
 }

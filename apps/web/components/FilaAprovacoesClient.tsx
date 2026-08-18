@@ -112,6 +112,7 @@ export function FilaAprovacoesClient({ perfil, setorId }: FilaAprovacoesClientPr
               <th scope="col">Data</th>
               <th scope="col">Horário</th>
               <th scope="col">Prioridade</th>
+              <th scope="col">Checklist</th>
               <th scope="col">Status</th>
               <th scope="col">Aprovação</th>
             </tr>
@@ -119,13 +120,13 @@ export function FilaAprovacoesClient({ perfil, setorId }: FilaAprovacoesClientPr
           <tbody aria-busy={carregando}>
             {carregando && reservas.length === 0 ? (
               <tr>
-                <td colSpan={8} className={styles.empty}>
+                <td colSpan={9} className={styles.empty}>
                   Carregando...
                 </td>
               </tr>
             ) : reservas.length === 0 ? (
               <tr>
-                <td colSpan={8} className={styles.empty}>
+                <td colSpan={9} className={styles.empty}>
                   Nenhuma reserva pendente aguardando sua decisão.
                 </td>
               </tr>
@@ -157,6 +158,22 @@ export function FilaAprovacoesClient({ perfil, setorId }: FilaAprovacoesClientPr
                   </td>
                   <td>
                     <PriorityBadge prioridade={r.prioridade} />
+                  </td>
+                  <td>
+                    {r.requerChecklist ? (
+                      r.checklistFinalizadoEm && r.checklistTodosConformes ? (
+                        <span className={`${styles.selo} ${styles.seloChecklistOk}`}>Concluído</span>
+                      ) : (
+                        <span
+                          className={`${styles.selo} ${styles.seloChecklistPendente}`}
+                          title="A aprovação fica bloqueada até o checklist de segurança ser finalizado sem não conformidades (RN-CHK-03)."
+                        >
+                          Pendente
+                        </span>
+                      )
+                    ) : (
+                      <span style={{ color: "var(--ink-muted)" }}>—</span>
+                    )}
                   </td>
                   <td>
                     <ReservaStatusBadge status={r.status} />

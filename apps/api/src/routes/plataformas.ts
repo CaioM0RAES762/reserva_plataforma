@@ -44,6 +44,12 @@ interface PlataformaRow {
   utilizacao_30d: number | null;
   evento_texto: string | null;
   evento_detalhe: string | null;
+  exige_checklist: boolean;
+  checklist_template_id: string | null;
+  checklist_template_nome: string | null;
+  checklist_total_questoes: number | null;
+  inicio_automatico_padrao: boolean;
+  fim_automatico_padrao: boolean;
   criado_em: Date;
   atualizado_em: Date;
 }
@@ -71,6 +77,16 @@ async function mapPlataforma(row: PlataformaRow, aoFalharImagem?: (erro: unknown
     utilizacao30d: row.utilizacao_30d,
     evento: row.evento_texto ? { texto: row.evento_texto, detalhe: row.evento_detalhe } : null,
     normas: calcularNormasPlataforma(row.categoria, row.altura_maxima_m),
+    // Configuração de segurança do equipamento — o que decide se a reserva desta plataforma
+    // passa pela etapa de checklist antes da aprovação. O nome/contagem do template vêm
+    // junto para a Frota exibir "NR-18/35 — Plataforma Elevatória · 6 questões" e oferecer o
+    // atalho de edição sem uma segunda requisição.
+    exigeChecklist: row.exige_checklist,
+    checklistTemplateId: row.checklist_template_id,
+    checklistTemplateNome: row.checklist_template_nome,
+    checklistTotalQuestoes: row.checklist_total_questoes,
+    inicioAutomaticoPadrao: row.inicio_automatico_padrao,
+    fimAutomaticoPadrao: row.fim_automatico_padrao,
     criadoEm: row.criado_em,
     atualizadoEm: row.atualizado_em,
   };
@@ -79,7 +95,9 @@ async function mapPlataforma(row: PlataformaRow, aoFalharImagem?: (erro: unknown
 const SELECT_COLUNAS =
   "id, codigo, nome, localizacao, capacidade, status, categoria, risco, aprovacao_automatica, " +
   "observacoes, imagem_url, tipo_equipamento, altura_maxima_m, capacidade_operadores, horimetro_horas, " +
-  "utilizacao_30d, evento_texto, evento_detalhe, criado_em, atualizado_em";
+  "utilizacao_30d, evento_texto, evento_detalhe, exige_checklist, checklist_template_id, " +
+  "checklist_template_nome, checklist_total_questoes, inicio_automatico_padrao, fim_automatico_padrao, " +
+  "criado_em, atualizado_em";
 
 // CTE reutilizada pela listagem e por buscarPlataformaPorId (recarrega o registro
 // completo, com os campos computados, depois de um INSERT/UPDATE) — evita duplicar a
@@ -93,8 +111,15 @@ function buildQueryPlataformas(whereEOrder: string): string {
              p.tipo_equipamento, p.altura_maxima_m, p.capacidade_operadores, p.horimetro_horas,
              ${sqlUtilizacao30dPlataforma("p")} AS utilizacao_30d,
              evento_ativo.texto AS evento_texto, evento_ativo.detalhe AS evento_detalhe,
+             p.exige_checklist, p.checklist_template_id,
+             tpl.nome AS checklist_template_nome,
+             CASE WHEN tpl.id IS NULL THEN NULL ELSE (
+               SELECT COUNT(*) FROM ChecklistItemTemplate it WHERE it.template_id = tpl.id AND it.ativo = 1
+             ) END AS checklist_total_questoes,
+             p.inicio_automatico_padrao, p.fim_automatico_padrao,
              p.criado_em, p.atualizado_em
       FROM Plataforma p
+      LEFT JOIN ChecklistTemplate tpl ON tpl.id = p.checklist_template_id
       ${sqlEventoAtivoPlataforma("p")}
     )
     SELECT ${SELECT_COLUNAS} FROM PlataformaComStatus ${whereEOrder}
@@ -219,14 +244,27 @@ export async function plataformasRoutes(app: FastifyInstance): Promise<void> {
           .input("altura_maxima_m", sql.Decimal(4, 1), parsed.data.alturaMaximaM ?? null)
           .input("capacidade_operadores", sql.Int, parsed.data.capacidadeOperadores ?? null)
           .input("horimetro_horas", sql.Int, parsed.data.horimetroHoras ?? null)
+          .input("exige_checklist", sql.Bit, parsed.data.exigeChecklist)
+          // Só persiste o vínculo quando a plataforma de fato exige checklist — assim
+          // desmarcar "exige" não deixa um template órfão apontado, que voltaria a valer
+          // silenciosamente se a opção fosse remarcada depois.
+          .input(
+            "checklist_template_id",
+            sql.UniqueIdentifier,
+            parsed.data.exigeChecklist ? parsed.data.checklistTemplateId ?? null : null
+          )
+          .input("inicio_automatico_padrao", sql.Bit, parsed.data.inicioAutomaticoPadrao)
+          .input("fim_automatico_padrao", sql.Bit, parsed.data.fimAutomaticoPadrao)
           .query(
             `INSERT INTO Plataforma (
                id, codigo, nome, localizacao, capacidade, categoria, risco, aprovacao_automatica,
-               observacoes, imagem_url, tipo_equipamento, altura_maxima_m, capacidade_operadores, horimetro_horas
+               observacoes, imagem_url, tipo_equipamento, altura_maxima_m, capacidade_operadores, horimetro_horas,
+               exige_checklist, checklist_template_id, inicio_automatico_padrao, fim_automatico_padrao
              )
              VALUES (
                @id, @codigo, @nome, @localizacao, @capacidade, @categoria, @risco, @aprovacao_automatica,
-               @observacoes, @imagem_url, @tipo_equipamento, @altura_maxima_m, @capacidade_operadores, @horimetro_horas
+               @observacoes, @imagem_url, @tipo_equipamento, @altura_maxima_m, @capacidade_operadores, @horimetro_horas,
+               @exige_checklist, @checklist_template_id, @inicio_automatico_padrao, @fim_automatico_padrao
              )`
           );
 
@@ -322,6 +360,14 @@ export async function plataformasRoutes(app: FastifyInstance): Promise<void> {
           .input("altura_maxima_m", sql.Decimal(4, 1), parsed.data.alturaMaximaM ?? null)
           .input("capacidade_operadores", sql.Int, parsed.data.capacidadeOperadores ?? null)
           .input("horimetro_horas", sql.Int, parsed.data.horimetroHoras ?? null)
+          .input("exige_checklist", sql.Bit, parsed.data.exigeChecklist)
+          .input(
+            "checklist_template_id",
+            sql.UniqueIdentifier,
+            parsed.data.exigeChecklist ? parsed.data.checklistTemplateId ?? null : null
+          )
+          .input("inicio_automatico_padrao", sql.Bit, parsed.data.inicioAutomaticoPadrao)
+          .input("fim_automatico_padrao", sql.Bit, parsed.data.fimAutomaticoPadrao)
           .query(
             `UPDATE Plataforma SET
                codigo = @codigo, nome = @nome, localizacao = @localizacao,
@@ -329,13 +375,21 @@ export async function plataformasRoutes(app: FastifyInstance): Promise<void> {
                aprovacao_automatica = @aprovacao_automatica, observacoes = @observacoes,
                imagem_url = @imagem_url, tipo_equipamento = @tipo_equipamento,
                altura_maxima_m = @altura_maxima_m, capacidade_operadores = @capacidade_operadores,
-               horimetro_horas = @horimetro_horas, atualizado_em = SYSUTCDATETIME()
+               horimetro_horas = @horimetro_horas,
+               exige_checklist = @exige_checklist, checklist_template_id = @checklist_template_id,
+               inicio_automatico_padrao = @inicio_automatico_padrao,
+               fim_automatico_padrao = @fim_automatico_padrao,
+               atualizado_em = SYSUTCDATETIME()
              WHERE id = @id`
           );
 
+        // A configuração de checklist entra na auditoria: "por que esta reserva não pediu
+        // checklist?" precisa ser respondível pelo histórico, não só pelo estado atual.
         await registrarAuditoria(transaction, request.usuario!.sub, "editar_plataforma", id, {
           codigo,
           nome: parsed.data.nome,
+          exigeChecklist: parsed.data.exigeChecklist,
+          checklistTemplateId: parsed.data.exigeChecklist ? parsed.data.checklistTemplateId ?? null : null,
         });
 
         await transaction.commit();
@@ -413,7 +467,7 @@ export async function plataformasRoutes(app: FastifyInstance): Promise<void> {
         });
 
         await transaction.commit();
-        // S10 (SDD §3.4): plataforma.status_alterado — Dashboard, Painel TV e demais
+        // S10 (SDD §3.4): plataforma.status_alterado — Central de Operações e demais
         // telas com a grade de status aberta atualizam sem F5.
         publicarEventoGlobal("plataforma.status_alterado", { id, status });
         const completa = await buscarPlataformaPorId(pool, id);

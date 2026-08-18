@@ -38,10 +38,17 @@ export default async function globalSetup(config: FullConfig) {
     const context = await browser.newContext({ baseURL });
     const page = await context.newPage();
     await page.goto("/login");
-    await page.getByLabel("E-mail").fill(cred.email);
-    await page.getByLabel("Senha").fill(cred.senha);
+    // Localizadores por ROLE, não por rótulo solto: desde que o campo de senha ganhou o
+    // botão "Mostrar senha" ao lado, `getByLabel("Senha")` passou a casar dois elementos
+    // (o input e o botão) e o modo estrito do Playwright derrubava o globalSetup — ou seja,
+    // a suíte E2E inteira parava de rodar antes do primeiro teste.
+    await page.getByRole("textbox", { name: "E-mail" }).fill(cred.email);
+    await page.getByRole("textbox", { name: "Senha" }).fill(cred.senha);
     await page.getByRole("button", { name: "Entrar" }).click();
-    await page.waitForURL("**/dashboard", { timeout: 10_000 });
+    // 10s não bastavam contra um dev server "frio": a primeira visita ao /dashboard dispara
+    // a compilação sob demanda da rota mais pesada da aplicação, e o globalSetup estourava
+    // antes de a navegação concluir — com o login já tendo sido aceito (HTTP 200).
+    await page.waitForURL("**/dashboard", { timeout: 60_000 });
     await context.storageState({ path: authFile(perfil) });
     await context.close();
   }

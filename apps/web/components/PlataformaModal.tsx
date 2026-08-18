@@ -1,8 +1,11 @@
 "use client";
 
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import styles from "../app/(app)/plataformas/page.module.css";
+import local from "./PlataformaModal.module.css";
+import { apiFetch } from "../lib/api";
 import { useModalAcessivel } from "../lib/useModalAcessivel";
+import { ChecklistTemplatesModal, type ChecklistTemplateResumo } from "./ChecklistTemplatesModal";
 
 export interface PlataformaFormValues {
   codigo: string;
@@ -17,6 +20,11 @@ export interface PlataformaFormValues {
   alturaMaximaM?: number;
   capacidadeOperadores?: number;
   horimetroHoras?: number;
+  categoria?: string;
+  exigeChecklist: boolean;
+  checklistTemplateId?: string | null;
+  inicioAutomaticoPadrao: boolean;
+  fimAutomaticoPadrao: boolean;
 }
 
 export interface PlataformaEditavel {
@@ -34,7 +42,22 @@ export interface PlataformaEditavel {
   alturaMaximaM: number | null;
   capacidadeOperadores: number | null;
   horimetroHoras: number | null;
+  exigeChecklist: boolean;
+  checklistTemplateId: string | null;
+  checklistTemplateNome: string | null;
+  checklistTotalQuestoes: number | null;
+  inicioAutomaticoPadrao: boolean;
+  fimAutomaticoPadrao: boolean;
 }
+
+const CATEGORIAS: Array<{ valor: string; rotulo: string }> = [
+  { valor: "elevatoria", rotulo: "Plataforma elevatória" },
+  { valor: "andaime", rotulo: "Andaime" },
+  { valor: "veiculo", rotulo: "Veículo" },
+  { valor: "sala", rotulo: "Sala / espaço compartilhado" },
+  { valor: "patio", rotulo: "Pátio" },
+  { valor: "outro", rotulo: "Outro" },
+];
 
 interface PlataformaModalProps {
   plataforma: PlataformaEditavel | null;
@@ -76,6 +99,44 @@ export function PlataformaModal({ plataforma, onClose, onSalvar }: PlataformaMod
   const [salvando, setSalvando] = useState(false);
   const inputImagemRef = useRef<HTMLInputElement>(null);
 
+  // A categoria nunca esteve no formulário: toda plataforma criada pela UI nascia como
+  // "outro". Enquanto a exigência de checklist era herdada da categoria, isso significava
+  // que nenhum equipamento cadastrado por aqui podia exigir checklist — a causa de só a
+  // plataforma marcada como "elevatoria" no banco entrar no fluxo com checklist.
+  const [categoria, setCategoria] = useState(plataforma?.categoria ?? "outro");
+
+  // Seção SEGURANÇA — a configuração que define o fluxo da reserva desta plataforma.
+  const [exigeChecklist, setExigeChecklist] = useState(plataforma?.exigeChecklist ?? false);
+  const [checklistTemplateId, setChecklistTemplateId] = useState<string | null>(
+    plataforma?.checklistTemplateId ?? null
+  );
+  const [templates, setTemplates] = useState<ChecklistTemplateResumo[]>([]);
+  const [editorTemplate, setEditorTemplate] = useState<
+    { modo: "editar"; id: string } | { modo: "criar" } | null
+  >(null);
+
+  // Seção AUTOMAÇÃO — padrões herdados por novas reservas desta plataforma.
+  const [inicioAutomaticoPadrao, setInicioAutomaticoPadrao] = useState(
+    plataforma?.inicioAutomaticoPadrao ?? false
+  );
+  const [fimAutomaticoPadrao, setFimAutomaticoPadrao] = useState(plataforma?.fimAutomaticoPadrao ?? false);
+
+  async function carregarTemplates() {
+    try {
+      setTemplates(await apiFetch<ChecklistTemplateResumo[]>("/api/v1/checklist-modelos"));
+    } catch {
+      // A lista de templates é auxiliar: falhar aqui não pode impedir a edição dos demais
+      // campos do equipamento. O seletor fica vazio e o erro aparece só ao tentar salvar
+      // com "exige checklist" marcado sem template.
+    }
+  }
+
+  useEffect(() => {
+    void carregarTemplates();
+  }, []);
+
+  const templateSelecionado = templates.find((t) => t.id === checklistTemplateId) ?? null;
+
   async function handleSelecionarImagem(arquivo: File | undefined) {
     if (!arquivo) return;
     setErro(null);
@@ -104,6 +165,12 @@ export function PlataformaModal({ plataforma, onClose, onSalvar }: PlataformaMod
       setErro("Preencha os campos obrigatórios.");
       return;
     }
+    // Mesma regra validada no backend (editarPlataformaSchema): "exige checklist" sem
+    // template deixaria a plataforma impossível de aprovar — não há o que preencher.
+    if (exigeChecklist && !checklistTemplateId) {
+      setErro("Selecione o template de checklist exigido por esta plataforma.");
+      return;
+    }
 
     setSalvando(true);
     try {
@@ -120,6 +187,11 @@ export function PlataformaModal({ plataforma, onClose, onSalvar }: PlataformaMod
         alturaMaximaM: alturaMaximaM ? Number(alturaMaximaM) : undefined,
         capacidadeOperadores: capacidadeOperadores ? Number(capacidadeOperadores) : undefined,
         horimetroHoras: horimetroHoras ? Number(horimetroHoras) : undefined,
+        categoria,
+        exigeChecklist,
+        checklistTemplateId: exigeChecklist ? checklistTemplateId : null,
+        inicioAutomaticoPadrao,
+        fimAutomaticoPadrao,
       });
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Erro ao salvar plataforma.");
@@ -133,14 +205,14 @@ export function PlataformaModal({ plataforma, onClose, onSalvar }: PlataformaMod
       className={styles.modalOverlay}
       onClick={aoClicarNoOverlay}
     >
-      <div className={styles.modal} ref={refDialogo} {...propsDialogo}>
+      <div className={`${styles.modal} ${styles.modalLarge}`} ref={refDialogo} {...propsDialogo}>
         <div className={styles.modalHeader}>
           <h3 id={idTitulo}>{plataforma ? "Editar Plataforma" : "Nova Plataforma"}</h3>
           <button type="button" className={styles.modalClose} onClick={onClose} aria-label="Fechar">
             ✕
           </button>
         </div>
-        <form onSubmit={handleSubmit}>
+        <form className={styles.modalForm} onSubmit={handleSubmit}>
           <div className={styles.modalBody}>
             {erro && (
               <div className={styles.error} role="alert">
@@ -210,6 +282,16 @@ export function PlataformaModal({ plataforma, onClose, onSalvar }: PlataformaMod
                 />
               </div>
               <div className={styles.formGroup}>
+                <label htmlFor="pf-categoria">Categoria</label>
+                <select id="pf-categoria" value={categoria} onChange={(e) => setCategoria(e.target.value)}>
+                  {CATEGORIAS.map((c) => (
+                    <option key={c.valor} value={c.valor}>
+                      {c.rotulo}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className={styles.formGroup}>
                 <label htmlFor="pf-tipo">Tipo de equipamento</label>
                 <input
                   id="pf-tipo"
@@ -270,6 +352,102 @@ export function PlataformaModal({ plataforma, onClose, onSalvar }: PlataformaMod
                 />
               </div>
             </div>
+
+            {/* SEGURANÇA — define se a reserva deste equipamento passa pela etapa de
+                checklist antes da aprovação. É esta configuração, e nada mais, que decide
+                o fluxo: nenhum equipamento é tratado de forma especial pelo código. */}
+            <section className={local.secao}>
+              <h4 className={local.secaoTitulo}>Segurança</h4>
+
+              <label className={local.check}>
+                <input
+                  type="checkbox"
+                  checked={exigeChecklist}
+                  onChange={(e) => setExigeChecklist(e.target.checked)}
+                />
+                Exige checklist de segurança antes da aprovação
+              </label>
+              <p className={local.ajuda}>
+                {exigeChecklist
+                  ? "Fluxo: Solicitada → Checklist → Aprovada → Em uso → Concluída."
+                  : "Fluxo: Solicitada → Aprovada → Em uso → Concluída."}
+              </p>
+
+              {exigeChecklist && (
+                <div className={local.blocoTemplate}>
+                  <div className={styles.formGroup}>
+                    <label htmlFor="pf-template">Template de checklist</label>
+                    <select
+                      id="pf-template"
+                      value={checklistTemplateId ?? ""}
+                      onChange={(e) => setChecklistTemplateId(e.target.value || null)}
+                    >
+                      <option value="">Selecione um template…</option>
+                      {templates.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.nome} ({t.totalQuestoes}{" "}
+                          {t.totalQuestoes === 1 ? "questão" : "questões"})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {templateSelecionado && (
+                    <p className={local.templateResumo}>
+                      {templateSelecionado.nome} · {templateSelecionado.totalQuestoes}{" "}
+                      {templateSelecionado.totalQuestoes === 1 ? "questão" : "questões"}
+                    </p>
+                  )}
+
+                  {/* Atalhos para o MESMO editor usado na área de Checklists — sem sair
+                      desta tela, sem navegar para outra página e voltar. */}
+                  <div className={local.templateAcoes}>
+                    {checklistTemplateId && (
+                      <button
+                        type="button"
+                        className={styles.btnIcon}
+                        onClick={() => setEditorTemplate({ modo: "editar", id: checklistTemplateId })}
+                      >
+                        Editar template
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className={styles.btnIcon}
+                      onClick={() => setEditorTemplate({ modo: "criar" })}
+                    >
+                      + Criar novo template
+                    </button>
+                  </div>
+                </div>
+              )}
+            </section>
+
+            {/* AUTOMAÇÃO — padrão herdado por novas reservas. A reserva pode sobrescrever, e
+                quem executa a transição é o worker do backend, não o navegador. */}
+            <section className={local.secao}>
+              <h4 className={local.secaoTitulo}>Automação</h4>
+              <label className={local.check}>
+                <input
+                  type="checkbox"
+                  checked={inicioAutomaticoPadrao}
+                  onChange={(e) => setInicioAutomaticoPadrao(e.target.checked)}
+                />
+                Iniciar automaticamente no horário agendado
+              </label>
+              <label className={local.check}>
+                <input
+                  type="checkbox"
+                  checked={fimAutomaticoPadrao}
+                  onChange={(e) => setFimAutomaticoPadrao(e.target.checked)}
+                />
+                Finalizar automaticamente no horário final
+              </label>
+              <p className={local.ajuda}>
+                Padrão sugerido nas novas reservas deste equipamento — cada reserva pode
+                alterar. O início/fim manual continua disponível.
+              </p>
+            </section>
           </div>
           <div className={styles.modalFooter}>
             <button type="button" className={styles.btnGhost} onClick={onClose}>
@@ -281,6 +459,25 @@ export function PlataformaModal({ plataforma, onClose, onSalvar }: PlataformaMod
           </div>
         </form>
       </div>
+
+      {editorTemplate && (
+        <ChecklistTemplatesModal
+          templateIdInicial={editorTemplate.modo === "editar" ? editorTemplate.id : undefined}
+          iniciarCriando={editorTemplate.modo === "criar"}
+          onClose={() => {
+            setEditorTemplate(null);
+            void carregarTemplates();
+          }}
+          onAlterado={() => void carregarTemplates()}
+          // Fechar o editor já com o template associado ao equipamento: o Admin criou o
+          // template porque nenhum servia, então associá-lo é sempre o próximo passo.
+          onSelecionarTemplate={(template) => {
+            setChecklistTemplateId(template.id);
+            setEditorTemplate(null);
+            void carregarTemplates();
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -239,9 +239,15 @@
 .legendConcluida { background: var(--signal); }
 .legendChecklist { background: var(--safety); }
 
-/* ---------- Timeline (Agenda em curso) ---------- */
+/* ---------- Timeline (Agenda em curso) ----------
+   Correção da Agenda em curso: reservas sobrepostas agora abrem lanes (linhas) próprias
+   em vez de disputar uma única faixa fixa de 64px (ver calcularLanes, DashboardClient) —
+   .timelineLane cresce dinamicamente via a altura inline calculada em JS. O indicador
+   AGORA (.nowMarker/.nowLabel) virou irmão da régua/lanes, não mais filho só das lanes:
+   .timeline reserva padding-top só para o rótulo "AGORA", e a linha vertical atravessa
+   régua + lanes de ponta a ponta sem nunca colidir com os números da régua abaixo dela. */
 
-.timeline { margin-bottom: 16px; }
+.timeline { position: relative; padding-top: 20px; margin-bottom: 16px; }
 .timelineRuler {
   display: flex;
   justify-content: space-between;
@@ -252,15 +258,21 @@
 }
 .timelineLane {
   position: relative;
-  height: 64px;
+  /* Altura definida inline (style={{height}}) conforme o número de lanes do dia — o
+     valor aqui é só um piso para telas sem JS/antes da primeira medição. */
+  min-height: 64px;
   background: color-mix(in oklch, var(--ink) 3%, transparent);
   border: 1px solid var(--hairline);
   border-radius: var(--ind-radius-sm);
+  transition: height 0.15s ease;
 }
 .timelineBar {
   position: absolute;
-  top: 8px;
-  bottom: 8px;
+  /* `top` vem inline (lane * ALTURA_LANE); a barra tem altura fixa com respiro vertical
+     embutido (ALTURA_LANE=44px menos a folga abaixo) em vez de esticar top:0→bottom:0
+     como antes — é isso que permite empilhar lanes sem uma sobrepor a vizinha. */
+  height: 36px;
+  margin-top: 4px;
   border-radius: var(--ind-radius-sm);
   padding: 6px 10px;
   display: flex;
@@ -279,15 +291,15 @@
 
 .nowMarker {
   position: absolute;
-  top: -4px;
-  bottom: -4px;
+  top: 0;
+  bottom: 0;
   width: 1px;
   background: var(--hazard);
   z-index: 2;
 }
 .nowLabel {
   position: absolute;
-  top: -17px;
+  top: 0;
   left: 4px;
   font-family: var(--font-mono);
   font-size: var(--text-micro);

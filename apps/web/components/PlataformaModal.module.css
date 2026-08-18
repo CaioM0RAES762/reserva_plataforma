@@ -1,0 +1,71 @@
+/* Seções "Segurança" e "Automação" do cadastro de equipamento. Blocos separados por régua
+   dentro do mesmo modal, seguindo o padrão editorial já usado no restante do formulário —
+   não é uma tela nova, é mais um agrupamento do cadastro existente. */
+
+.secao {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--hairline);
+}
+
+.secaoTitulo {
+  font-size: var(--text-micro);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--ink-muted);
+  margin-bottom: 12px;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: var(--text-body);
+  color: var(--ink);
+  cursor: pointer;
+  padding: 3px 0;
+}
+
+.check input {
+  accent-color: var(--ink);
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.ajuda {
+  margin: 6px 0 0 25px;
+  font-size: var(--text-secondary);
+  color: var(--ink-muted);
+}
+
+.blocoTemplate {
+  margin: 14px 0 0 25px;
+  padding: 14px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-sm);
+  background: color-mix(in oklch, var(--ink) 3%, transparent);
+}
+
+.templateResumo {
+  margin-top: 8px;
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--ink-muted);
+}
+
+.templateAcoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+@media (max-width: 640px) {
+  .blocoTemplate { margin-left: 0; }
+  .ajuda { margin-left: 0; }
+}

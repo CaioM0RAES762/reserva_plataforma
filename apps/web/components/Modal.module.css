@@ -1,0 +1,110 @@
+/* Base única do "shell" de modal (overlay + caixa + header/body/footer).
+ *
+ * Existiam três cópias praticamente idênticas destas regras — em
+ * plataformas/page.module.css, reservas/page.module.css e Admin.module.css — e as correções
+ * de overflow aplicadas em uma nunca chegavam às outras. Estas classes são a fonte única;
+ * as três folhas continuam expondo os mesmos nomes (`.modal`, `.modalBody`, ...) via
+ * `composes`, então nenhum componente precisou trocar de classe.
+ *
+ * Duas causas reais de layout são resolvidas aqui:
+ *
+ * 1. CORTE VERTICAL — a caixa é `display:flex; flex-direction:column` com altura máxima, e a
+ *    área rolável é o `.body`. Só que os formulários envolvem body+footer num <form>, que
+ *    ficava como filho flex SEM estilo nenhum: o `flex:1` do body não valia (o pai deixara
+ *    de ser flex container), o body assumia altura automática, `overflow-y:auto` nunca
+ *    disparava e o <form> crescia além da caixa — que, com `overflow:hidden`, simplesmente
+ *    cortava o fim do formulário e os botões. Por isso existe `.form` abaixo: ele reata a
+ *    cadeia flex entre a caixa e a área rolável.
+ *
+ * 2. ROLAGEM HORIZONTAL — um item de grid/flex tem `min-width:auto`, ou seja, nunca encolhe
+ *    abaixo do seu conteúdo mínimo. Um <select> sem largura própria adota a largura da
+ *    opção mais longa (nomes de plataforma passam de 40 caracteres), estourando a coluna e,
+ *    com ela, o modal. A correção é `min-width: 0` nos itens e `minmax(0, 1fr)` nas colunas
+ *    — não esconder o transbordo.
+ *
+ * `min-height: 0` aparece em toda a cadeia pelo mesmo motivo: sem ele, um item flex se
+ * recusa a ficar menor que o conteúdo e a rolagem interna nunca acontece.
+ */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in oklch, var(--ink) 45%, transparent);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Mesma folga usada nas fórmulas de largura/altura de .dialog. */
+  padding: var(--modal-gap, 20px);
+}
+
+.dialog {
+  background: var(--paper-elev);
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-md);
+  /* Largura por token, não por valor fixo: cada modal escolhe o seu tamanho aplicando um
+     dos modificadores abaixo, e a fórmula garante que nunca encoste nas bordas da tela. */
+  width: min(var(--modal-w, 560px), calc(100vw - var(--modal-gap, 20px) * 2));
+  /* 100vh como fallback; 100dvh evita que a barra de endereço móvel corte o rodapé. */
+  max-height: calc(100vh - var(--modal-gap, 20px) * 2);
+  max-height: calc(100dvh - var(--modal-gap, 20px) * 2);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Modificadores de largura — usados por modais com formulário de duas colunas. */
+.dialogWide { --modal-w: 720px; }
+.dialogLarge { --modal-w: 900px; }
+
+/* Cabeçalho e rodapé nunca encolhem nem rolam: só o miolo rola. */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+/* Reata a cadeia flex quando existe um <form> entre a caixa e o corpo rolável. */
+.form {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  /* Guarda de segurança, não a correção: o transbordo horizontal é resolvido na origem
+     (min-width:0 / minmax(0,1fr)). Como definir overflow-y já força o eixo X a "auto",
+     sem esta linha qualquer conteúdo indevidamente largo reintroduziria a barra lateral. */
+  overflow-x: hidden;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Itens de formulário que participam de grid/flex precisam poder encolher. */
+.campo { min-width: 0; }
+
+.campoControle {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+@media (max-width: 640px) {
+  /* Menos folga lateral em telas estreitas: o modal ganha area util sem encostar na borda.
+     A variavel alimenta ao mesmo tempo o padding do overlay e as formulas de largura/altura
+     do dialog, entao os tres valores nunca saem de sincronia. */
+  .overlay { --modal-gap: 12px; }
+}

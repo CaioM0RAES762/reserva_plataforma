@@ -1,5 +1,5 @@
 // Sprint S14 — teste de carga leve (RNF-01/RNF-03): 50 usuários simultâneos em rotas de
-// leitura representativas + 10 conexões SSE de Painel TV, medindo p95 e taxa de erro.
+// leitura representativas + 10 conexões SSE de usuário logado, medindo p95 e taxa de erro.
 //
 // Simplificação documentada: reaproveita 1 sessão JWT real (Admin) para as 50 "conexões
 // simultâneas" em vez de 50 contas distintas — RNF-03 fala em capacidade do servidor sob
@@ -24,21 +24,6 @@ async function login() {
   const token = setCookie?.match(/token=([^;]+)/)?.[1];
   if (!token) throw new Error("Cookie de sessão não retornado no login.");
   return `token=${token}`;
-}
-
-async function gerarPainelToken(cookie) {
-  const resp = await fetch(`${API}/api/v1/painel/tokens`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", cookie },
-    body: JSON.stringify({ nome: `E2E S14 — Carga (${Date.now()})`, setorId: null }),
-  });
-  if (!resp.ok) throw new Error(`Criação de token do Painel TV falhou: ${resp.status}`);
-  const dados = await resp.json();
-  return { id: dados.id, token: dados.token };
-}
-
-async function revogarPainelToken(cookie, id) {
-  await fetch(`${API}/api/v1/painel/tokens/${id}`, { method: "DELETE", headers: { cookie } }).catch(() => {});
 }
 
 const ROTAS_LEITURA = [
@@ -73,11 +58,14 @@ async function usuarioVirtual(cookie, fimEm, latencias, erros) {
   }
 }
 
-async function conexaoSSE(token, fimEm, contadorEventos) {
+// O canal SSE é autenticado exclusivamente por cookie de sessão desde a remoção do
+// Painel TV (que era o único consumidor do token de dispositivo na querystring).
+async function conexaoSSE(cookie, fimEm, contadorEventos) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), DURACAO_MS + 2000);
   try {
-    const resp = await fetch(`${API}/api/v1/eventos?token=${encodeURIComponent(token)}`, {
+    const resp = await fetch(`${API}/api/v1/eventos`, {
+      headers: { cookie },
       signal: controller.signal,
     });
     if (!resp.ok || !resp.body) {
@@ -102,8 +90,7 @@ async function conexaoSSE(token, fimEm, contadorEventos) {
 async function main() {
   console.log(`=== Teste de carga S14 — ${USUARIOS_SIMULTANEOS} usuários + ${CONEXOES_SSE} SSE, ${DURACAO_MS / 1000}s ===`);
   const cookie = await login();
-  const { id: painelTokenId, token: painelToken } = await gerarPainelToken(cookie);
-  console.log("Login OK, token de Painel TV gerado para as conexões SSE.");
+  console.log("Login OK — sessão reaproveitada para as requisições e para as conexões SSE.");
 
   const fimEm = Date.now() + DURACAO_MS;
   const latencias = [];
@@ -114,12 +101,10 @@ async function main() {
   const promessasUsuarios = Array.from({ length: USUARIOS_SIMULTANEOS }, () =>
     usuarioVirtual(cookie, fimEm, latencias, erros)
   );
-  const promessasSSE = Array.from({ length: CONEXOES_SSE }, () => conexaoSSE(painelToken, fimEm, contadorEventos));
+  const promessasSSE = Array.from({ length: CONEXOES_SSE }, () => conexaoSSE(cookie, fimEm, contadorEventos));
 
   await Promise.all([...promessasUsuarios, ...promessasSSE]);
   const duracaoRealMs = Date.now() - inicioTeste;
-
-  await revogarPainelToken(cookie, painelTokenId);
 
   const ordenadas = [...latencias].sort((a, b) => a - b);
   const p50 = percentil(ordenadas, 50);

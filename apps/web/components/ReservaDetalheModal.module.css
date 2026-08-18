@@ -1,7 +1,7 @@
-/* Peças novas do redesenho do modal de detalhe — o shell (overlay/modal/botões/erro/
-   formGrid do checklist) continua vindo de reservas/page.module.css, compartilhado com
-   ReservaModal/ChecklistSeguranca/FilaAprovacoesClient; aqui só o que é exclusivo desta
-   tela, para não arriscar regressão visual nas outras. */
+/* Peças novas do redesenho do modal de detalhe — o shell (overlay/modal/botões/erro)
+   continua vindo de reservas/page.module.css, compartilhado com ReservaModal/
+   FilaAprovacoesClient/ChecklistFillModal; aqui só o que é exclusivo desta tela, para não
+   arriscar regressão visual nas outras. */
 
 .stepper {
   display: flex;
@@ -117,6 +117,48 @@
   color: var(--ink-soft);
   font-style: italic;
   line-height: 1.5;
+}
+
+/* Correção do fluxo de Checklist — resumo dentro do modal de detalhe (item 10 da tarefa):
+   status + metadados + botão para abrir o ChecklistFillModal, sem repetir toda a lista de
+   itens aqui dentro (isso fica só no modal dedicado). */
+.checklistCard {
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-md);
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  background: var(--paper-elev);
+}
+.checklistCardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.checklistCardTitle {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: var(--text-panel-title);
+  color: var(--ink);
+}
+.checklistBadge {
+  font-size: var(--text-micro);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  padding: 3px 9px;
+  border-radius: var(--ind-radius-sm);
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.checklistBadgeOk { color: var(--signal); background: color-mix(in oklch, var(--signal) 14%, transparent); border-color: color-mix(in oklch, var(--signal) 35%, transparent); }
+.checklistBadgeBloqueado { color: var(--hazard); background: color-mix(in oklch, var(--hazard) 12%, transparent); border-color: color-mix(in oklch, var(--hazard) 32%, transparent); }
+.checklistBadgePendente { color: var(--ink-muted); background: color-mix(in oklch, var(--ink) 6%, transparent); border-color: var(--hairline); }
+.checklistCardMeta {
+  font-size: var(--text-meta);
+  color: var(--ink-muted);
+  margin-bottom: 10px;
 }
 
 .sectionTitle {

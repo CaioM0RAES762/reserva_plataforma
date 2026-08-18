@@ -78,35 +78,6 @@ for (const tela of TELAS) {
   });
 }
 
-test("Painel TV — 1920x1080 (RF-TV-01, tipografia ampliada)", async ({ browser }) => {
-  const ctxAdmin = await browser.newContext({ storageState: authFile("admin") });
-  const pgAdmin = await ctxAdmin.newPage();
-  await pgAdmin.goto("/plataformas/painel-tv");
-  await pgAdmin.getByRole("button", { name: "Novo Token" }).click();
-  await pgAdmin.getByLabel("Nome do dispositivo *").fill(`E2E S14 — Responsividade (${Date.now()})`);
-  await pgAdmin.getByRole("button", { name: "Gerar Token" }).click();
-  const token = await pgAdmin.getByLabel("Token").inputValue();
-
-  for (const bp of BREAKPOINTS) {
-    const ctxPainel = await browser.newContext({ viewport: { width: bp.largura, height: bp.altura } });
-    const pgPainel = await ctxPainel.newPage();
-    await pgPainel.goto(`/painel?token=${token}`);
-    await expect(pgPainel.getByText("Status das Plataformas")).toBeVisible({ timeout: 10_000 });
-    await pgPainel.waitForTimeout(150);
-    const overflowPx = await pgPainel.evaluate(
-      () => document.documentElement.scrollWidth - document.documentElement.clientWidth
-    );
-    await pgPainel.screenshot({
-      path: path.join(SHOTS_DIR, `painel-tv_${bp.largura}.png`),
-      fullPage: true,
-    });
-    resultados.push({ tela: "painel-tv", breakpoint: bp.rotulo, overflowPx, status: overflowPx > 4 ? "AJUSTE" : "OK" });
-    expect(overflowPx, `overflow horizontal em painel-tv @ ${bp.rotulo}`).toBeLessThanOrEqual(4);
-    await ctxPainel.close();
-  }
-
-  await ctxAdmin.close();
-});
 
 test.afterAll(async () => {
   const linhas = [

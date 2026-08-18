@@ -23,7 +23,12 @@ import {
 import { obterRegrasReservaConfiguraveis, obterSlaAprovacaoUrgenteHoras } from "../services/configuracao.service.js";
 import { diaSemanaDe, gerarDatasRecorrencia } from "../services/recorrencia.service.js";
 import { enfileirarEmail } from "../services/queue.js";
-import { requerChecklist } from "../services/checklist.service.js";
+import { SQL_PLATAFORMA_EXIGE_CHECKLIST } from "../services/checklist.service.js";
+import {
+  buscarEstadoChecklist,
+  concluirReserva,
+  iniciarUsoReserva,
+} from "../services/reservaTransicao.service.js";
 import {
   templateNovaReservaPendente,
   templateReservaAprovada,
@@ -70,8 +75,13 @@ export interface ReservaRow {
   hora_inicio_real: string | null;
   hora_fim_real: string | null;
   recorrencia_id: string | null;
+  inicio_automatico: boolean;
+  fim_automatico: boolean;
   criado_em: Date;
   atualizado_em: Date;
+  requer_checklist: boolean;
+  checklist_finalizado_em: Date | null;
+  checklist_todos_conformes: boolean | null;
 }
 
 export const SELECT_RESERVA = `
@@ -90,7 +100,11 @@ export const SELECT_RESERVA = `
   CONVERT(varchar(5), r.hora_inicio_real, 108) AS hora_inicio_real,
   CONVERT(varchar(5), r.hora_fim_real, 108) AS hora_fim_real,
   r.recorrencia_id,
-  r.criado_em, r.atualizado_em`;
+  r.inicio_automatico, r.fim_automatico,
+  r.criado_em, r.atualizado_em,
+  ${SQL_PLATAFORMA_EXIGE_CHECKLIST} AS requer_checklist,
+  checklist.finalizado_em AS checklist_finalizado_em,
+  checklist.todos_conformes AS checklist_todos_conformes`;
 
 export const FROM_RESERVA = `
   FROM Reserva r
@@ -98,7 +112,8 @@ export const FROM_RESERVA = `
   JOIN Usuario u ON u.id = r.solicitante_id
   JOIN Plataforma p ON p.id = r.plataforma_id
   LEFT JOIN Usuario aprovador ON aprovador.id = r.aprovado_por_id
-  LEFT JOIN Usuario segundo_aprovador ON segundo_aprovador.id = r.segunda_aprovacao_por_id`;
+  LEFT JOIN Usuario segundo_aprovador ON segundo_aprovador.id = r.segunda_aprovacao_por_id
+  LEFT JOIN ChecklistPreenchido checklist ON checklist.reserva_id = r.id`;
 
 export function mapReserva(row: ReservaRow) {
   return {
@@ -126,8 +141,13 @@ export function mapReserva(row: ReservaRow) {
     horaInicioReal: row.hora_inicio_real,
     horaFimReal: row.hora_fim_real,
     recorrenciaId: row.recorrencia_id,
+    inicioAutomatico: row.inicio_automatico,
+    fimAutomatico: row.fim_automatico,
     criadoEm: row.criado_em,
     atualizadoEm: row.atualizado_em,
+    requerChecklist: row.requer_checklist,
+    checklistFinalizadoEm: row.checklist_finalizado_em,
+    checklistTodosConformes: row.checklist_finalizado_em ? row.checklist_todos_conformes : null,
   };
 }
 
@@ -156,9 +176,13 @@ interface ReservaContexto {
   setor_id: string;
   solicitante_id: string;
   solicitante_email: string;
+  plataforma_id: string;
   plataforma_nome: string;
   plataforma_risco: RiscoPlataforma;
   plataforma_categoria: CategoriaPlataforma;
+  // RN-PLAT-01/04: uma plataforma que foi para manutenção/inativa depois da aprovação não
+  // pode entrar em uso — checado na transição, junto com o checklist.
+  plataforma_status: string;
   prioridade: PrioridadeReserva;
   aprovado_por_id: string | null;
   data: string;
@@ -173,7 +197,8 @@ async function buscarContextoReserva(id: string): Promise<ReservaContexto | null
     .input("id", sql.UniqueIdentifier, id)
     .query<ReservaContexto>(
       `SELECT r.id, r.status, r.setor_id, r.solicitante_id, u.email AS solicitante_email,
-              p.nome AS plataforma_nome, p.risco AS plataforma_risco, p.categoria AS plataforma_categoria,
+              r.plataforma_id, p.nome AS plataforma_nome, p.risco AS plataforma_risco, p.categoria AS plataforma_categoria,
+              p.status AS plataforma_status,
               r.prioridade, r.aprovado_por_id,
               CONVERT(varchar(10), r.data, 23) AS data,
               CONVERT(varchar(5), r.hora_inicio, 108) AS hora_inicio,
@@ -352,6 +377,8 @@ export async function reservasRoutes(app: FastifyInstance): Promise<void> {
     const { plataformaId, data, horaInicio, horaFim, quantidadePessoas, motivo, prioridade, recorrencia } =
       parsed.data;
     const pool = await getPool();
+    // Resolvido logo abaixo, depois de ler os padrões da plataforma: o corpo da requisição
+    // só sobrescreve quando o campo veio explicitamente.
 
     const contexto = await pool
       .request()
@@ -364,13 +391,28 @@ export async function reservasRoutes(app: FastifyInstance): Promise<void> {
            (SELECT nome FROM Usuario WHERE id = @solicitante_id) AS solicitante_nome,
            (SELECT nome FROM Plataforma WHERE id = @plataforma_id) AS plataforma_nome,
            (SELECT status FROM Plataforma WHERE id = @plataforma_id) AS plataforma_status,
-           (SELECT capacidade FROM Plataforma WHERE id = @plataforma_id) AS plataforma_capacidade`
+           (SELECT capacidade FROM Plataforma WHERE id = @plataforma_id) AS plataforma_capacidade,
+           (SELECT inicio_automatico_padrao FROM Plataforma WHERE id = @plataforma_id) AS inicio_automatico_padrao,
+           (SELECT fim_automatico_padrao FROM Plataforma WHERE id = @plataforma_id) AS fim_automatico_padrao`
       );
-    const { setor_nome, solicitante_nome, plataforma_nome, plataforma_status, plataforma_capacidade } =
-      contexto.recordset[0];
+    const {
+      setor_nome,
+      solicitante_nome,
+      plataforma_nome,
+      plataforma_status,
+      plataforma_capacidade,
+      inicio_automatico_padrao,
+      fim_automatico_padrao,
+    } = contexto.recordset[0];
     if (!plataforma_nome) {
       return reply.status(404).send({ erro: "Plataforma não encontrada." });
     }
+
+    // Padrão da plataforma com override opcional da reserva (§ "Configuração da automação").
+    // Gravado na reserva agora: alterar o padrão do equipamento amanhã não pode reescrever o
+    // comportamento de reservas já criadas.
+    const inicioAutomatico = parsed.data.inicioAutomatico ?? Boolean(inicio_automatico_padrao);
+    const fimAutomatico = parsed.data.fimAutomatico ?? Boolean(fim_automatico_padrao);
     // RN-PLAT-01: plataforma só pode ser reservada se status diferente de "inativa".
     // RN-PLAT-04 (S11): ocorrência com gera_manutencao=1 move a plataforma para
     // "manutencao" e bloqueia novas reservas até reversão manual pelo Admin — mesmo
@@ -496,10 +538,12 @@ export async function reservasRoutes(app: FastifyInstance): Promise<void> {
           .input("motivo", sql.NVarChar, motivo)
           .input("prioridade", sql.VarChar, prioridade)
           .input("recorrencia_id", sql.UniqueIdentifier, recorrenciaId)
+          .input("inicio_automatico", sql.Bit, inicioAutomatico)
+          .input("fim_automatico", sql.Bit, fimAutomatico)
           .query<{ id: string }>(
-            `INSERT INTO Reserva (setor_id, solicitante_id, plataforma_id, data, hora_inicio, hora_fim, quantidade_pessoas, motivo, prioridade, recorrencia_id)
+            `INSERT INTO Reserva (setor_id, solicitante_id, plataforma_id, data, hora_inicio, hora_fim, quantidade_pessoas, motivo, prioridade, recorrencia_id, inicio_automatico, fim_automatico)
              OUTPUT INSERTED.id
-             VALUES (@setor_id, @solicitante_id, @plataforma_id, @data, @hora_inicio, @hora_fim, @quantidade_pessoas, @motivo, @prioridade, @recorrencia_id)`
+             VALUES (@setor_id, @solicitante_id, @plataforma_id, @data, @hora_inicio, @hora_fim, @quantidade_pessoas, @motivo, @prioridade, @recorrencia_id, @inicio_automatico, @fim_automatico)`
           );
         const novaId = insercao.recordset[0].id;
         idsCriados.push(novaId);
@@ -799,6 +843,24 @@ export async function reservasRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(403).send({ erro: "Você só pode aprovar reservas do seu próprio setor." });
       }
 
+      // RF-CHK-06/RN-CHK-03: o checklist de segurança é um portão ANTES da aprovação. Uma
+      // plataforma configurada para exigi-lo só pode ser aprovada com ele finalizado e sem
+      // não conformidade impeditiva — e isso vale para QUALQUER equipamento com essa
+      // configuração, não para uma categoria ou plataforma específica. Backend é a única
+      // fonte de verdade: mesmo uma chamada direta na API (sem passar pela UI) é bloqueada.
+      const estadoChecklist = await buscarEstadoChecklist(contexto.plataforma_id, id);
+      if (estadoChecklist.exigido && !estadoChecklist.finalizado) {
+        return reply.status(409).send({
+          erro: "Não é possível aprovar esta reserva. O checklist de segurança ainda não foi concluído.",
+        });
+      }
+      if (estadoChecklist.exigido && estadoChecklist.finalizado && !estadoChecklist.todosConformes) {
+        return reply.status(409).send({
+          erro:
+            "O checklist de segurança desta reserva tem item não conforme impeditivo — aprovação bloqueada até revisão da plataforma (RN-CHK-02).",
+        });
+      }
+
       let resultado;
       try {
         resultado = decidirAprovacao(usuario.perfil as PerfilAprovador, {
@@ -1019,34 +1081,12 @@ export async function reservasRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(403).send({ erro: "Você só pode alterar reservas do seu próprio setor." });
       }
 
-      // RF-RES-10/RN-RES-12: plataforma com checklist obrigatório (categoria elevatória
-      // ou andaime) só entra em uso com ChecklistPreenchido.todos_conformes = 1.
-      if (acao === "iniciar_uso" && requerChecklist(contexto.plataforma_categoria)) {
-        const pool = await getPool();
-        const checklist = await pool
-          .request()
-          .input("reserva_id", sql.UniqueIdentifier, id)
-          .query<{ todos_conformes: boolean }>(
-            "SELECT todos_conformes FROM ChecklistPreenchido WHERE reserva_id = @reserva_id"
-          );
-        const preenchido = checklist.recordset[0];
-        if (!preenchido) {
-          return reply.status(409).send({
-            erro:
-              "Esta plataforma exige checklist de segurança antes do início de uso (NR-18/NR-35) e ele ainda não foi preenchido.",
-          });
-        }
-        if (!preenchido.todos_conformes) {
-          return reply.status(409).send({
-            erro:
-              "O checklist de segurança desta reserva tem item obrigatório não conforme — início de uso bloqueado até revisão da plataforma (RN-CHK-02).",
-          });
-        }
-      }
-
-      let novoStatus: StatusReserva;
+      // A transição em si (validação de estado, checklist, UPDATE condicional, auditoria e
+      // evento SSE) vive em reservaTransicao.service.ts — exatamente a mesma função que o
+      // worker de automação chama. O modo manual e o automático compartilham a regra de
+      // negócio; esta rota só resolve autenticação/escopo e traduz o resultado em HTTP.
       try {
-        novoStatus = transicionar(contexto.status, acao);
+        transicionar(contexto.status, acao);
       } catch (err) {
         if (err instanceof TransicaoInvalidaError) {
           return reply.status(409).send({ erro: err.message });
@@ -1054,32 +1094,24 @@ export async function reservasRoutes(app: FastifyInstance): Promise<void> {
         throw err;
       }
 
-      const pool = await getPool();
-      const campoHoraReal = acao === "iniciar_uso" ? "hora_inicio_real" : "hora_fim_real";
-      const transaction = pool.transaction();
-      await transaction.begin();
-      try {
-        await transaction
-          .request()
-          .input("id", sql.UniqueIdentifier, id)
-          .input("status", sql.VarChar, novoStatus)
-          .query(
-            `UPDATE Reserva SET status = @status, ${campoHoraReal} = CAST(GETDATE() AS TIME), atualizado_em = SYSUTCDATETIME()
-             WHERE id = @id`
-          );
-        await registrarAuditoriaReserva(transaction, request.usuario!.sub, `${acao}_reserva`, id, {
-          statusAnterior: contexto.status,
-          statusNovo: novoStatus,
-        });
-        await transaction.commit();
-      } catch (err) {
-        await transaction.rollback();
-        throw err;
-      }
-      // S10 (SDD §3.4): reserva.status_alterado — consumido por Dashboard, Painel TV e
-      // Calendário de qualquer usuário/dispositivo conectado, sem destinatário específico.
-      publicarEventoGlobal("reserva.status_alterado", { id, status: novoStatus });
+      const resultado =
+        acao === "iniciar_uso"
+          ? await iniciarUsoReserva({
+              reservaId: id,
+              origem: "manual",
+              usuarioId: request.usuario!.sub,
+              contexto: {
+                plataformaId: contexto.plataforma_id,
+                plataformaStatus: contexto.plataforma_status,
+              },
+            })
+          : await concluirReserva({ reservaId: id, origem: "manual", usuarioId: request.usuario!.sub });
 
+      if (!resultado.aplicada) {
+        return reply.status(409).send({ erro: resultado.motivo });
+      }
+
+      const pool = await getPool();
       const completa = await pool
         .request()
         .input("id", sql.UniqueIdentifier, id)

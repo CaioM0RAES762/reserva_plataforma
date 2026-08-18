@@ -1,12 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Construction,
   Ban,
-  MonitorPlay,
   CalendarClock,
   ClipboardCheck,
   ClipboardList,
@@ -49,7 +48,7 @@ const NAV_ITEMS: NavItem[] = [
     badgeKey: "aprovacoes",
   },
   {
-    href: "/reservas?status=agendada",
+    href: "/checklists",
     label: "Checklists NR-18/35",
     grupo: "operacao",
     disponivel: true,
@@ -63,14 +62,6 @@ const NAV_ITEMS: NavItem[] = [
     disponivel: true,
     perfis: ["admin"],
     icon: <Ban {...ICON_PROPS} />,
-  },
-  {
-    href: "/plataformas/painel-tv",
-    label: "Painel TV",
-    grupo: "operacao",
-    disponivel: true,
-    perfis: ["admin"],
-    icon: <MonitorPlay {...ICON_PROPS} />,
   },
   { href: "/historico", label: "Histórico", grupo: "operacao", disponivel: true, icon: <History {...ICON_PROPS} /> },
   {
@@ -172,29 +163,15 @@ function NavLink({ item, ativo, badge }: { item: NavItem; ativo: boolean; badge?
   );
 }
 
-// O item ativo era decidido por `pathname === href.split("?")[0]`, o que fazia "Reservas"
-// (/reservas) e "Checklists NR-18/35" (/reservas?status=agendada) acenderem AO MESMO
-// TEMPO, já que ambos resolvem para o mesmo pathname. Comparando também a querystring, só
-// o item que corresponde de fato à visão atual fica destacado.
-function itemEstaAtivo(item: NavItem, pathname: string, searchParams: URLSearchParams): boolean {
-  const [caminho, query] = item.href.split("?");
-  if (pathname !== caminho) return false;
-  if (!query) {
-    // Item sem query só está ativo quando a URL atual também não tem os filtros que
-    // pertencem a outro item do menu apontando para o mesmo caminho.
-    const irmaosComQuery = NAV_ITEMS.filter((outro) => outro !== item && outro.href.startsWith(`${caminho}?`));
-    return !irmaosComQuery.some((irmao) => {
-      const parametrosDoIrmao = new URLSearchParams(irmao.href.split("?")[1]);
-      return [...parametrosDoIrmao.entries()].every(([chave, valor]) => searchParams.get(chave) === valor);
-    });
-  }
-  const esperados = new URLSearchParams(query);
-  return [...esperados.entries()].every(([chave, valor]) => searchParams.get(chave) === valor);
+// Correção do fluxo de Checklist: "Checklists NR-18/35" ganhou uma rota própria
+// (/checklists) em vez de reaproveitar /reservas?status=agendada — não há mais dois itens
+// do menu apontando para o mesmo pathname, então basta comparar o caminho.
+function itemEstaAtivo(item: NavItem, pathname: string): boolean {
+  return pathname === item.href;
 }
 
 export function Sidebar({ nome, perfil, badges }: SidebarProps) {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const { collapsed } = useSidebarState();
   const itensVisiveis = NAV_ITEMS.filter((item) => !item.perfis || item.perfis.includes(perfil));
   const grupoOperacao = itensVisiveis.filter((item) => item.grupo === "operacao");
@@ -222,7 +199,7 @@ export function Sidebar({ nome, perfil, badges }: SidebarProps) {
             <NavLink
               key={item.href}
               item={item}
-              ativo={itemEstaAtivo(item, pathname, searchParams)}
+              ativo={itemEstaAtivo(item, pathname)}
               badge={badgeFor(item)}
             />
           ))}
@@ -235,7 +212,7 @@ export function Sidebar({ nome, perfil, badges }: SidebarProps) {
               <NavLink
                 key={item.href}
                 item={item}
-                ativo={itemEstaAtivo(item, pathname, searchParams)}
+                ativo={itemEstaAtivo(item, pathname)}
                 badge={badgeFor(item)}
               />
             ))}
