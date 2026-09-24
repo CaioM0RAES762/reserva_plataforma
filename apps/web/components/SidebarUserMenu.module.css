@@ -66,52 +66,80 @@
   text-overflow: ellipsis;
 }
 
-/* Recolhida: só o avatar, centralizado na coluna estreita. */
-.userBlock[data-collapsed] .userTrigger {
-  justify-content: center;
-  padding: 8px 0;
-}
-.userBlock[data-collapsed] .userInfo {
-  opacity: 0;
-  max-width: 0;
-  pointer-events: none;
-  transition: opacity 100ms ease, max-width 160ms ease;
+/* Recolhida: só o avatar, centralizado na coluna estreita. Só vale no desktop (>900px): no
+   drawer mobile a sidebar é sempre a largura cheia (ver Sidebar.module.css), então quem
+   recolheu no desktop e abre o celular precisa ver nome e perfil, não só o avatar. */
+@media (min-width: 901px) {
+  .userBlock[data-collapsed] .userTrigger {
+    justify-content: center;
+    padding: 8px 0;
+  }
+  .userBlock[data-collapsed] .userInfo {
+    opacity: 0;
+    max-width: 0;
+    pointer-events: none;
+    transition: opacity 100ms ease, max-width 160ms ease;
+  }
 }
 
+/* Popover da conta — mesma identidade da sidebar (superfície escura, texto claro, filete
+   sutil), não uma caixa branca solta. Inline (drawer mobile) abre acima do perfil; no
+   desktop vira .userMenuFlutuante, em portal com posição fixa (ver SidebarUserMenu.tsx). */
 .userMenu {
   position: absolute;
   bottom: calc(100% + 8px);
   left: 0;
+  right: 0;
   z-index: 60;
-  min-width: 200px;
   display: flex;
   flex-direction: column;
-  padding: 6px;
   gap: 2px;
-  background: var(--paper-elev);
-  border: 1px solid var(--hairline);
-  border-radius: var(--ind-radius-sm);
-  box-shadow: 0 16px 32px -12px rgba(0, 0, 0, 0.45);
+  padding: 5px;
+  background: var(--ind-sidebar-accent);
+  border: 1px solid var(--ind-sidebar-border);
+  border-radius: var(--ind-radius-md);
+  box-shadow: 0 10px 24px -12px rgba(0, 0, 0, 0.55);
+  font-family: var(--font-sans);
+}
+/* Acima da sidebar (100) e do conteúdo; abaixo dos modais (200). */
+.userMenuFlutuante {
+  position: fixed;
+  right: auto;
+  z-index: 150;
 }
 
 .userMenuItem {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 10px;
   width: 100%;
-  padding: 9px 10px;
+  min-height: 36px;
+  padding: 0 10px;
   border: none;
   border-radius: var(--ind-radius-sm);
   background: transparent;
   font-family: inherit;
   font-size: var(--text-secondary);
   font-weight: 500;
-  color: var(--ink-soft);
+  color: var(--ind-sidebar-foreground);
   text-align: left;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
-.userMenuItem:hover { background: color-mix(in oklch, var(--ink) 6%, transparent); color: var(--ink); }
-.userMenuItem:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
+.userMenuItem svg { flex-shrink: 0; opacity: 0.8; }
+.userMenuItem:hover { background: rgba(255, 255, 255, 0.06); color: #fff; }
+.userMenuItem:focus-visible { outline: 2px solid rgba(255, 255, 255, 0.65); outline-offset: -2px; }
 .userMenuItem:disabled { opacity: 0.6; cursor: progress; }
-.userMenuItemDanger:hover { color: var(--hazard); background: color-mix(in oklch, var(--hazard) 10%, transparent); }
+.userMenuItemDanger:hover { color: #fff; background: color-mix(in oklch, var(--hazard) 30%, transparent); }
+
+/* Celular/tablet: gatilho e itens do popover com alvo de toque de 44px. O popover abre para
+   cima a partir do rodapé do drawer e nunca é cortado: o rodapé não tem overflow próprio e o
+   <aside> tem altura fixa com a lista (nav) rolando à parte. */
+@media (max-width: 900px) {
+  .userTrigger {
+    min-height: 44px;
+  }
+  .userMenuItem {
+    min-height: 44px;
+  }
+}

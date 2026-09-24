@@ -16,10 +16,12 @@ import { eventosRoutes } from "./routes/eventos.js";
 import { notificacoesRoutes } from "./routes/notificacoes.js";
 import { anexosRoutes } from "./routes/anexos.js";
 import { comentariosRoutes } from "./routes/comentarios.js";
+import { naoConformidadesRoutes } from "./routes/naoConformidades.js";
 import { ocorrenciasRoutes } from "./routes/ocorrencias.js";
 import { configuracoesRoutes } from "./routes/configuracoes.js";
 import { auditoriaRoutes } from "./routes/auditoria.js";
 import { relatoriosRoutes } from "./routes/relatorios.js";
+import { disponibilidadeRoutes } from "./routes/disponibilidade.js";
 import { isAllowedOrigin } from "./utils/cors.js";
 
 const isProduction = process.env.NODE_ENV === "production";
@@ -101,10 +103,12 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(notificacoesRoutes);
   await app.register(anexosRoutes);
   await app.register(comentariosRoutes);
+  await app.register(naoConformidadesRoutes);
   await app.register(ocorrenciasRoutes);
   await app.register(configuracoesRoutes);
   await app.register(auditoriaRoutes);
   await app.register(relatoriosRoutes);
+  await app.register(disponibilidadeRoutes);
 
   return app;
 }

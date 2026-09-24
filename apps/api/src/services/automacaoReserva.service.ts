@@ -20,6 +20,8 @@ export function agoraEmBrasilia(agora: Date = new Date()): { data: string; hora:
 export interface ResumoAutomacao {
   iniciadas: string[];
   concluidas: string[];
+  /** Janelas inteiras vencidas sem uso, encerradas direto de 'agendada' para 'concluida'. */
+  encerradasSemUso: string[];
   ignoradas: number;
 }
 
@@ -29,11 +31,10 @@ interface CandidataRow {
   plataforma_status: string;
 }
 
-// RF — início automático. Só entram reservas cuja janela está ACONTECENDO agora
-// (hora_inicio <= agora < hora_fim, no mesmo dia): sem esse recorte, a primeira execução do
-// worker após o recurso ser habilitado varreria o passado inteiro e colocaria em uso
-// reservas de dias anteriores que nunca foram iniciadas. Reserva vencida sem uso permanece
-// "agendada" para tratamento humano, que é a informação correta.
+// Início automático — o comportamento PADRÃO do fluxo. Só entram reservas cuja janela está
+// ACONTECENDO agora (hora_inicio <= agora < hora_fim, no mesmo dia). O recorte importa:
+// varrer o passado aqui colocaria "em uso" reservas de dias anteriores que já venceram —
+// esse caso é tratado por `candidatasAEncerramentoSemUso`, que as leva direto a concluída.
 async function candidatasAoInicio(data: string, hora: string): Promise<CandidataRow[]> {
   const pool = await getPool();
   const result = await pool
@@ -73,6 +74,32 @@ async function candidatasAConclusao(data: string, hora: string): Promise<Candida
   return result.recordset;
 }
 
+/* Recuperação de janela perdida.
+ *
+ * Cenário real: reserva das 08:00 às 10:00, o servidor fica fora do ar a manhã inteira e
+ * volta às 11:00 com a reserva ainda 'agendada'. Passar por 'em_uso' agora seria falso —
+ * o uso não está acontecendo. Ficar 'agendada' para sempre é pior ainda: a plataforma
+ * aparece comprometida numa janela que já passou e a lista nunca se resolve sozinha.
+ *
+ * A janela terminou, então a reserva vai direto para 'concluida'. É o mesmo raciocínio do
+ * encerramento automático, aplicado a uma reserva que nunca chegou a iniciar. */
+async function candidatasAEncerramentoSemUso(data: string, hora: string): Promise<CandidataRow[]> {
+  const pool = await getPool();
+  const result = await pool
+    .request()
+    .input("data", sql.Date, data)
+    .input("hora", sql.VarChar, hora)
+    .query<CandidataRow>(
+      `SELECT r.id, r.plataforma_id, p.status AS plataforma_status
+       FROM Reserva r
+       JOIN Plataforma p ON p.id = r.plataforma_id
+       WHERE r.status = 'agendada'
+         AND r.fim_automatico = 1
+         AND (r.data < @data OR (r.data = @data AND r.hora_fim <= @hora))`
+    );
+  return result.recordset;
+}
+
 // Executado periodicamente pelo worker BullMQ (ver services/queue.ts). Toda a segurança
 // contra execução dupla está em reservaTransicao.service.ts: a transição é um UPDATE
 // condicional pelo status de partida, então rodar esta função duas vezes em paralelo — ou
@@ -83,7 +110,7 @@ async function candidatasAConclusao(data: string, hora: string): Promise<Candida
 // somado a envio de e-mail é exatamente a receita de tempestade de notificações.
 export async function processarAutomacaoReservas(agora: Date = new Date()): Promise<ResumoAutomacao> {
   const { data, hora } = agoraEmBrasilia(agora);
-  const resumo: ResumoAutomacao = { iniciadas: [], concluidas: [], ignoradas: 0 };
+  const resumo: ResumoAutomacao = { iniciadas: [], concluidas: [], encerradasSemUso: [], ignoradas: 0 };
 
   for (const candidata of await candidatasAoInicio(data, hora)) {
     const resultado = await iniciarUsoReserva({
@@ -103,6 +130,21 @@ export async function processarAutomacaoReservas(agora: Date = new Date()): Prom
       usuarioId: null,
     });
     if (resultado.aplicada) resumo.concluidas.push(candidata.id);
+    else resumo.ignoradas += 1;
+  }
+
+  // Por último, de propósito: as duas varreduras acima já moveram tudo o que ainda estava
+  // dentro de uma janela válida. O que sobrar em 'agendada' com o horário final no passado
+  // é genuinamente uma janela perdida.
+  for (const candidata of await candidatasAEncerramentoSemUso(data, hora)) {
+    const resultado = await concluirReserva({
+      reservaId: candidata.id,
+      origem: "automatica",
+      usuarioId: null,
+      // A reserva nunca entrou em uso: a transição parte de 'agendada', não de 'em_uso'.
+      statusDeEsperado: "agendada",
+    });
+    if (resultado.aplicada) resumo.encerradasSemUso.push(candidata.id);
     else resumo.ignoradas += 1;
   }
 

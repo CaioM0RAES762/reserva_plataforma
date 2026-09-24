@@ -53,38 +53,35 @@ export async function enfileirarEmail(data: EmailJobData): Promise<void> {
   });
 }
 
-// S7 (RN-RES-09) — job repetitivo de escalonamento de SLA de aprovação urgente.
-// A checagem em si (verificarEscalonamentoSla) vive em escalonamento.service.ts, que
-// importa enfileirarEmail deste módulo; o worker importa a checagem dinamicamente para
-// evitar um ciclo de import estático entre os dois arquivos.
-export const ESCALONAMENTO_QUEUE_NAME = "escalonamento-sla";
-export const ESCALONAMENTO_JOB_ID = "escalonamento-sla-repetitivo";
-const ESCALONAMENTO_INTERVALO_MS = 15 * 60 * 1000;
+/* A fila "escalonamento-sla" foi REMOVIDA junto com o fluxo de aprovação (migration
+ * 0018): ela existia para cobrar decisão de aprovadores sobre reservas urgentes que
+ * ficavam paradas. Sem aprovação, nenhuma reserva fica parada esperando alguém.
+ *
+ * Se um ambiente já tiver o job repetitivo registrado no Redis, ele deixa de ter worker e
+ * `removerJobsLegadosDeEscalonamento` abaixo limpa o agendamento residual no boot. */
 
-export const escalonamentoQueue = new Queue(ESCALONAMENTO_QUEUE_NAME, { connection });
+const ESCALONAMENTO_QUEUE_NAME_LEGADO = "escalonamento-sla";
 
-export function iniciarEscalonamentoWorker(): Worker {
-  return new Worker(
-    ESCALONAMENTO_QUEUE_NAME,
-    async () => {
-      const { verificarEscalonamentoSla } = await import("./escalonamento.service.js");
-      await verificarEscalonamentoSla();
-    },
-    { connection }
-  );
+/** Best-effort: um Redis indisponível não deve impedir a API de subir. */
+export async function removerJobsLegadosDeEscalonamento(): Promise<void> {
+  try {
+    const fila = new Queue(ESCALONAMENTO_QUEUE_NAME_LEGADO, { connection });
+    for (const job of await fila.getRepeatableJobs()) {
+      await fila.removeRepeatableByKey(job.key);
+    }
+    await fila.obliterate({ force: true });
+    await fila.close();
+  } catch {
+    // Nada a fazer: a fila legada sem worker é inerte de qualquer forma.
+  }
 }
 
-export async function agendarEscalonamentoRepetitivo(): Promise<void> {
-  await escalonamentoQueue.add(
-    "verificar",
-    {},
-    { repeat: { every: ESCALONAMENTO_INTERVALO_MS }, jobId: ESCALONAMENTO_JOB_ID }
-  );
-}
-
-// Automação de início/finalização de reserva — mesmo padrão de job repetitivo do
-// escalonamento de SLA acima, reaproveitando a infraestrutura BullMQ/Redis que o projeto já
-// tem (nenhuma tecnologia nova foi introduzida para isto).
+// Automação de início/finalização de reserva — job repetitivo BullMQ, reaproveitando a
+// infraestrutura Redis que o projeto já tem (nenhuma tecnologia nova foi introduzida).
+//
+// Com o fim do fluxo de aprovação, este job passou de acessório a ESSENCIAL: ele é o que
+// move a reserva de agendada → em uso → concluída. É a fonte de verdade do status
+// temporal, e por isso vive no servidor — nunca num setInterval de página React.
 //
 // Por que no backend e não com setInterval no navegador: a regra precisa valer com a
 // aplicação fechada. Uma reserva 15:00–16:30 tem de virar "em uso" às 15:00 mesmo que

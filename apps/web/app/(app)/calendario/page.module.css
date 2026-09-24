@@ -1,258 +1,903 @@
+/* ============================================================
+   Calendário — estrutura
+   Desktop (>1100px): a página ocupa exatamente a altura útil abaixo do Topbar (a .content
+   do AppShell tem 28px de padding em cima e embaixo) e só a grade rola por dentro, com o
+   cabeçalho dos dias fixo. Até 1100px a grade cresce e quem rola é a página (bloco de
+   responsividade no fim do arquivo).
+
+   min-width:0 — a seção é filha de um flex container (.content); sem isso a grade larga
+   esticaria a página inteira em vez de rolar dentro do próprio container (.calScroll).
+   ============================================================ */
+.page {
+  --cal-borda: color-mix(in oklch, var(--hairline) 80%, transparent);
+  --cal-borda-fraca: color-mix(in oklch, var(--hairline) 45%, transparent);
+  --cal-ctrl-h: var(--control-h-compact);
+  min-width: 0;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 1101px) {
+  .page {
+    height: calc(100vh - var(--topbar-h) - 56px);
+    height: calc(100dvh - var(--topbar-h) - 56px);
+    /* Viewport baixa: melhor a página rolar do que a grade virar uma fresta. */
+    min-height: 540px;
+  }
+}
+
+/* ---------- Cabeçalho da página (mesma hierarquia de Reservas) ---------- */
 .header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
+  gap: 20px;
   margin-bottom: 20px;
-  flex-wrap: wrap;
-  gap: 16px;
+  flex: none;
 }
-.header h1 {
+.headerTexto { min-width: 0; }
+.pageTitulo {
   font-family: var(--font-display);
   font-weight: 500;
   font-size: var(--text-page-title);
+  line-height: 1.1;
   letter-spacing: -0.015em;
   color: var(--ink);
 }
-.header p { font-size: var(--text-body-lg); color: var(--ink-soft); margin-top: 6px; }
+.headerSubtitle {
+  margin-top: 6px;
+  font-size: var(--text-secondary);
+  line-height: 1.5;
+  color: var(--ink-muted);
+}
 
+/* Mesmo botão "Nova reserva" da tela de Reservas. */
 .btnPrimary {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  flex-shrink: 0;
   min-height: var(--control-h);
+  padding: 0 22px;
+  border: 1px solid var(--ink);
+  border-radius: 999px;
   background: var(--ink);
   color: var(--paper);
-  border: 1px solid var(--ink);
-  border-radius: var(--ind-radius-sm);
-  padding: 0 18px;
   font-size: var(--text-secondary);
   font-weight: 500;
+  letter-spacing: -0.005em;
   white-space: nowrap;
+  transition: background 0.15s, transform 0.1s;
 }
 .btnPrimary:hover { background: var(--ink-soft); }
+.btnPrimary:active { transform: scale(0.985); }
+.btnPrimary:focus-visible { outline-color: var(--safety); }
 
 .error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 14px;
   background: var(--safety-soft);
   color: var(--hazard);
-  padding: 10px 12px;
+  padding: 8px 12px;
   border: 1px solid var(--hairline);
-  border-radius: var(--ind-radius-sm);
+  border-radius: var(--ind-radius-md);
   font-size: var(--text-secondary);
-  margin-bottom: 12px;
+  margin-bottom: 10px;
+  flex: none;
 }
 
+/* Aviso informativo (expediente não carregou / reservas fora do expediente): faixa fina
+   com filete laranja, sem competir com o erro (que usa a cor de perigo). */
+.calAviso {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  background: var(--safety-soft);
+  color: var(--ink);
+  padding: 6px 10px 6px 12px;
+  border: 1px solid var(--hairline);
+  border-left: 3px solid var(--safety);
+  border-radius: var(--ind-radius-md);
+  font-size: var(--text-meta);
+  margin-bottom: 10px;
+  flex: none;
+}
+.calAvisoTexto { flex: 1 1 260px; min-width: 0; line-height: 1.4; }
+
+/* ---------- Toolbar ----------
+   Um único sistema de controles: 34px de altura, 13px de texto, borda hairline, raio
+   pequeno da identidade industrial. Navegação temporal à esquerda; visualização e filtros à
+   direita. */
 .toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 14px;
-  margin-bottom: 16px;
+  gap: 10px 16px;
+  margin-bottom: 12px;
+  flex: none;
 }
 
-.calNav { display: flex; align-items: center; gap: 8px; }
+.calNav { display: flex; align-items: center; gap: 2px; min-width: 0; }
 
 .btnOutline {
-  background: var(--paper-elev);
-  color: var(--ink);
-  border: 1px solid var(--hairline);
-  border-radius: var(--ind-radius-sm);
-  min-height: var(--control-h-compact);
-  padding: 0 15px;
-  font-size: var(--text-secondary);
-  font-weight: 500;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-}
-.btnOutline:hover { border-color: var(--ink-muted); background: color-mix(in oklch, var(--ink) 4%, transparent); }
-.btnOutlineActive { border-color: var(--safety); color: var(--safety); background: var(--safety-soft); }
-
-.weekLabelBlock {
-  display: flex;
-  flex-direction: column;
-  margin-left: 6px;
-  line-height: 1.25;
-}
-.weekLabel { font-weight: 600; font-size: var(--text-body); color: var(--ink); }
-.monthLabel {
-  font-size: var(--text-meta);
-  color: var(--ink-muted);
-}
-
-.calLegend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.calLegendChip {
-  display: flex;
-  align-items: center;
   gap: 6px;
+  height: var(--cal-ctrl-h);
+  min-height: var(--cal-ctrl-h);
+  padding: 0 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-md);
+  background: var(--paper-elev);
+  color: var(--ink);
   font-size: var(--text-meta);
   font-weight: 500;
-  color: var(--ink-muted);
-  padding: 4px 10px 4px 8px;
-  border-radius: 999px;
-  border: 1px solid var(--hairline);
-  background: color-mix(in oklch, var(--ink) 3%, transparent);
+  line-height: 1;
+  white-space: nowrap;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
 }
-.calLegendDot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.btnOutline:hover {
+  border-color: color-mix(in oklch, var(--ink-muted) 55%, var(--hairline));
+  background: color-mix(in oklch, var(--ink) 3%, var(--paper-elev));
+}
+.btnOutline:active { background: color-mix(in oklch, var(--ink) 6%, var(--paper-elev)); }
+.btnOutline:disabled,
+.btnOutline:disabled:hover {
+  color: var(--ink-muted);
+  border-color: var(--hairline);
+  background: var(--paper-elev);
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.btnOutline svg { flex: none; }
 
-/* ---------- Grade proporcional ---------- */
-.calGridWrap {
+.btnGhost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--cal-ctrl-h);
+  border: 1px solid transparent;
+  border-radius: var(--ind-radius-md);
+  background: transparent;
+  color: var(--ink-soft);
+  transition: background 0.12s, color 0.12s;
+}
+.btnGhost:hover { background: color-mix(in oklch, var(--ink) 5%, transparent); color: var(--ink); }
+.btnGhost:active { background: color-mix(in oklch, var(--ink) 8%, transparent); }
+
+.btnIcon { width: var(--cal-ctrl-h); flex: 0 0 var(--cal-ctrl-h); padding: 0; }
+.btnHoje { padding: 0 14px; margin-right: 6px; }
+
+.datePickerLabel {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: var(--cal-ctrl-h);
+  padding: 0 8px;
+  margin-left: 6px;
+  border-radius: var(--ind-radius-md);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.datePickerLabel:hover { background: color-mix(in oklch, var(--ink) 4%, transparent); }
+.datePickerLabel:has(.datePickerInput:focus-visible) { outline: 2px solid var(--ink); outline-offset: 2px; }
+.weekLabel {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: var(--text-panel-title);
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.datePickerInput {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.toolbarSecondary { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+
+/* "Agora" e "ir ao início" formam um grupo encostado — dois controles da mesma função
+   (posição vertical na grade). */
+.calScrollNav { display: inline-flex; align-items: center; }
+.calScrollNav .btnOutline:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.calScrollNav .btnOutline + .btnOutline { margin-left: -1px; border-top-left-radius: 0; border-bottom-left-radius: 0; color: var(--ink-soft); }
+.calScrollNav .btnOutline:hover { position: relative; z-index: 1; }
+
+/* Segmented control: trilho levemente tingido; o segmento ativo "sobe" para a superfície
+   com borda fina. Claro sem ser pesado. */
+.periodSelector {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: var(--cal-ctrl-h);
+  padding: 2px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-md);
+  background: color-mix(in oklch, var(--ink) 4%, var(--paper-elev));
+}
+.periodButton {
+  height: 100%;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: calc(var(--ind-radius-md) - 1px);
+  background: transparent;
+  color: var(--ink-muted);
+  font-size: var(--text-meta);
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.periodButton:hover { color: var(--ink); }
+.periodButtonActive,
+.periodButtonActive:hover {
+  color: var(--ink);
+  background: var(--paper-elev);
+  border-color: var(--hairline);
+  box-shadow: 0 1px 0 color-mix(in oklch, var(--ink) 5%, transparent);
+}
+/* "3 dias" é a view de tablet; no desktop o seletor é Dia | Semana | Mês. */
+.periodButtonTablet { display: none; }
+
+.selectWrap { position: relative; display: inline-flex; min-width: 0; }
+.selectWrap::after {
+  content: "";
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  transform: translateY(-50%);
+  background: var(--ink-muted);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5 6 7.5 9 4.5' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5 6 7.5 9 4.5' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+  pointer-events: none;
+}
+.select {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  max-width: 220px;
+  height: var(--cal-ctrl-h);
+  padding: 0 30px 0 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-md);
+  background: var(--paper-elev);
+  color: var(--ink);
+  font-size: var(--text-meta);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+.select:hover {
+  border-color: color-mix(in oklch, var(--ink-muted) 55%, var(--hairline));
+  background: color-mix(in oklch, var(--ink) 3%, var(--paper-elev));
+}
+
+.painelToggle { position: relative; color: var(--ink-soft); }
+.painelToggle:hover { color: var(--ink); }
+.painelToggleAtivo {
+  color: var(--ink);
+  background: color-mix(in oklch, var(--ink) 5%, var(--paper-elev));
+  border-color: color-mix(in oklch, var(--ink-muted) 45%, var(--hairline));
+}
+/* Filtro ativo: um ponto no accent, sem contador — o detalhe está no próprio painel. */
+.filtroIndicador {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--safety);
+}
+
+/* ---------- Área principal: grade + painel direito ----------
+   Uma única superfície com borda externa; o painel é separado da grade por um filete, não
+   é uma caixa ao lado dela. */
+.layout {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(232px, 18vw, 272px);
   background: var(--paper-elev);
   border: 1px solid var(--hairline);
   border-radius: var(--ind-radius-md);
-  overflow-x: auto;
-  overflow-y: hidden;
+}
+.layout:has(.painelOculto) { grid-template-columns: minmax(0, 1fr); }
+
+.calGridWrap {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-radius: calc(var(--ind-radius-md) - 1px);
+  overflow: hidden;
 }
 
-.calGrid {
-  display: grid;
-  grid-template-columns: 64px repeat(7, minmax(120px, 1fr));
-  min-width: 900px;
+/* Desktop: rola nos dois eixos (o horizontal só existe se as colunas não couberem).
+   Até 1100px o overflow-y volta a ser hidden e a página é quem rola. */
+.calScroll {
+  position: relative;
+  isolation: isolate;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+.calScroll:focus-visible { outline-offset: -2px; }
+
+/* Largura mínima = eixo + N dias legíveis. Abaixo disso o .calScroll rola na horizontal
+   (eixo e cabeçalho continuam fixos) em vez de espremer as colunas. */
+.calInner {
+  --cal-eixo: 60px;
+  --cal-dia-min: 76px;
+  --cal-dias: 7;
+  width: 100%;
+  min-width: calc(var(--cal-eixo) + var(--cal-dias) * var(--cal-dia-min));
+}
+
+/* Cabeçalho e corpo são flex (não grid) de propósito: um filho de grid só gruda dentro da
+   própria área, então cabeçalho/eixo nunca ficariam fixos; num flex container o bloco de
+   contenção do sticky é o container inteiro. */
+.calHeaderRow {
+  position: sticky;
+  top: 0;
+  z-index: 7;
+  display: flex;
+  background: var(--paper-elev);
+  border-bottom: 1px solid var(--cal-borda);
+}
+
+.calBody {
+  display: flex;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .calCornerCell {
-  background: color-mix(in oklch, var(--ink) 3%, transparent);
-  border-bottom: 1px solid var(--hairline);
-  border-right: 1px solid var(--hairline);
+  position: sticky;
+  left: 0;
+  z-index: 8;
+  flex: 0 0 var(--cal-eixo);
+  background: var(--paper-elev);
 }
 
+/* Dia da semana discreto (versalete pequeno) sobre o número, que é o que o olho procura. */
 .calHeaderCell {
-  background: color-mix(in oklch, var(--ink) 3%, transparent);
-  border-bottom: 1px solid var(--hairline);
-  border-right: 1px solid var(--hairline);
-  padding: 10px 6px;
-  text-align: center;
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 9px 4px 7px;
+  border-left: 1px solid var(--cal-borda-fraca);
+  color: var(--ink-muted);
+}
+.calHeaderDow {
   font-size: var(--text-eyebrow);
   font-weight: 600;
-  color: var(--ink-muted);
+  line-height: 1.2;
   text-transform: uppercase;
-  letter-spacing: var(--tracking-eyebrow);
+  letter-spacing: 0.08em;
 }
-.calHeaderCell.today { background: var(--safety-soft); color: var(--safety); }
 .calHeaderDate {
-  font-family: var(--font-mono);
-  font-size: 1.1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  height: 32px;
+  padding: 0 5px;
+  border: 0;
+  border-radius: var(--ind-radius-md);
+  background: transparent;
+  font-family: var(--font-sans);
+  font-size: 1.47rem;
   font-weight: 500;
-  display: block;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
   color: var(--ink);
 }
-.calHeaderDate.today { color: var(--safety); }
+button.calHeaderDate:hover { background: color-mix(in oklch, var(--ink) 5%, transparent); }
+/* Hoje: número e dia da semana no accent; nenhum bloco de cor no cabeçalho. */
+.calHeaderCell.today { color: var(--safety); }
+.calHeaderCell.today .calHeaderDate { color: var(--safety); font-weight: 600; }
 
 .calTimeAxis {
-  position: relative;
-  border-right: 1px solid var(--hairline);
-  background: color-mix(in oklch, var(--ink) 1.5%, transparent);
+  position: sticky;
+  left: 0;
+  z-index: 5;
+  flex: 0 0 var(--cal-eixo);
+  /* Base opaca: o eixo passa por cima das colunas na rolagem horizontal. */
+  background: var(--paper-elev);
 }
+/* Rótulo centrado exatamente na linha da hora (translateY -50%); o primeiro fica dentro da
+   grade, logo abaixo do cabeçalho. */
 .calTimeAxisLabel {
   position: absolute;
-  right: 6px;
-  font-family: var(--font-mono);
-  font-size: var(--text-micro);
+  right: 10px;
+  transform: translateY(-50%);
+  font-size: var(--text-eyebrow);
+  font-weight: 500;
+  line-height: 14px;
   color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+.calTimeAxisLabelPrimeira { transform: none; }
+/* Etiqueta do horário atual no eixo, alinhada à linha do "agora". */
+.calNowLabel {
+  position: absolute;
+  right: 6px;
+  z-index: 1;
+  transform: translateY(-50%);
+  padding: 0 4px;
+  border-radius: var(--ind-radius-sm);
+  background: var(--paper-elev);
+  font-size: var(--text-eyebrow);
+  font-weight: 600;
+  line-height: 16px;
+  color: var(--hazard);
+  font-variant-numeric: tabular-nums;
 }
 
+/* Só a hora cheia vira linha, desenhada pelo fundo da coluna (repetido a cada --cal-hora,
+   a mesma constante que posiciona os eventos). O encaixe de 30 min da criação/arraste é
+   calculado em JS e não depende de nenhuma linha visual. */
 .calDayColumn {
   position: relative;
-  border-right: 1px solid var(--hairline);
+  flex: 1 1 0;
+  min-width: 0;
+  border-left: 1px solid var(--cal-borda-fraca);
   overflow: hidden;
   cursor: pointer;
+  /* Sem isto o toque acende a coluna INTEIRA com o azul padrão do navegador — o
+     feedback do tap é a abertura do modal. */
+  -webkit-tap-highlight-color: transparent;
+  background-image: linear-gradient(to bottom, var(--cal-borda) 1px, transparent 1px);
+  background-size: 100% var(--cal-hora);
 }
-.calDayColumn:hover { background: color-mix(in oklch, var(--ink) 1.5%, transparent); }
-.calDayColumn.today { background: color-mix(in oklch, var(--safety) 4%, transparent); }
-.calDayColumn.today:hover { background: color-mix(in oklch, var(--safety) 6%, transparent); }
+.calDayColumn:hover { background-color: color-mix(in oklch, var(--ink) 1.2%, transparent); }
+.calDayColumn.today { background-color: color-mix(in oklch, var(--safety) 3%, transparent); }
+.calDayColumn.today:hover { background-color: color-mix(in oklch, var(--safety) 5%, transparent); }
 
-.calGridLine {
+/* Arraste em andamento: cursor de intervalo vertical em toda a grade (inclusive sobre
+   reservas, que continuam clicáveis fora do arraste). */
+.calSelecionando .calDayColumn,
+.calSelecionando .calEvent,
+.calSelecionando .calBlockLabel { cursor: ns-resize; }
+
+/* Retângulo fantasma da seleção por arraste (encaixado em 30 min). */
+.calSelecao {
   position: absolute;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: var(--hairline);
+  left: 1px;
+  right: 2px;
+  z-index: 3;
   pointer-events: none;
+  overflow: hidden;
+  padding: 3px 6px;
+  border: 1px solid var(--safety);
+  border-radius: var(--ind-radius-md);
+  background: color-mix(in oklch, var(--safety) 14%, transparent);
+  font-size: var(--text-micro);
+  font-weight: 500;
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
 }
 
 .calNowLine {
   position: absolute;
   left: 0;
   right: 0;
-  height: 2px;
+  height: 1px;
   background: var(--hazard);
-  z-index: 3;
+  z-index: 4;
   pointer-events: none;
 }
 .calNowDot {
   position: absolute;
-  left: -3px;
-  top: -3px;
+  left: -4px;
+  top: -3.5px;
   width: 8px;
   height: 8px;
   border-radius: 50%;
   background: var(--hazard);
 }
 
+/* Evento: fundo suave da cor do setor, filete forte à esquerda, texto em tinta neutra
+   (legível sobre qualquer cor de setor). A cor chega por --ev (inline).
+   Hierarquia: plataforma (12px/600, tinta) → horário (11.5px/500, tinta suave) →
+   setor (11.5px/400, tinta secundária). */
 .calEvent {
   position: absolute;
-  border-radius: var(--ind-radius-sm);
-  padding: 3px 7px;
-  font-size: var(--text-micro);
-  font-weight: 500;
-  cursor: pointer;
-  line-height: 1.3;
-  transition: filter 0.12s, box-shadow 0.12s, z-index 0s;
-  overflow: hidden;
-  text-align: left;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 3px 6px 3px 7px;
   border: none;
-  border-left: 3px solid transparent;
+  border-left: 3px solid var(--ev);
+  border-radius: var(--ind-radius-md);
+  background: color-mix(in oklch, var(--ev) 13%, var(--paper-elev));
+  /* Separa eventos lado a lado e sobrepostos sem precisar de sombra. */
+  box-shadow: 0 0 0 1px var(--paper-elev);
+  color: var(--ink);
+  font-size: var(--text-micro);
+  line-height: 15px;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
   z-index: 2;
+  transition: background 0.12s;
 }
 .calEvent:hover {
-  filter: brightness(0.96);
-  box-shadow: var(--shadow-md, 0 4px 12px rgba(0, 0, 0, 0.12));
+  background: color-mix(in oklch, var(--ev) 21%, var(--paper-elev));
   z-index: 4;
 }
-.calEventPlatform { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.calEventSector { opacity: 0.8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.calEventTime { opacity: 0.75; font-size: 0.66rem; }
-
-.empty { text-align: center; padding: 32px; color: var(--ink-muted); font-size: var(--text-secondary); }
-
-/* S9 — RF-CAL-01: bloqueio de agenda (manutenção/feriado) visualmente distinto de
-   reservas normais: hachurado diagonal em vez de bloco sólido colorido por setor. */
-.calCellBlocked {
-  background-image: repeating-linear-gradient(
-    135deg,
-    var(--hairline) 0px,
-    var(--hairline) 6px,
-    transparent 6px,
-    transparent 12px
-  );
+.calEvent:focus-visible { z-index: 5; }
+.calEventTitle,
+.calEventTime,
+.calEventMeta {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
+.calEventTitle { font-size: var(--text-eyebrow); font-weight: 600; line-height: 16px; letter-spacing: -0.005em; }
+.calEventTime,
+.calEventTimeInline { font-weight: 500; font-variant-numeric: tabular-nums; color: var(--ink-soft); }
+.calEventTimeInline { margin-left: 6px; font-size: var(--text-micro); }
+.calEventMeta { color: var(--ink-muted); }
+
+/* Solicitação pendente de aprovação: ainda não ocupa a plataforma, então não pode parecer
+   confirmada — fundo mais leve e contorno tracejado na cor do setor (vale para semana/dia e
+   mês). */
+.calEvent.eventoPendente,
+.mesEvento.eventoPendente {
+  background: color-mix(in oklch, var(--ev) 5%, var(--paper-elev));
+  border-left-style: dashed;
+  outline: 1px dashed color-mix(in oklch, var(--ev) 45%, transparent);
+  outline-offset: -1px;
+}
+
+/* Bloqueio de agenda (RF-CAL-01): cinza hachurado e texto discreto — nunca parece uma
+   reserva colorida por setor. */
 .calBlockLabel {
   position: absolute;
-  left: 2px;
+  left: 1px;
   right: 2px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 3px 6px;
+  border: 0;
+  border-left: 3px solid color-mix(in oklch, var(--ink) 22%, transparent);
+  border-radius: var(--ind-radius-md);
+  background-color: color-mix(in oklch, var(--ink) 3%, var(--paper-elev));
+  background-image: repeating-linear-gradient(
+    135deg,
+    color-mix(in oklch, var(--ink) 7%, transparent) 0 1px,
+    transparent 1px 7px
+  );
+  color: var(--ink-muted);
+  font-size: var(--text-micro);
+  line-height: 15px;
+  text-align: left;
+  cursor: not-allowed;
+  overflow: hidden;
+  z-index: 1;
+}
+.calBlockLabel:hover { color: var(--ink-soft); background-color: color-mix(in oklch, var(--ink) 6%, var(--paper-elev)); }
+.calBlockTitle,
+.calBlockMeta {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.calBlockTitle { font-size: var(--text-eyebrow); font-weight: 600; line-height: 16px; color: var(--ink-soft); }
+
+/* ---------- View Mês ---------- */
+.mesScroll {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.mesScroll:focus-visible { outline-offset: -2px; }
+.mesCabecalho {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  background: var(--paper-elev);
+  border-bottom: 1px solid var(--cal-borda);
+}
+.mesDow {
+  padding: 9px 10px 8px;
+  font-size: var(--text-eyebrow);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-muted);
+}
+.mesGrid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-rows: repeat(var(--mes-semanas, 5), minmax(104px, 1fr));
+}
+.mesCelula {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 4px 4px 6px;
+  border-left: 1px solid var(--cal-borda-fraca);
+  border-top: 1px solid var(--cal-borda-fraca);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.mesCelula:nth-child(7n + 1) { border-left: 0; }
+.mesCelula:nth-child(-n + 7) { border-top: 0; }
+.mesCelula:hover { background: color-mix(in oklch, var(--ink) 1.5%, transparent); }
+.mesCelulaFora { background: color-mix(in oklch, var(--ink) 1.5%, transparent); }
+.mesCelulaFora .mesDiaNum { color: var(--ink-muted); font-weight: 400; }
+.mesCelula.today { background: color-mix(in oklch, var(--safety) 3%, transparent); }
+
+.mesDiaNum {
+  align-self: flex-start;
+  min-width: 26px;
+  height: 24px;
+  padding: 0 5px;
+  margin-bottom: 2px;
+  border: 0;
+  border-radius: var(--ind-radius-md);
+  background: transparent;
+  font-size: var(--text-secondary);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.mesDiaNum:hover { background: color-mix(in oklch, var(--ink) 6%, transparent); }
+.mesCelula.today .mesDiaNum { color: var(--safety); font-weight: 600; }
+
+.mesEvento,
+.mesBloqueio {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  height: 21px;
+  padding: 0 6px 0 6px;
+  border: 0;
+  border-radius: var(--ind-radius-md);
+  font-size: var(--text-micro);
+  line-height: 21px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.mesEvento {
+  border-left: 3px solid var(--ev);
+  background: color-mix(in oklch, var(--ev) 12%, transparent);
+  color: var(--ink);
+}
+.mesEvento:hover { background: color-mix(in oklch, var(--ev) 21%, transparent); }
+.mesEventoHora { flex: none; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--ink-soft); }
+.mesEventoTitulo { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+.mesBloqueio {
+  border-left: 3px solid color-mix(in oklch, var(--ink) 22%, transparent);
+  background-color: color-mix(in oklch, var(--ink) 3%, transparent);
+  background-image: repeating-linear-gradient(
+    135deg,
+    color-mix(in oklch, var(--ink) 7%, transparent) 0 1px,
+    transparent 1px 7px
+  );
+  color: var(--ink-soft);
+  font-weight: 600;
+  cursor: not-allowed;
+}
+.mesMais {
+  align-self: flex-start;
+  padding: 0 6px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--ind-radius-md);
+  background: transparent;
+  font-size: var(--text-micro);
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+.mesMais:hover { background: color-mix(in oklch, var(--ink) 6%, transparent); color: var(--ink); }
+
+/* ---------- Painel direito (ferramentas do calendário) ----------
+   Parte da mesma superfície da grade: sem fundo próprio, sem raio, sem sombra — só o
+   filete à esquerda e divisores finos entre as seções. */
+.painel {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  border-left: 1px solid var(--cal-borda);
+}
+.painelSecao { padding: 16px; }
+.painelSecao + .painelSecao { border-top: 1px solid var(--cal-borda-fraca); }
+/* Ancorado, a plataforma já está na toolbar; no popover ela mora aqui. */
+.painelSecaoPlataforma { display: none; }
+
+.painelTituloLinha { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.painelTitulo {
+  display: block;
+  font-size: var(--text-micro);
+  font-weight: 600;
+  line-height: 1.3;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ink-muted);
+}
+.painelSecaoPlataforma .painelTitulo { margin-bottom: 8px; }
+.selectPainel { display: flex; width: 100%; }
+.selectPainel .select { max-width: none; }
+.linkBtn {
+  padding: 0;
+  border: 0;
+  background: transparent;
   font-size: var(--text-micro);
   font-weight: 500;
   color: var(--ink-muted);
-  padding: 2px 4px;
-  cursor: not-allowed;
-  line-height: 1.3;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  border-radius: var(--ind-radius-sm);
-  z-index: 1;
+  text-decoration: underline;
+  text-decoration-color: var(--hairline);
+  text-underline-offset: 3px;
+}
+.linkBtn:hover { color: var(--ink); text-decoration-color: currentColor; }
+
+/* Mini calendário: compacto e tabular. Mês forte, ano secundário; semana selecionada é
+   uma faixa contínua; hoje recebe o accent. */
+.mini { user-select: none; }
+.miniHeader { display: flex; align-items: center; justify-content: space-between; margin: -4px -4px 6px 0; }
+.miniTitulo { font-size: var(--text-secondary); font-weight: 600; color: var(--ink); letter-spacing: -0.005em; }
+.miniAno { font-weight: 400; color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+.miniNav { display: flex; }
+.miniNavBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: var(--ind-radius-md);
+  background: transparent;
+  color: var(--ink-muted);
+  transition: background 0.12s, color 0.12s;
+}
+.miniNavBtn:hover { background: color-mix(in oklch, var(--ink) 6%, transparent); color: var(--ink); }
+.miniGrid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); row-gap: 2px; }
+.miniDow {
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-micro);
+  font-weight: 600;
+  color: var(--ink-muted);
+}
+.miniDia {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+}
+.miniNum {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--ind-radius-md);
+  font-size: var(--text-micro);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  transition: background 0.12s;
+}
+.miniDia:hover .miniNum { background: color-mix(in oklch, var(--ink) 7%, transparent); }
+.miniDiaFora { color: color-mix(in oklch, var(--ink-muted) 65%, transparent); }
+.miniDiaSelecionado { background: color-mix(in oklch, var(--ink) 5%, transparent); }
+.miniDiaSelInicio { border-top-left-radius: var(--ind-radius-md); border-bottom-left-radius: var(--ind-radius-md); }
+.miniDiaSelFim { border-top-right-radius: var(--ind-radius-md); border-bottom-right-radius: var(--ind-radius-md); }
+.miniDiaHoje .miniNum,
+.miniDiaHoje:hover .miniNum { background: var(--safety); color: var(--ink); font-weight: 600; }
+
+/* Filtros por setor: o próprio checkbox carrega a cor do setor (é também a legenda). Linhas
+   inteiras clicáveis, como a lista de agendas de um calendário. */
+.filtroLista { list-style: none; display: flex; flex-direction: column; }
+.filtroItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 30px;
+  padding: 0 8px;
+  margin: 0 -8px;
+  border-radius: var(--ind-radius-md);
+  font-size: var(--text-meta);
+  font-weight: 500;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.filtroItem:hover { background: color-mix(in oklch, var(--ink) 4%, transparent); }
+.filtroCheck {
+  --cor: var(--ink-soft);
+  flex: none;
+  appearance: none;
+  -webkit-appearance: none;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  border: 1.5px solid var(--cor);
+  border-radius: 3px;
+  background: transparent center / 11px 11px no-repeat;
+  cursor: pointer;
+  transition: background-color 0.12s;
+}
+.filtroCheck:checked {
+  background-color: var(--cor);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2 5 8.5 9.5 3.5' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+.filtroCheck:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.filtroNome { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.filtroItem:has(.filtroCheck:not(:checked)) .filtroNome { color: var(--ink-muted); }
+.filtroHachura {
+  flex: none;
+  width: 20px;
+  height: 12px;
+  border-radius: 2px;
+  border-left: 2px solid color-mix(in oklch, var(--ink) 22%, transparent);
+  background-color: color-mix(in oklch, var(--ink) 3%, transparent);
   background-image: repeating-linear-gradient(
     135deg,
-    var(--hairline) 0px,
-    var(--hairline) 6px,
-    transparent 6px,
-    transparent 12px
+    color-mix(in oklch, var(--ink) 18%, transparent) 0 1px,
+    transparent 1px 4px
   );
-  background-color: color-mix(in oklch, var(--ink) 4%, transparent);
+}
+
+.painelInfo { display: flex; flex-direction: column; gap: 4px; }
+.painelValor {
+  font-size: var(--text-secondary);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.painelNota { margin-top: 4px; font-size: var(--text-micro); line-height: 1.5; color: var(--ink-muted); }
+.calDicaToque { display: none; }
+@media (hover: none), (pointer: coarse) {
+  .calDicaMouse { display: none; }
+  .calDicaToque { display: inline; }
 }
 
 /* ---------- Tooltip flutuante ---------- */
@@ -262,9 +907,9 @@
   background: var(--paper-elev);
   border: 1px solid var(--hairline);
   border-radius: var(--ind-radius-md);
-  box-shadow: var(--shadow-lg, 0 10px 30px rgba(0, 0, 0, 0.18));
-  padding: 10px 12px;
-  font-size: var(--text-secondary);
+  box-shadow: var(--shadow-md);
+  padding: 8px 10px;
+  font-size: var(--text-meta);
   color: var(--ink);
   max-width: 240px;
   pointer-events: none;
@@ -273,8 +918,42 @@
 .calTooltip strong { display: block; margin-bottom: 2px; color: var(--ink); }
 .tooltipMuted { color: var(--ink-muted); margin-top: 2px; }
 
+/* ---------- Detalhe compacto do bloqueio ---------- */
+.blockDialogOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 210;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: color-mix(in oklch, var(--ink) 42%, transparent);
+}
+.blockDialog {
+  width: min(420px, 100%);
+  background: var(--paper-elev);
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-md);
+  box-shadow: var(--shadow-lg, 0 10px 30px rgba(0, 0, 0, 0.18));
+}
+.blockDialogHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--hairline);
+}
+.blockDialogHeader h2 { margin-top: 3px; font-family: var(--font-display); font-size: 1.2rem; font-weight: 500; }
+.blockDialogEyebrow { color: var(--ink-muted); font-size: var(--text-eyebrow); text-transform: uppercase; letter-spacing: var(--tracking-eyebrow); }
+.blockDialogBody { padding: 16px 18px 18px; line-height: 1.45; }
+.blockDialogBody dl { display: grid; gap: 8px; margin-top: 14px; }
+.blockDialogBody dl > div { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 10px; }
+.blockDialogBody dt { color: var(--ink-muted); font-size: var(--text-meta); }
+.blockDialogBody dd { font-family: var(--font-mono); font-size: var(--text-meta); }
+
 /* ---------- Skeleton de carregamento ---------- */
 .calSkeleton {
+  flex: 1;
   display: flex;
   gap: 2px;
   padding: 16px;
@@ -297,6 +976,98 @@
   100% { background-position: 0 50%; }
 }
 
+/* ============================================================
+   Responsividade
+   ============================================================ */
+
+/* Desktop médio (<1280px): o painel sai do lado da grade e vira popover sob o botão
+   "Filtros" (aí sim com superfície e sombra próprias, porque flutua); a grade fica com a
+   largura toda. */
+@media (max-width: 1279px) {
+  .layout,
+  .layout:has(.painelOculto) { grid-template-columns: minmax(0, 1fr); }
+  .painel,
+  .painel.painelOculto {
+    display: none;
+    position: absolute;
+    top: 0;
+    right: 0;
+    z-index: 20;
+    width: min(300px, calc(100vw - 32px));
+    max-height: min(640px, 75vh);
+    background: var(--paper-elev);
+    border: 1px solid var(--hairline);
+    border-radius: var(--ind-radius-md);
+    box-shadow: var(--shadow-md);
+  }
+  .painel.painelPopoverAberto { display: block; }
+  .painelSecaoPlataforma { display: block; }
+  .plataformaToolbar { display: none; }
+}
+
+@media (min-width: 1280px) {
+  .painelOculto { display: none; }
+  /* Grade encostada no filete do painel: canto reto do lado direito. */
+  .layout:not(:has(.painelOculto)) .calGridWrap { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+}
+
+/* Tablet e abaixo: a grade cresce e quem rola é a página; "3 dias" volta ao seletor. */
+@media (max-width: 1100px) {
+  .layout { display: block; }
+  .calScroll { overflow-y: hidden; }
+  .calHeaderRow { position: static; }
+  .calInner { --cal-dia-min: 210px; }
+  .mesScroll { overflow-y: visible; }
+  .periodButtonTablet { display: inline-block; }
+}
+
+@media (max-width: 767px) {
+  .page { margin-inline: -8px; }
+  .header { align-items: center; gap: 10px; margin-bottom: 10px; padding-inline: 8px; }
+  .pageTitulo { font-size: clamp(1.5rem, 6.5vw, 1.8rem); }
+  .headerSubtitle { display: none; }
+  .btnPrimary { min-height: 40px; padding-inline: 14px; }
+
+  .toolbar { display: block; margin-bottom: 10px; padding-inline: 8px; }
+  .calNav { width: 100%; }
+  .calNav .btnIcon { width: 44px; flex-basis: 44px; height: 44px; min-height: 44px; }
+  .btnHoje { height: 44px; min-height: 44px; }
+  .datePickerLabel { flex: 1 1 auto; min-width: 0; min-height: 44px; padding-inline: 4px; }
+  .weekLabel { font-size: var(--text-body-lg); overflow: hidden; text-overflow: ellipsis; }
+
+  .toolbarSecondary { justify-content: space-between; margin-top: 8px; }
+  .periodSelector { flex: 1 1 auto; height: 40px; }
+  .periodButton { flex: 1 1 0; padding-inline: 6px; }
+  .calScrollNav .btnOutline { height: 40px; min-height: 40px; padding-inline: 10px; }
+  .calScrollNav .btnIcon { width: 40px; flex-basis: 40px; }
+  .painelToggle { height: 40px; min-height: 40px; }
+  .painel,
+  .painel.painelOculto { right: 8px; }
+
+  .calAviso { margin-inline: 8px; }
+  .error { margin-inline: 8px; }
+
+  .layout { border-radius: var(--ind-radius-sm); }
+  .calInner { --cal-eixo: 50px; --cal-dia-min: 272px; }
+  .calInner[data-periodo="1"] { min-width: 100%; }
+  .calHeaderCell { flex-direction: row; justify-content: center; gap: 6px; padding-block: 6px; }
+  .calHeaderDate { font-size: 1.2rem; height: 28px; }
+  .calEvent { padding: 3px 8px; }
+  .calBlockLabel { padding: 3px 7px; }
+
+  /* Mês no celular: células estreitas mostram só os filetes coloridos. */
+  .mesGrid { grid-template-rows: repeat(var(--mes-semanas, 5), minmax(72px, auto)); }
+  .mesDow { padding-inline: 2px; text-align: center; letter-spacing: 0; }
+  .mesCelula { padding: 3px 2px; align-items: stretch; }
+  .mesDiaNum { align-self: center; }
+  .mesEvento,
+  .mesBloqueio { height: 6px; padding: 0; font-size: 0; }
+  .mesEventoHora,
+  .mesEventoTitulo { display: none; }
+  .mesMais { align-self: center; padding: 0 2px; }
+}
+
 @media (max-width: 640px) {
-  .toolbar { flex-direction: column; align-items: flex-start; }
+  .blockDialogOverlay { align-items: end; padding: 10px; }
+  .blockDialog { width: 100%; }
 }

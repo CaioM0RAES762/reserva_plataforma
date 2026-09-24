@@ -27,11 +27,13 @@
   letter-spacing: -0.015em;
   color: var(--ink);
 }
+/* Subtítulo é contexto, não manchete: um degrau abaixo do corpo de destaque e em
+   --ink-muted, para o título respirar sozinho. */
 .pageSubtitulo {
-  margin-top: 8px;
-  font-size: var(--text-body-lg);
+  margin-top: 6px;
+  font-size: var(--text-secondary);
   line-height: 1.5;
-  color: var(--ink-soft);
+  color: var(--ink-muted);
 }
 
 .btnNovaReserva {
@@ -57,14 +59,7 @@
 
 /* ---------- Barra de filtros ---------- */
 
-.barraFiltros {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  flex-wrap: wrap;
-  margin-bottom: 14px;
-}
+
 
 .campoBusca {
   position: relative;
@@ -95,11 +90,15 @@
 .campoBusca input:focus { outline: none; border-color: var(--ink-muted); }
 .campoBusca input:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 
+/* Faixa de status: a única fileira de chips que restou na tela (a de período virou um
+   seletor dentro da barra de busca). Fecha o bloco de filtros — daí a folga antes da
+   lista. */
 .chips {
   display: flex;
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
+  margin-bottom: 22px;
 }
 
 /* Chips substituem a combobox de status: um clique em vez de abrir a lista, e o filtro
@@ -129,41 +128,28 @@
 }
 .chipAtivo:hover { background: var(--ink-soft); color: var(--paper); }
 
-/* ---------- Filtro de período ----------
-   Fica acima da barra de busca/status porque, diferente deles, o período nunca fica
-   "desligado" — a tela sempre opera sobre um intervalo real (padrão: esta semana). */
-.periodoBarra {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-  margin-bottom: 14px;
+.seletorPeriodo {
+  min-height: var(--control-h);
+  padding: 0 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: var(--paper-elev);
+  font-family: inherit;
+  font-size: var(--text-secondary);
+  font-weight: 500;
+  color: var(--ink-soft);
+  cursor: pointer;
 }
-.periodoCustom { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.seletorPeriodo:focus { outline: none; border-color: var(--ink-muted); }
+
+/* Intervalo vigente em mono, discreto: confirma o que o seletor escolheu sem virar um
+   segundo controle. */
 .periodoResumo {
   font-family: var(--font-mono);
   font-size: var(--text-meta);
   color: var(--ink-muted);
   white-space: nowrap;
 }
-.campoData { display: flex; flex-direction: column; gap: 7px; }
-.campoData label {
-  font-size: var(--text-eyebrow);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-eyebrow);
-  color: var(--ink-muted);
-}
-.campoData input {
-  min-height: var(--control-h-compact);
-  padding: 0 12px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--ind-radius-sm);
-  background: var(--paper);
-  font-size: var(--text-secondary);
-  color: var(--ink);
-}
-
 .btnLimpar {
   min-height: var(--control-h-compact);
   padding: 0 16px;
@@ -178,12 +164,6 @@
   transition: border-color 0.15s, color 0.15s;
 }
 .btnLimpar:hover { border-color: var(--hazard); color: var(--hazard); }
-
-.resultadoContagem {
-  font-size: var(--text-meta);
-  color: var(--ink-muted);
-  margin-bottom: 18px;
-}
 
 /* ---------- Agrupamento por dia ---------- */
 
@@ -292,19 +272,37 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
   font-size: var(--text-body);
   font-weight: 600;
   color: var(--ink);
   line-height: 1.25;
 }
+/* Nome longo trunca em vez de esticar a coluna e espremer Recurso/Horário ao lado — o
+   nome completo continua no aria-label da linha. */
+.responsavelNomeTexto {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .responsavelMeta {
   font-size: var(--text-meta);
   color: var(--ink-muted);
   line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.seloUrgente,
-.seloAlta {
+/* "Sua reserva" é texto na linha secundária, não uma pílula: quem procura as próprias
+   reservas já as localiza pelo friso ember da linha inteira — isto só confirma. */
+.marcaMinha {
+  color: color-mix(in oklch, var(--safety) 72%, var(--ink));
+  font-weight: 600;
+}
+
+.seloUrgente {
   display: inline-flex;
   align-items: center;
   gap: 3px;
@@ -320,25 +318,6 @@
   color: var(--hazard);
   background: color-mix(in oklch, var(--hazard) 11%, transparent);
   border: 1px solid color-mix(in oklch, var(--hazard) 28%, transparent);
-}
-.seloAlta {
-  color: color-mix(in oklch, var(--caution) 65%, var(--ink));
-  background: color-mix(in oklch, var(--caution) 18%, transparent);
-  border: 1px solid color-mix(in oklch, var(--caution) 35%, transparent);
-}
-.seloMinha {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: var(--text-micro);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-label);
-  white-space: nowrap;
-  color: color-mix(in oklch, var(--safety) 70%, var(--ink));
-  background: color-mix(in oklch, var(--safety) 16%, transparent);
-  border: 1px solid color-mix(in oklch, var(--safety) 38%, transparent);
 }
 
 /* ---------- Coluna Recurso ---------- */
@@ -367,18 +346,18 @@
 
 /* ---------- Coluna Horário ---------- */
 
+/* Sem ícone de relógio: numa coluna chamada "Horário", com valor em mono e tabular, o
+   relógio não acrescentava informação — só mais um glifo por linha. O dado subiu para
+   --ink em compensação, porque é um dos quatro que se lê ao varrer a lista. */
 .horario {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+  display: inline-block;
   font-family: var(--font-mono);
   font-size: var(--text-secondary);
   font-weight: 500;
-  color: var(--ink-soft);
+  color: var(--ink);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
-.horario svg { color: var(--ink-muted); flex-shrink: 0; }
 
 /* ---------- Estados vazio / carregando ---------- */
 
@@ -399,12 +378,6 @@
   font-weight: 500;
   color: var(--ink);
 }
-.vazioTexto {
-  font-size: var(--text-secondary);
-  color: var(--ink-muted);
-  max-width: 42ch;
-  line-height: 1.5;
-}
 .vazioAcoes { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
 
 .linhaEsqueleto {
@@ -424,15 +397,6 @@
 }
 
 @media (max-width: 640px) {
-  .barraFiltros {
-    flex-direction: column;
-    align-items: stretch;
-    /* `flex-wrap: wrap` (regra base) + `flex-direction: column` faz os itens quebrarem em
-       COLUNAS novas, e a largura de cada coluna passa a ser a do conteúdo mais largo —
-       os 7 chips somavam 660px e arrastavam a página junto (324px de estouro a 360px).
-       Empilhado de verdade, sem wrap, cada item herda a largura do container. */
-    flex-wrap: nowrap;
-  }
   .campoBusca {
     max-width: none;
     /* `min-width` de um item flex é `auto` por padrão: ele se recusa a encolher abaixo da
@@ -453,6 +417,10 @@
   }
   .chips::-webkit-scrollbar { display: none; }
   .chip { flex-shrink: 0; }
+  .seletorPeriodo { flex: 1 1 100%; }
+  /* O resumo do intervalo é redundante quando o próprio seletor já cabe inteiro na
+     largura da tela — economiza uma linha no celular. */
+  .periodoResumo { display: none; }
   .btnNovaReserva { width: 100%; justify-content: center; }
   .pageHeader { gap: 14px; }
   .tabela { min-width: 560px; }
@@ -489,6 +457,23 @@
   border-radius: var(--ind-radius-sm);
   font-size: var(--text-secondary);
   margin-bottom: 12px;
+}
+
+/* Retorno da criação que pede explicação (solicitação aguardando aprovação): informativo,
+   filete no accent, sem competir com o erro. */
+.avisoCriacao {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px 8px 12px;
+  margin-bottom: 12px;
+  border: 1px solid var(--hairline);
+  border-left: 3px solid var(--safety);
+  border-radius: var(--ind-radius-sm);
+  background: var(--paper-elev);
+  font-size: var(--text-secondary);
+  color: var(--ink);
 }
 
 .tableWrap {
@@ -559,6 +544,13 @@
   .skeletonBar { animation: none; }
 }
 
+/* ---------- Células de tabela (base compartilhada) ----------
+   Geometria e hierarquia em components/Tabela.module.css — ver o comentário de lá. */
+.tableSub { composes: sub from "../../../components/Tabela.module.css"; }
+.tableJanela { composes: janela from "../../../components/Tabela.module.css"; }
+.tableVazio { composes: vazio from "../../../components/Tabela.module.css"; }
+.tableSinais { composes: sinais from "../../../components/Tabela.module.css"; }
+
 /* Selos da Fila de Aprovações (SLA estourado / aguarda 2ª aprovação). */
 .selo {
   display: inline-block;
@@ -569,7 +561,6 @@
   letter-spacing: 0.01em;
   white-space: nowrap;
 }
-.selo + .selo { margin-left: 6px; }
 .seloSla {
   background: var(--safety-soft);
   color: var(--hazard);
@@ -703,6 +694,127 @@
 }
 
 
+/* ---------- Seções do formulário de reserva ----------
+   <fieldset> sem borda nem fundo: o agrupamento é feito por espaço e por um rótulo
+   discreto, não por caixas dentro de caixas. Cada seção responde a uma pergunta
+   ("quando?", "qual recurso?") em vez de o formulário ser uma lista contínua de campos. */
+.secao {
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+.secao + .secao {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--hairline);
+}
+
+.secaoTitulo {
+  padding: 0;
+  margin-bottom: 12px;
+  font-size: var(--text-eyebrow);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow);
+  color: var(--ink-muted);
+}
+
+/* Dado da sessão, não campo: mesma posição de um .formGroup no grid, mas sem moldura de
+   input — nada aqui é editável, e um <input disabled> só simulava que poderia ser. */
+.leitura {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 4px;
+  min-width: 0;
+  padding-bottom: 10px;
+}
+.leituraRotulo {
+  font-size: var(--text-eyebrow);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow);
+  color: var(--ink-muted);
+}
+.leituraValor {
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Resumo do equipamento escolhido — uma linha, valores em destaque e rótulos em minúsculo.
+   Substitui os dois cartões "Carga máxima"/"Pessoas" que ocupavam meia linha do grid. */
+.recursoResumo {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-sm);
+  background: color-mix(in oklch, var(--ink) 2.5%, transparent);
+  font-size: var(--text-meta);
+  color: var(--ink-muted);
+}
+.recursoResumo strong {
+  font-family: var(--font-mono);
+  font-size: var(--text-secondary);
+  font-weight: 600;
+  color: var(--ink);
+}
+/* Exigência de checklist é condição de segurança (NR-18/NR-35): fica em ember, separada
+   dos números de capacidade, para não se ler como mais um dado técnico. */
+.recursoResumoAviso {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklch, var(--safety) 38%, transparent);
+  background: color-mix(in oklch, var(--safety) 12%, transparent);
+  color: color-mix(in oklch, var(--safety) 72%, var(--ink));
+  font-size: var(--text-micro);
+  font-weight: 600;
+}
+
+/* Continuação de uma caixa marcada — recuada sob ela, com o controle na largura do
+   conteúdo. Antes eram três estilos inline soltos no TSX. */
+.opcaoAninhada {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 2px 0 6px 25px;
+}
+.opcaoAninhada label {
+  font-size: var(--text-secondary);
+  color: var(--ink-soft);
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 500;
+}
+.opcaoAninhada input {
+  width: 72px;
+  min-height: var(--control-h-compact);
+  padding: 0 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-sm);
+  background: var(--paper-elev);
+  font-size: var(--text-secondary);
+  color: var(--ink);
+}
+.opcaoAninhadaNota { font-size: var(--text-meta); color: var(--ink-muted); }
+
+/* Data / Início / Fim: três colunas, porque são uma frase só ("quando"), não três
+   perguntas independentes. */
+.formGridTres {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px 20px;
+}
+
 .formGrid {
   display: grid;
   /* minmax(0, 1fr), não só 1fr: uma coluna de grid tem min-width:auto por padrão, ou
@@ -720,7 +832,6 @@
   gap: 6px;
 }
 .formGroupFull { grid-column: 1 / -1; }
-.formGroupHalf { grid-column: span 1; }
 
 .formGroup label {
   font-size: var(--text-eyebrow);
@@ -767,24 +878,8 @@
   line-height: 1.4;
 }
 
-.capacidadeInfo {
-  display: flex;
-  align-items: center;
-  min-height: var(--control-h);
-  padding: 0 2px;
-  font-size: var(--text-body);
-  color: var(--ink-soft);
-}
 
-/* Bloco de opções (Automação) no formulário de reserva — mesma tipografia de rótulo dos
-   demais campos, com as caixas alinhadas em coluna. */
-.grupoRotulo {
-  font-size: var(--text-micro);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-label);
-  color: var(--ink-muted);
-}
+
 
 .opcaoCheck {
   display: flex;
@@ -827,4 +922,7 @@
 
 @media (max-width: 900px) {
   .formGrid { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  .formGridTres { grid-template-columns: 1fr; }
 }

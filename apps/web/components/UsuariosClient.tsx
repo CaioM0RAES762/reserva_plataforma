@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { formatarTelefone } from "@plataformares/shared";
 import styles from "./Admin.module.css";
 import { apiFetch } from "../lib/api";
 import { UsuarioModal, type SetorOpcao, type UsuarioEditavel, type UsuarioFormValues } from "./UsuarioModal";
@@ -11,6 +12,7 @@ interface Usuario {
   id: string;
   nome: string;
   email: string;
+  telefone: string | null;
   perfil: Perfil;
   setorId: string | null;
   setorNome: string | null;
@@ -73,7 +75,12 @@ export function UsuariosClient() {
     if (editando) {
       await apiFetch(`/api/v1/usuarios/${editando.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ nome: valores.nome, email: valores.email, setorId: valores.setorId }),
+        body: JSON.stringify({
+          nome: valores.nome,
+          email: valores.email,
+          telefone: valores.telefone,
+          setorId: valores.setorId,
+        }),
       });
       if (valores.perfil !== editando.perfil) {
         await apiFetch(`/api/v1/usuarios/${editando.id}/perfil`, {
@@ -82,16 +89,12 @@ export function UsuariosClient() {
         });
       }
     } else {
-      // A conta é criada mesmo que o e-mail de ativação falhe (ver comentário em
-      // usuarios.ts) — `codigoEnviado: false` é o sinal real de que o código não saiu.
-      // Sem checar isto, o Admin via "sucesso" e achava que o convite tinha sido enviado.
-      const criado = await apiFetch<{ codigoEnviado: boolean; avisoEnvio?: string }>("/api/v1/usuarios", {
+      // Conta já nasce pronta para logar (senha inicial + senha_provisoria=1) — sem e-mail
+      // de ativação, sem "codigoEnviado" para checar (ver comentário em usuarios.ts).
+      await apiFetch("/api/v1/usuarios", {
         method: "POST",
         body: JSON.stringify(valores),
       });
-      if (!criado.codigoEnviado && criado.avisoEnvio) {
-        setErro(criado.avisoEnvio);
-      }
     }
     setModalAberto(false);
     setEditando(null);
@@ -133,7 +136,7 @@ export function UsuariosClient() {
       <div className={styles.header}>
         <div>
           <h1>Usuários</h1>
-          <p>Gerencie contas, perfis e vínculos de setor (RF-USR-01..05)</p>
+          <p>Contas, perfis e vínculos de setor</p>
         </div>
         <button
           className={styles.btnPrimary}
@@ -188,6 +191,7 @@ export function UsuariosClient() {
             <tr>
               <th>Nome</th>
               <th>E-mail</th>
+              <th>Telefone</th>
               <th>Perfil</th>
               <th>Setor</th>
               <th>Status</th>
@@ -197,13 +201,13 @@ export function UsuariosClient() {
           <tbody>
             {carregando ? (
               <tr>
-                <td colSpan={6} className={styles.empty}>
+                <td colSpan={7} className={styles.empty}>
                   Carregando...
                 </td>
               </tr>
             ) : usuarios.length === 0 ? (
               <tr>
-                <td colSpan={6} className={styles.empty}>
+                <td colSpan={7} className={styles.empty}>
                   Nenhum usuário encontrado.
                 </td>
               </tr>
@@ -214,6 +218,7 @@ export function UsuariosClient() {
                     <strong>{u.nome}</strong>
                   </td>
                   <td>{u.email}</td>
+                  <td>{u.telefone ? formatarTelefone(u.telefone) : "—"}</td>
                   <td>{PERFIL_LABEL[u.perfil]}</td>
                   <td>{u.setorNome ?? "—"}</td>
                   <td>
@@ -231,7 +236,14 @@ export function UsuariosClient() {
                       <button
                         className={styles.btnIcon}
                         onClick={() => {
-                          setEditando({ id: u.id, nome: u.nome, email: u.email, perfil: u.perfil, setorId: u.setorId });
+                          setEditando({
+                            id: u.id,
+                            nome: u.nome,
+                            email: u.email,
+                            telefone: u.telefone,
+                            perfil: u.perfil,
+                            setorId: u.setorId,
+                          });
                           setModalAberto(true);
                         }}
                       >
@@ -240,7 +252,7 @@ export function UsuariosClient() {
                       <button className={styles.btnIcon} onClick={() => handleReenviarCodigo(u)}>
                         Reenviar Código
                       </button>
-                      <button className={styles.btnIconDanger} onClick={() => handleToggleStatus(u)}>
+                      <button type="button" className={styles.btnIcon} onClick={() => handleToggleStatus(u)}>
                         {u.ativo ? "Desativar" : "Ativar"}
                       </button>
                     </div>

@@ -23,13 +23,13 @@ function useCampoIds(idFornecido: string | undefined) {
 interface TextFieldProps extends CampoBaseProps {
   value: string;
   onChange: (valor: string) => void;
-  type?: "text" | "email";
+  type?: "text" | "email" | "tel";
   placeholder?: string;
   autoComplete?: string;
   autoFocus?: boolean;
   required?: boolean;
   disabled?: boolean;
-  inputMode?: "text" | "email";
+  inputMode?: "text" | "email" | "tel";
 }
 
 export function TextField({

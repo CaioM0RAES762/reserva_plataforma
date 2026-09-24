@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { PanelLeftClose, PanelLeftOpen, Radio } from "lucide-react";
+import { Menu, PanelLeftClose, PanelLeftOpen, Radio } from "lucide-react";
 import styles from "./Topbar.module.css";
 import { NotificationBell } from "./NotificationBell";
-import { useSidebarState } from "./SidebarState";
+import { SIDEBAR_DRAWER_ID, useSidebarState } from "./SidebarState";
 
 export interface TopbarProps {
   titulo: string;
@@ -18,7 +18,7 @@ function formatarRelogio(data: Date): string {
 
 export function Topbar({ titulo }: TopbarProps) {
   const [agora, setAgora] = useState<Date | null>(null);
-  const { collapsed, toggle } = useSidebarState();
+  const { collapsed, toggle, mobileAberto, alternarMobile, gatilhoMobileRef } = useSidebarState();
 
   useEffect(() => {
     // Renderizado só no cliente: o relógio do servidor difere do relógio do usuário e
@@ -30,13 +30,22 @@ export function Topbar({ titulo }: TopbarProps) {
 
   return (
     <header className={styles.topbar}>
-      {/* S14 (RNF-04): abre a sidebar off-canvas abaixo de 900px — alterna o checkbox
-          #sidebar-toggle (renderizado em app/(app)/layout.tsx) via label[for], sem JS. */}
-      <label htmlFor="sidebar-toggle" className={styles.hamburger} aria-label="Abrir menu">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M3 6h18M3 12h18M3 18h18" />
-        </svg>
-      </label>
+      {/* S14 (RNF-04): abre o drawer da sidebar (<=900px; escondido acima disso via CSS).
+          O ref permite ao Sidebar devolver o foco a este botão quando o drawer fecha. Com o
+          drawer aberto o Topbar fica inerte (AppShell), então o rótulo "Abrir menu" nunca
+          precisa virar "Fechar" — o botão de fechar vive dentro do próprio drawer. */}
+      <button
+        type="button"
+        ref={gatilhoMobileRef}
+        className={styles.hamburger}
+        onClick={alternarMobile}
+        aria-label="Abrir menu"
+        aria-expanded={mobileAberto}
+        aria-controls={SIDEBAR_DRAWER_ID}
+        data-testid="sidebar-hamburger"
+      >
+        <Menu size={20} strokeWidth={1.75} aria-hidden="true" />
+      </button>
 
       {/* Recolher/expandir a sidebar no desktop — puramente visual (CSS via
           SidebarState), sem relação com o off-canvas mobile do botão ☰ acima. Fica na
@@ -62,7 +71,7 @@ export function Topbar({ titulo }: TopbarProps) {
           <span className={styles.breadcrumbSep} aria-hidden="true">
             ›
           </span>
-          <span className={styles.breadcrumbCurrent} aria-current="page">
+          <span className={styles.breadcrumbCurrent} aria-current="page" title={titulo}>
             {titulo}
           </span>
         </nav>

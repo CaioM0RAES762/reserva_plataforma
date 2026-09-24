@@ -1,0 +1,57 @@
+.wrapper {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--paper);
+}
+
+.card {
+  width: 100%;
+  max-width: 380px;
+  padding: 32px 28px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-md);
+  background: var(--paper-elev);
+}
+
+.icone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin-bottom: 16px;
+  border-radius: var(--ind-radius-sm);
+  background: color-mix(in oklch, var(--safety) 14%, transparent);
+  color: var(--safety);
+}
+
+.titulo {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: var(--text-section-title);
+  color: var(--ink);
+}
+
+.subtitulo {
+  margin-top: 6px;
+  margin-bottom: 22px;
+  font-size: var(--text-secondary);
+  line-height: 1.5;
+  color: var(--ink-muted);
+}
+
+.sair {
+  display: block;
+  margin: 16px auto 0;
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: var(--ink-muted);
+  font-size: var(--text-meta);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.sair:hover { color: var(--ink); }

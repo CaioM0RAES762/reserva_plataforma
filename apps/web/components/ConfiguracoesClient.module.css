@@ -1,0 +1,138 @@
+/* Configurações — uma superfície só, dividida em seções por filetes discretos (não um
+   cartão por parâmetro). Cabeçalho e botão vêm de Admin.module.css, como nas demais telas
+   administrativas. */
+
+.acoes {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Feedback de salvamento: discreto, some sozinho (ver FEEDBACK_SALVO_MS). */
+.salvo {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--text-meta);
+  font-weight: 500;
+  color: var(--signal);
+  white-space: nowrap;
+}
+
+.superficie {
+  background: var(--paper-elev);
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-md);
+}
+
+.secao {
+  padding: 20px 24px 22px;
+}
+.secao + .secao {
+  border-top: 1px solid var(--hairline);
+}
+
+.secaoTitulo {
+  margin: 0 0 14px;
+  font-size: var(--text-eyebrow);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow);
+  color: var(--ink-muted);
+}
+.secaoTexto {
+  margin: -6px 0 12px;
+  font-size: var(--text-secondary);
+  color: var(--ink);
+}
+
+/* Aprovação: duas opções lado a lado, a escolhida com borda em tinta. */
+.opcoes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px;
+  max-width: 720px;
+}
+.opcao {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-md);
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+.opcao:hover { border-color: var(--ink-muted); }
+.opcaoAtiva,
+.opcaoAtiva:hover {
+  border-color: var(--ink);
+  background: color-mix(in oklch, var(--ink) 3%, var(--paper-elev));
+}
+.opcao input { margin-top: 3px; accent-color: var(--ink); }
+.opcaoTexto { display: flex; flex-direction: column; gap: 2px; }
+.opcaoTexto strong { font-size: var(--text-secondary); font-weight: 600; color: var(--ink); }
+.opcaoTexto span { font-size: var(--text-meta); color: var(--ink-muted); line-height: 1.4; }
+
+.nota {
+  margin: 12px 0 0;
+  font-size: var(--text-meta);
+  color: var(--ink-muted);
+}
+
+/* Campos numéricos e de horário: grade de duas colunas, rótulo + uma linha de ajuda. */
+.grade {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 260px));
+  gap: 18px 40px;
+}
+.campo { display: flex; flex-direction: column; min-width: 0; }
+.rotulo {
+  font-size: var(--text-secondary);
+  font-weight: 600;
+  color: var(--ink);
+}
+.ajuda {
+  margin-top: 2px;
+  font-size: var(--text-meta);
+  color: var(--ink-muted);
+}
+.controle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.input {
+  width: 120px;
+  height: var(--control-h-compact);
+  padding: 0 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-sm);
+  background: var(--paper-elev);
+  color: var(--ink);
+  font-size: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.input:hover { border-color: var(--ink-muted); }
+.inputInvalido,
+.inputInvalido:hover { border-color: var(--hazard); }
+.sufixo {
+  font-size: var(--text-meta);
+  color: var(--ink-muted);
+}
+
+.rodape {
+  margin: 0;
+  padding: 12px 24px;
+  border-top: 1px solid var(--hairline);
+  font-size: var(--text-meta);
+  color: var(--ink-muted);
+}
+
+@media (max-width: 640px) {
+  .secao { padding: 16px; }
+  .rodape { padding: 12px 16px; }
+  .grade { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .acoes { flex-direction: row-reverse; }
+}

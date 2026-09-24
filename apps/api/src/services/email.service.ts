@@ -510,3 +510,64 @@ export function templateReservaRejeitada(dados: DadosRejeicaoReserva): {
     `,
   };
 }
+
+// ---------------------------------------------------------------------------------------
+// Notificações de reserva por e-mail (canal adicional ao sino in-app)
+// ---------------------------------------------------------------------------------------
+
+function escaparHtml(texto: string): string {
+  return texto
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+// URL pública do frontend para o link do e-mail: WEB_APP_URL, ou a primeira origem de
+// WEB_ALLOWED_ORIGINS. Sem nenhuma das duas, o e-mail sai sem link (nunca com um inventado).
+function urlBaseWeb(): string | null {
+  const explicita = process.env.WEB_APP_URL?.trim();
+  if (explicita) return explicita.replace(/\/$/, "");
+  const primeiraOrigem = process.env.WEB_ALLOWED_ORIGINS?.split(",")[0]?.trim();
+  return primeiraOrigem ? primeiraOrigem.replace(/\/$/, "") : null;
+}
+
+export interface DadosNotificacaoReserva {
+  titulo: string;
+  mensagem: string;
+  /** Caminho relativo do app (ex.: "/reservas?status=pendente"), o mesmo da notificação in-app. */
+  link: string | null;
+}
+
+/**
+ * E-mail gerado A PARTIR da notificação interna (título, mensagem e link são os mesmos do
+ * sino): as regras de "quem recebe o quê" vivem num lugar só — nas rotas que registram a
+ * notificação — e o e-mail é apenas mais um canal de entrega dela. Todo texto variável é
+ * escapado (a mensagem pode conter o motivo de rejeição digitado por alguém).
+ */
+export function templateNotificacaoReserva(dados: DadosNotificacaoReserva): {
+  assunto: string;
+  corpoHtml: string;
+  corpoTexto: string;
+} {
+  const base = urlBaseWeb();
+  const url = base && dados.link ? `${base}${dados.link.startsWith("/") ? "" : "/"}${dados.link}` : null;
+  const titulo = escaparHtml(dados.titulo);
+  const mensagem = escaparHtml(dados.mensagem);
+  return {
+    assunto: `PlataformaRes — ${dados.titulo}`,
+    corpoHtml: `
+      <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; color: #221f1b;">
+        <h2 style="font-size: 18px; margin: 0 0 12px;">${titulo}</h2>
+        <p style="font-size: 14px; line-height: 1.5; margin: 0 0 16px;">${mensagem}</p>
+        ${
+          url
+            ? `<p style="margin: 0 0 16px;"><a href="${escaparHtml(url)}" style="color: #221f1b; font-weight: bold;">Abrir no PlataformaRes</a></p>`
+            : ""
+        }
+        <p style="color: #6b6258; font-size: 12px; margin: 0;">Mensagem automática do PlataformaRes. Não responda este e-mail.</p>
+      </div>
+    `,
+    corpoTexto: `${dados.titulo}\n\n${dados.mensagem}${url ? `\n\nAbrir no PlataformaRes: ${url}` : ""}\n\nMensagem automática do PlataformaRes.`,
+  };
+}

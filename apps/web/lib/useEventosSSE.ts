@@ -4,7 +4,11 @@ import { useEffect, useRef, useState } from "react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3335";
 
-// SDD §3.4: mesmos seis tipos de evento emitidos pelo backend em GET /api/v1/eventos.
+// SDD §3.4: mesmos tipos de evento emitidos pelo backend em GET /api/v1/eventos.
+// `configuracao.atualizada` sinaliza que o Admin salvou as regras de agenda (expediente,
+// duração máxima, antecedência): Calendário e Nova Reserva revalidam sem precisar de F5.
+// Um tipo que não está nesta lista NUNCA chega aos ouvintes (o EventSource só escuta os
+// nomes registrados abaixo), por isso todo evento novo do backend precisa entrar aqui.
 const TIPOS_EVENTO = [
   "reserva.criada",
   "reserva.aprovada",
@@ -12,6 +16,7 @@ const TIPOS_EVENTO = [
   "reserva.status_alterado",
   "plataforma.status_alterado",
   "notificacao.nova",
+  "configuracao.atualizada",
 ] as const;
 
 const BACKOFF_INICIAL_MS = 1000;

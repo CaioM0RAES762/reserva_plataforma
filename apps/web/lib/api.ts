@@ -3,6 +3,10 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3335";
 export interface ApiError {
   erro: string;
   detalhes?: unknown;
+  // Campos extras opcionais de respostas de erro específicas (ex.: o 409 de POST /reservas
+  // traz `tipo` e `codigo`) — o corpo completo fica em `ApiRequestError.corpo` para a UI
+  // decidir a mensagem.
+  codigo?: string;
 }
 
 // Erro tipado: preserva o status HTTP e os `detalhes` do Zod para a UI decidir o
@@ -11,12 +15,23 @@ export interface ApiError {
 export class ApiRequestError extends Error {
   readonly status: number;
   readonly detalhes?: unknown;
+  readonly codigo?: string;
+  /** Corpo JSON completo da resposta de erro (campos além de `erro`/`detalhes`). */
+  readonly corpo?: Record<string, unknown>;
 
-  constructor(mensagem: string, status: number, detalhes?: unknown) {
+  constructor(
+    mensagem: string,
+    status: number,
+    detalhes?: unknown,
+    codigo?: string,
+    corpo?: Record<string, unknown>
+  ) {
     super(mensagem);
     this.name = "ApiRequestError";
     this.status = status;
     this.detalhes = detalhes;
+    this.codigo = codigo;
+    this.corpo = corpo;
   }
 
   get ehConflito(): boolean {
@@ -61,8 +76,14 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
   const body = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    const { erro, detalhes } = body as ApiError;
-    throw new ApiRequestError(erro ?? "Erro inesperado.", response.status, detalhes);
+    const { erro, detalhes, codigo } = body as ApiError;
+    throw new ApiRequestError(
+      erro ?? "Erro inesperado.",
+      response.status,
+      detalhes,
+      codigo,
+      body as Record<string, unknown>
+    );
   }
 
   return body as T;

@@ -1,7 +1,14 @@
 import bcrypt from "bcrypt";
 import { randomInt, timingSafeEqual } from "node:crypto";
+import { SENHA_INICIAL_PADRAO } from "@plataformares/shared";
 
 const SALT_ROUNDS = 12;
+
+// Reexportado por conveniência — quem já importa hashPassword/verifyPassword deste arquivo
+// (usuarios.ts) não precisa de um segundo import só para a senha inicial. O literal em si
+// mora em shared/enums.ts (único ponto de verdade, backend e frontend importam de lá).
+// senha_provisoria=1 (ver 0021_perfil_e_nao_conformidade.sql) força a troca no primeiro login.
+export { SENHA_INICIAL_PADRAO };
 
 export async function hashPassword(senha: string): Promise<string> {
   return bcrypt.hash(senha, SALT_ROUNDS);

@@ -16,7 +16,6 @@ export default async function DashboardPage() {
       usuarioId={usuario.id}
       usuarioNome={usuario.nome}
       perfil={usuario.perfil}
-      setorNome={usuario.setorNome}
     />
   );
 }

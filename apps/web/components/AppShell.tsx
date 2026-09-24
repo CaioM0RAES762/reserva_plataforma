@@ -11,17 +11,14 @@ import { useSidebarState } from "./SidebarState";
 // "PlataformaRes" no lugar do próprio nome, deixando o usuário sem referência de onde
 // estava.
 //
-// Ordenado do mais específico para o mais genérico, porque a resolução é por prefixo:
-// /reservas/aprovacoes precisa vencer /reservas.
+// Ordenado do mais específico para o mais genérico, porque a resolução é por prefixo.
 const TITULOS: Array<[string, string]> = [
-  ["/reservas/aprovacoes", "Fila de Aprovações"],
   ["/plataformas/bloqueios", "Bloqueios de Agenda"],
   ["/administracao/usuarios", "Usuários"],
   ["/administracao/setores", "Setores"],
   ["/administracao/configuracoes", "Configurações"],
   ["/administracao/auditoria", "Auditoria"],
   ["/plataformas", "Frota"],
-  ["/checklists", "Checklists NR-18/35"],
   ["/reservas", "Reservas"],
   ["/calendario", "Calendário"],
   ["/historico", "Histórico"],
@@ -31,7 +28,8 @@ const TITULOS: Array<[string, string]> = [
 
 const DASHBOARD_TITULO: Record<string, string> = {
   admin: "Visão do Administrador",
-  gestor_setor: "Visão do Setor",
+  // A Central do Gestor é global (agenda de todos os setores, aprovação de qualquer setor).
+  gestor_setor: "Visão do Gestor",
   colaborador: "Minhas Operações",
 };
 
@@ -50,10 +48,17 @@ function resolverTitulo(pathname: string, perfil?: AppShellProps["perfil"]): str
 
 export function AppShell({ children, perfil }: AppShellProps) {
   const pathname = usePathname();
-  const { collapsed } = useSidebarState();
+  const { collapsed, mobileAberto } = useSidebarState();
 
   return (
-    <div className={`${styles.wrapper} ${collapsed ? styles.wrapperCollapsed : ""}`}>
+    // inert com o drawer mobile aberto: o overlay já bloqueia o ponteiro, mas o teclado e
+    // o leitor de tela ainda alcançariam o Topbar e o conteúdo atrás dele. Como o drawer
+    // (Sidebar) e o overlay são irmãos deste wrapper, seguem interativos. No desktop
+    // mobileAberto é sempre false — o atributo nem é emitido.
+    <div
+      className={`${styles.wrapper} ${collapsed ? styles.wrapperCollapsed : ""}`}
+      inert={mobileAberto || undefined}
+    >
       <Topbar titulo={resolverTitulo(pathname, perfil)} />
       {/* id de destino do link "pular para o conteúdo" (ver globals.css) — permite a quem
           navega por teclado saltar a sidebar inteira a cada troca de página. */}

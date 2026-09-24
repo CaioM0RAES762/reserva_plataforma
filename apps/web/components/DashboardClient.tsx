@@ -1,31 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-import {
-  ArrowRight,
-  ArrowUpRight,
-  AlertTriangle,
-} from "lucide-react";
-import { calcularLanes, contarLanes } from "@plataformares/shared";
+import { ArrowRight, ArrowUpRight } from "lucide-react";
+import { calcularJanelaAgendaEmCurso, calcularLanes, contarLanes } from "@plataformares/shared";
 import styles from "../app/(app)/dashboard/page.module.css";
 import { apiFetch } from "../lib/api";
 import { useEventosSSE } from "../lib/useEventosSSE";
-
-const COR_GRADE = "#DEDAD1";
-const COR_EIXO = "#6E6961";
-const COR_TOOLTIP_BG = "#221F1B";
-const COR_RESERVAS = "oklch(0.68 0.16 55)";
-const COR_CONCLUIDAS = "oklch(0.5 0.09 240)";
 
 const CATEGORIA_LABEL: Record<string, string> = {
   elevatoria: "Elevatória",
@@ -36,11 +17,6 @@ const CATEGORIA_LABEL: Record<string, string> = {
   outro: "Outro",
 };
 
-const CATEGORIA_NR: Record<string, string> = {
-  elevatoria: "NR-35",
-  andaime: "NR-18",
-};
-
 interface Kpis {
   totalPlataformas: number;
   disponiveis: number;
@@ -48,13 +24,20 @@ interface Kpis {
   manutencao: number;
   reservasHoje: number;
   reservasProximos7Dias: number;
-  pendenciasAprovacao: number;
-  checklistsPendentes: number;
+  naoConformidadesRecentes: number;
+  // Só Admin/Gestor (null para Colaborador): solicitações aguardando decisão.
+  pendentesAprovacao?: number | null;
+  pendentesUrgentes?: number | null;
 }
 
 interface ReservaAgenda {
   id: string;
   setorNome: string;
+  // Só vem preenchido quando o setor solicitante é "Terceirizados" (regra em
+  // empresaTerceirizada.ts, no shared) e a reserva é posterior à migration que criou a
+  // coluna. Opcional aqui de propósito: enquanto a rota de agenda não devolver o campo (ou
+  // para reservas antigas), a linha simplesmente não mostra a empresa em vez de quebrar.
+  empresaTerceirizada?: string | null;
   solicitanteId: string;
   solicitanteNome: string;
   plataformaId: string;
@@ -76,6 +59,8 @@ interface ReservaAgenda {
 interface Agenda {
   hoje: ReservaAgenda[];
   proximas: ReservaAgenda[];
+  // Solicitações do próprio usuário ainda sem decisão (fora da timeline operacional).
+  minhasPendentes?: ReservaAgenda[];
 }
 
 interface Plataforma {
@@ -85,21 +70,6 @@ interface Plataforma {
   localizacao: string | null;
   categoria: string;
   status: string;
-}
-
-interface ReservaFila extends ReservaAgenda {
-  criadoEm: string;
-  aguardaSegundaAprovacao: boolean;
-  slaHoras: number;
-  slaEstourado: boolean;
-}
-
-interface ChecklistItemTemplate {
-  id: string;
-  descricao: string;
-  ordem: number;
-  obrigatorio: boolean;
-  ativo: boolean;
 }
 
 interface ItemDistribuicao {
@@ -115,10 +85,6 @@ interface UtilizacaoPlataforma {
 interface UtilizacaoResposta {
   plataformas: UtilizacaoPlataforma[];
 }
-interface SlaResposta {
-  porStatus: ItemDistribuicao[];
-  tendenciaMensal: { mes: string; quantidade: number }[];
-}
 interface RankingSetorItem {
   setorId: string;
   setorNome: string;
@@ -131,7 +97,6 @@ export interface DashboardClientProps {
   usuarioId: string;
   usuarioNome: string;
   perfil: "admin" | "gestor_setor" | "colaborador";
-  setorNome: string | null;
 }
 
 function saudacao(): string {
@@ -195,30 +160,29 @@ function formatarAguardando(desde: string): string {
   return `${Math.floor(horas / 24)}d`;
 }
 
-function formatarContagemRegressiva(data: string, hora: string): string {
-  const alvo = new Date(`${data}T${hora}:00`);
-  const diffMs = alvo.getTime() - Date.now();
-  if (diffMs <= 0) return "atrasado";
-  const horas = Math.floor(diffMs / 3_600_000);
-  const minutos = Math.floor((diffMs % 3_600_000) / 60_000);
-  return horas > 0 ? `em ${horas}h${String(minutos).padStart(2, "0")}` : `em ${minutos}min`;
+/* Régua da "Agenda em curso": janela DINÂMICA (calcularJanelaAgendaEmCurso, no shared) —
+   do menor entre expediente/primeira reserva/agora−1h ao maior entre expediente/última
+   reserva/agora+1h. Antes era fixa em 07:00–17:00 e escondia a operação da noite.
+   Divisão pelo número de INTERVALOS (fim − início), não de rótulos: com N+1 rótulos, dividir
+   por N+1 deslocava cada barra para a esquerda da própria hora. */
+interface JanelaRegua {
+  inicioHora: number;
+  fimHora: number;
 }
 
-// Régua fixa 07:00–17:00 (11 marcações), conforme especificacao.md §4.6.
-const HORA_INICIO_RUA = 7;
-const HORA_FIM_RUA = 17;
-const HORAS_RUA = Array.from({ length: 11 }, (_, i) => HORA_INICIO_RUA + i);
+// Largura mínima de cada hora da régua: abaixo disso, dezenas de horas espremidas ficam
+// ilegíveis — a régua passa a rolar na horizontal em vez de comprimir.
+const PX_POR_HORA_REGUA = 72;
 
-function posicaoNaRegua(horaStr: string): number {
+function posicaoNaRegua(horaStr: string, janela: JanelaRegua): number {
   const [h, m] = horaStr.split(":").map(Number);
-  const fracao = (h + m / 60 - HORA_INICIO_RUA) / 11;
+  const fracao = (h + m / 60 - janela.inicioHora) / (janela.fimHora - janela.inicioHora);
   return Math.min(1, Math.max(0, fracao));
 }
 
-function dentroDaRegua(horaInicio: string, horaFim: string): boolean {
-  const [hi] = horaInicio.split(":").map(Number);
-  const [hf] = horaFim.split(":").map(Number);
-  return hf > HORA_INICIO_RUA && hi < HORA_FIM_RUA;
+function minutosAgora(): number {
+  const [h, m] = nowHHMM().split(":").map(Number);
+  return h * 60 + m;
 }
 
 function paraMinutos(horaStr: string): number {
@@ -237,21 +201,209 @@ const STATUS_PILL: Record<string, { label: string; classe: string }> = {
   concluida: { label: "Concluída", classe: "pillConcluida" },
   em_uso: { label: "Em Campo", classe: "pillEmUso" },
   agendada: { label: "Agendada", classe: "pillAgendada" },
-  pendente: { label: "Aguardando Aprovação", classe: "pillPendente" },
+  // Legado: reservas anteriores ao fluxo direto ainda podem carregar este status.
+  // Solicitação aguardando aprovação — só aparece em "Minhas próximas", nunca na timeline.
+  pendente: { label: "Aguardando aprovação", classe: "pillPendente" },
 };
 
-function StatusPill({ item, checklistPendenteIds }: { item: ReservaAgenda; checklistPendenteIds: Set<string> }) {
-  // Correção do fluxo de Checklist: o checklist agora é portão da APROVAÇÃO (RN-CHK-03),
-  // então uma reserva com checklist pendente fica em status "pendente", não mais
-  // "agendada" — /dashboard/checklists-pendentes já reflete essa regra no backend.
-  if (item.status === "pendente" && checklistPendenteIds.has(item.id)) {
-    return <span className={`${styles.pill} ${styles.pillChecklist}`}>Checklist Pendente</span>;
-  }
+function StatusPill({ item }: { item: ReservaAgenda }) {
   const info = STATUS_PILL[item.status] ?? { label: item.status, classe: "pillAgendada" };
   return <span className={`${styles.pill} ${styles[info.classe]}`}>{info.label}</span>;
 }
 
-export function DashboardClient({ usuarioId, usuarioNome, perfil, setorNome }: DashboardClientProps) {
+/* ---------- Composição dos painéis ----------
+   Por que existe: os painéis da Central variam por perfil (Utilização só para
+   gestor/admin, Ranking só para admin) e cada um tem altura própria, que depende dos DADOS
+   (quantas reservas hoje, quantas plataformas). O layout antigo fixava duas pilhas
+   (.mainColumn 2fr / .sideColumn 1fr) com `align-items: start`: a altura de cada pilha era a
+   soma do que ela tinha dentro, então a pilha mais curta terminava cedo e deixava um vão
+   proporcional à diferença entre as duas — e o Ranking, irmão de largura total, só começava
+   depois da pilha mais alta. Nenhum ajuste de gap/altura resolve isso, porque o vão nasce de
+   uma distribuição decidida sem olhar para o conteúdo.
+   Aqui os painéis são uma lista montada ANTES do JSX (painel que não se aplica ao perfil
+   simplesmente não entra) e a distribuição em colunas é calculada a partir dessa lista.
+   Grid de linhas e multi-coluna CSS não servem: o primeiro alinha linhas entre colunas e o
+   segundo só particiona em ordem contígua; nenhum dos dois enxerga a altura que cada painel
+   vai ter. Estimamos a altura a partir da contagem de itens (dado que já temos) e escolhemos
+   a partição que deixa as pilhas mais parecidas em altura. */
+
+// Alturas aproximadas (px) das partes de um painel. NÃO são layout — o layout real é o do
+// CSS —, servem só para comparar pilhas; um erro de alguns px apenas troca um painel de
+// coluna em casos de empate.
+const ALTURA_CABECALHO_PAINEL = 98;
+const ALTURA_PADDING_CORPO = 40;
+const ALTURA_RODAPE_PAINEL = 47;
+const ALTURA_ESTADO_VAZIO = 61;
+const ALTURA_LINHA_AGENDA = 70;
+const ALTURA_LINHA_FROTA = 67;
+const ALTURA_LINHA_UTILIZACAO = 46;
+// Régua + margens da timeline (sem as lanes, que têm altura própria).
+const ALTURA_FIXA_TIMELINE = 60;
+
+// Espelha o `gap` de .composicao/.pilha no CSS.
+const ESPACO_ENTRE_PAINEIS = 24;
+const MAX_COLUNAS = 3;
+// Menor largura que uma coluna SECUNDÁRIA pode ter: abaixo disso a linha da frota (nome +
+// status) e a tabela de utilização passam a truncar o que é a informação principal.
+const LARGURA_MIN_COLUNA = 380;
+// A primeira coluna (onde cai a Agenda, o painel de timeline) recebe fração maior: a régua
+// horária precisa de largura para os rótulos e para o texto das barras curtas.
+const FRACAO_COLUNA_PRIMARIA = 1.3;
+// Entre configurações de colunas com desperdício praticamente igual, prefere a com mais
+// colunas (aproveita melhor telas largas).
+const TOLERANCIA_DESPERDICIO = 0.04;
+
+interface PainelDef {
+  id: string;
+  /** Altura estimada em px, sem o espaço entre painéis. */
+  peso: number;
+  /** Painel de tabela larga: ocupa a linha inteira abaixo das pilhas, em vez de disputar coluna. */
+  largo?: boolean;
+  conteudo: ReactNode;
+}
+
+function idTituloPainel(id: string): string {
+  return `painel-${id}-titulo`;
+}
+
+/** Quantas colunas cabem na largura dada respeitando a largura mínima da coluna secundária. */
+function colunasQueCabem(largura: number): number {
+  for (let k = MAX_COLUNAS; k > 1; k -= 1) {
+    const larguraSecundaria = (largura - ESPACO_ENTRE_PAINEIS * (k - 1)) / (k - 1 + FRACAO_COLUNA_PRIMARIA);
+    if (larguraSecundaria >= LARGURA_MIN_COLUNA) return k;
+  }
+  return 1;
+}
+
+interface Distribuicao {
+  /** Coluna (0-based) de cada painel, na ordem de entrada. */
+  colunaDe: number[];
+  colunas: number;
+  /** Fração da área (colunas x altura da mais alta) que sobra vazia; 0 = colunas iguais. */
+  desperdicio: number;
+}
+
+/* Enumeração exaustiva (a lista tem no máximo ~4 painéis empilháveis): testa toda
+   atribuição painel→coluna e fica com a de MENOR altura da coluna mais alta. Só gera
+   atribuições em "forma canônica" (a coluna nova só abre depois da anterior), o que elimina
+   as espelhadas e mantém a coluna 0 sempre com o primeiro painel (a Agenda). */
+function melhorDistribuicao(pesos: number[], maxColunas: number): Distribuicao {
+  const total = pesos.reduce((soma, p) => soma + p, 0);
+  const atual = new Array<number>(pesos.length).fill(0);
+  const somas = new Array<number>(maxColunas).fill(0);
+  let melhorAltura = Infinity;
+  let melhor = atual.slice();
+  let melhorUsadas = 1;
+
+  const recorrer = (i: number, usadas: number) => {
+    if (i === pesos.length) {
+      const altura = Math.max(...somas);
+      if (altura < melhorAltura) {
+        melhorAltura = altura;
+        melhor = atual.slice();
+        melhorUsadas = usadas;
+      }
+      return;
+    }
+    const limite = Math.min(usadas + 1, maxColunas);
+    for (let c = 0; c < limite; c += 1) {
+      atual[i] = c;
+      somas[c] += pesos[i];
+      recorrer(i + 1, Math.max(usadas, c + 1));
+      somas[c] -= pesos[i];
+    }
+  };
+  recorrer(0, 0);
+
+  return {
+    colunaDe: melhor,
+    colunas: melhorUsadas,
+    desperdicio: melhorAltura > 0 ? 1 - total / (melhorUsadas * melhorAltura) : 0,
+  };
+}
+
+/** Índices dos painéis agrupados por pilha, da esquerda para a direita. */
+function comporPilhas(pesos: number[], colunasDisponiveis: number): number[][] {
+  if (pesos.length === 0) return [];
+  const limite = Math.min(colunasDisponiveis, pesos.length);
+  if (limite <= 1) return [pesos.map((_, i) => i)];
+
+  const candidatos: Distribuicao[] = [];
+  for (let k = 2; k <= limite; k += 1) candidatos.push(melhorDistribuicao(pesos, k));
+  const menorDesperdicio = Math.min(...candidatos.map((c) => c.desperdicio));
+  const escolhido = candidatos
+    .filter((c) => c.desperdicio <= menorDesperdicio + TOLERANCIA_DESPERDICIO)
+    .sort((a, b) => b.colunas - a.colunas)[0];
+
+  const pilhas: number[][] = Array.from({ length: escolhido.colunas }, () => []);
+  escolhido.colunaDe.forEach((coluna, indice) => pilhas[coluna].push(indice));
+  return pilhas;
+}
+
+function Composicao({ paineis }: { paineis: PainelDef[] }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  // Largura do próprio contêiner (não da janela): a sidebar expandida/recolhida muda a
+  // área útil sem mudar a janela, e é a área útil que decide quantas colunas cabem.
+  const [largura, setLargura] = useState(0);
+
+  // Layout effect: mede antes da primeira pintura, para o usuário nunca ver a lista
+  // empilhada numa coluna só e depois "pular" para várias. (Este componente só monta depois
+  // do carregamento, então nunca roda no servidor.)
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const medir = () => setLargura(Math.round(el.getBoundingClientRect().width));
+    medir();
+    if (typeof ResizeObserver === "undefined") return;
+    const observador = new ResizeObserver(medir);
+    observador.observe(el);
+    return () => observador.disconnect();
+  }, []);
+
+  const empilhaveis = paineis.filter((p) => !p.largo);
+  const largos = paineis.filter((p) => p.largo);
+  const pilhas = comporPilhas(
+    empilhaveis.map((p) => p.peso + ESPACO_ENTRE_PAINEIS),
+    colunasQueCabem(largura),
+  );
+
+  const gridTemplateColumns =
+    pilhas.length > 1
+      ? `minmax(0, ${FRACAO_COLUNA_PRIMARIA}fr) repeat(${pilhas.length - 1}, minmax(0, 1fr))`
+      : undefined;
+
+  function renderPainel(p: PainelDef, classeExtra?: string) {
+    return (
+      <section
+        key={p.id}
+        className={classeExtra ? `${styles.panel} ${classeExtra}` : styles.panel}
+        data-painel={p.id}
+        aria-labelledby={idTituloPainel(p.id)}
+      >
+        {p.conteudo}
+      </section>
+    );
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      className={styles.composicao}
+      style={gridTemplateColumns ? ({ gridTemplateColumns } as CSSProperties) : undefined}
+      data-paineis={paineis.length}
+      data-colunas={pilhas.length}
+    >
+      {pilhas.map((indices, i) => (
+        <div key={i} className={styles.pilha} data-pilha={i + 1}>
+          {indices.map((indice) => renderPainel(empilhaveis[indice]))}
+        </div>
+      ))}
+      {largos.map((p) => renderPainel(p, styles.painelLargo))}
+    </div>
+  );
+}
+
+export function DashboardClient({ usuarioId, usuarioNome, perfil }: DashboardClientProps) {
   const ehAprovador = perfil === "admin" || perfil === "gestor_setor";
   const periodo = useMemo(() => ({ dateFrom: primeiroDiaMesesAtras(5), dateTo: hoje() }), []);
 
@@ -260,14 +412,17 @@ export function DashboardClient({ usuarioId, usuarioNome, perfil, setorNome }: D
   const [kpis, setKpis] = useState<Kpis | null>(null);
   const [agenda, setAgenda] = useState<Agenda | null>(null);
   const [plataformas, setPlataformas] = useState<Plataforma[]>([]);
-  const [checklistsPendentes, setChecklistsPendentes] = useState<ReservaAgenda[]>([]);
-  const [checklistItens, setChecklistItens] = useState<ChecklistItemTemplate[]>([]);
-  const [filaAprovacoes, setFilaAprovacoes] = useState<ReservaFila[]>([]);
-  const [aprovandoId, setAprovandoId] = useState<string | null>(null);
   const [utilizacao, setUtilizacao] = useState<UtilizacaoResposta | null>(null);
-  const [sla, setSla] = useState<SlaResposta | null>(null);
   const [ranking, setRanking] = useState<RankingSetorItem[] | null>(null);
   const [ultimaSincronizacao, setUltimaSincronizacao] = useState<string>("");
+  // Expediente configurado: só entra no cálculo da janela da régua. Falha aqui não derruba o
+  // painel — a janela passa a considerar apenas reservas e horário atual.
+  const [expediente, setExpediente] = useState<{ inicio: string; fim: string } | null>(null);
+  useEffect(() => {
+    apiFetch<{ horarioExpedienteInicio: string; horarioExpedienteFim: string }>("/api/v1/configuracoes/regras-reserva")
+      .then((regras) => setExpediente({ inicio: regras.horarioExpedienteInicio, fim: regras.horarioExpedienteFim }))
+      .catch(() => setExpediente(null));
+  }, []);
 
   // `carregar` guardado em ref para que o efeito de SSE (abaixo) possa dispará-lo sem
   // recriar a assinatura do canal a cada render.
@@ -280,16 +435,17 @@ export function DashboardClient({ usuarioId, usuarioNome, perfil, setorNome }: D
       if (primeiraVez) setCarregando(true);
       try {
         const query = `dateFrom=${periodo.dateFrom}&dateTo=${periodo.dateTo}`;
+        /* A fila de aprovações e os checklists pendentes saíram da carga junto com o
+           fluxo que os alimentava. O que sobrou responde às perguntas que o painel ainda
+           precisa responder: o que está acontecendo hoje, qual equipamento está livre e
+           como a frota vem sendo usada. */
         const promessas: Promise<unknown>[] = [
           apiFetch<Kpis>("/api/v1/dashboard/kpis"),
           apiFetch<Agenda>("/api/v1/dashboard/agenda"),
           apiFetch<Plataforma[]>("/api/v1/plataformas"),
-          apiFetch<ReservaAgenda[]>("/api/v1/dashboard/checklists-pendentes"),
         ];
         if (ehAprovador) {
-          promessas.push(apiFetch<ReservaFila[]>("/api/v1/reservas/fila-aprovacoes"));
           promessas.push(apiFetch<UtilizacaoResposta>(`/api/v1/relatorios/utilizacao?${query}`));
-          promessas.push(apiFetch<SlaResposta>(`/api/v1/relatorios/sla-aprovacao?${query}`));
         }
         if (perfil === "admin") {
           promessas.push(apiFetch<{ setores: RankingSetorItem[] }>(`/api/v1/relatorios/ranking-setores?${query}`));
@@ -300,13 +456,10 @@ export function DashboardClient({ usuarioId, usuarioNome, perfil, setorNome }: D
         setKpis(resultados[0] as Kpis);
         setAgenda(resultados[1] as Agenda);
         setPlataformas(resultados[2] as Plataforma[]);
-        setChecklistsPendentes(resultados[3] as ReservaAgenda[]);
-        let proximoIndice = 4;
+        let proximoIndice = 3;
         if (ehAprovador) {
-          setFilaAprovacoes(resultados[proximoIndice] as ReservaFila[]);
-          setUtilizacao(resultados[proximoIndice + 1] as UtilizacaoResposta);
-          setSla(resultados[proximoIndice + 2] as SlaResposta);
-          proximoIndice += 3;
+          setUtilizacao(resultados[proximoIndice] as UtilizacaoResposta);
+          proximoIndice += 1;
         }
         if (perfil === "admin") {
           setRanking((resultados[proximoIndice] as { setores: RankingSetorItem[] }).setores);
@@ -366,64 +519,34 @@ export function DashboardClient({ usuarioId, usuarioNome, perfil, setorNome }: D
     if (timerEventoRef.current) clearTimeout(timerEventoRef.current);
   }, []);
 
-  useEffect(() => {
-    if (checklistsPendentes.length === 0) {
-      setChecklistItens([]);
-      return;
-    }
-    let cancelado = false;
-    apiFetch<ChecklistItemTemplate[]>(`/api/v1/checklist-templates?categoria=${checklistsPendentes[0].plataformaCategoria}`)
-      .then((itens) => {
-        if (!cancelado) setChecklistItens(itens.filter((i) => i.ativo).sort((a, b) => a.ordem - b.ordem));
-      })
-      .catch(() => {
-        if (!cancelado) setChecklistItens([]);
-      });
-    return () => {
-      cancelado = true;
-    };
-  }, [checklistsPendentes]);
-
-  const checklistPendenteIds = useMemo(() => new Set(checklistsPendentes.map((r) => r.id)), [checklistsPendentes]);
-
-  async function aprovarReserva(id: string) {
-    setAprovandoId(id);
-    try {
-      await apiFetch(`/api/v1/reservas/${id}/aprovar`, { method: "POST" });
-      setFilaAprovacoes((atual) => atual.filter((r) => r.id !== id));
-      setKpis((atual) => (atual ? { ...atual, pendenciasAprovacao: Math.max(0, atual.pendenciasAprovacao - 1) } : atual));
-    } catch (err) {
-      setErro(err instanceof Error ? err.message : "Erro ao aprovar a reserva.");
-    } finally {
-      setAprovandoId(null);
-    }
-  }
-
   const plataformasPorId = useMemo(() => new Map(plataformas.map((p) => [p.id, p])), [plataformas]);
 
   const emUsoAgora = useMemo(() => agenda?.hoje.find((r) => r.status === "em_uso") ?? null, [agenda]);
-  const proximoChecklist = checklistsPendentes[0] ?? null;
 
   const manutencaoPlataformas = useMemo(() => plataformas.filter((p) => p.status === "manutencao"), [plataformas]);
 
-  const atrasadasAprovacao = useMemo(() => filaAprovacoes.filter((r) => r.slaEstourado).length, [filaAprovacoes]);
-  const slaHorasAprovacao = filaAprovacoes[0]?.slaHoras;
-
+  /* O contexto do hero deixou de contar "pontos que exigem sua decisão": não existe mais
+     decisão a tomar. Passa a dizer o que está acontecendo agora — que é a pergunta que o
+     painel responde no fluxo novo. */
   const contextoHero = useMemo(() => {
     if (!kpis) return "";
-    if (ehAprovador) {
-      const pontos = kpis.pendenciasAprovacao + kpis.checklistsPendentes;
-      if (pontos === 0) return "Nenhum ponto pendente de decisão hoje.";
-      return pontos === 1 ? "1 ponto exige sua decisão hoje." : `${pontos} pontos exigem sua decisão hoje.`;
+    if (kpis.emUso > 0) {
+      return kpis.emUso === 1
+        ? "1 plataforma em operação neste momento."
+        : `${kpis.emUso} plataformas em operação neste momento.`;
     }
     return kpis.reservasHoje > 0
-      ? `Você tem ${kpis.reservasHoje === 1 ? "1 reserva" : `${kpis.reservasHoje} reservas`} hoje.`
+      ? `${kpis.reservasHoje === 1 ? "1 reserva agendada" : `${kpis.reservasHoje} reservas agendadas`} para hoje.`
       : "Nenhuma reserva agendada para hoje.";
-  }, [kpis, ehAprovador]);
+  }, [kpis]);
 
   const minhasProximas = useMemo(() => {
     if (!agenda) return [];
-    return [...agenda.hoje, ...agenda.proximas].filter((r) => r.solicitanteId === usuarioId);
+    // Solicitações próprias aguardando aprovação entram aqui (com o selo "Aguardando
+    // aprovação"), para o colaborador acompanhar — nunca na timeline operacional.
+    return [...agenda.hoje, ...agenda.proximas, ...(agenda.minhasPendentes ?? [])]
+      .filter((r) => r.solicitanteId === usuarioId)
+      .sort((a, b) => `${a.data} ${a.horaInicio}`.localeCompare(`${b.data} ${b.horaInicio}`));
   }, [agenda, usuarioId]);
 
   const utilizacaoOrdenada = useMemo(() => {
@@ -435,34 +558,54 @@ export function DashboardClient({ usuarioId, usuarioNome, perfil, setorNome }: D
     return Math.round((utilizacaoOrdenada.reduce((s, p) => s + p.taxaUtilizacao, 0) / utilizacaoOrdenada.length) * 10) / 10;
   }, [utilizacaoOrdenada]);
 
-  const concluidaRatio = useMemo(() => {
-    if (!sla) return 0;
-    const total = sla.porStatus.reduce((s, i) => s + i.quantidade, 0);
-    const concluidas = sla.porStatus.find((i) => i.chave === "concluida")?.quantidade ?? 0;
-    return total > 0 ? concluidas / total : 0;
-  }, [sla]);
-  const trendData = useMemo(
-    () => sla?.tendenciaMensal.map((t) => ({ mes: t.mes, reservas: t.quantidade, concluidas: Math.round(t.quantidade * concluidaRatio) })) ?? [],
-    [sla, concluidaRatio]
-  );
-
   const maiorRankingSetor = useMemo(() => {
     if (!ranking || ranking.length === 0) return 0;
     return Math.max(...ranking.map((s) => s.totalReservas));
   }, [ranking]);
 
+  // Recalculado a cada sincronização (`ultimaSincronizacao` serve de "tique"): com
+  // dependência vazia o marcador AGORA ficava congelado na hora em que a página abriu,
+  // mesmo com o painel recarregando por SSE.
+  const janelaRegua = useMemo<JanelaRegua>(
+    () =>
+      calcularJanelaAgendaEmCurso({
+        agoraMin: minutosAgora(),
+        intervalos: agenda?.hoje ?? [],
+        expediente,
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [agenda, expediente, ultimaSincronizacao]
+  );
+  const horasRegua = useMemo(
+    () =>
+      Array.from({ length: janelaRegua.fimHora - janelaRegua.inicioHora + 1 }, (_, i) => janelaRegua.inicioHora + i),
+    [janelaRegua]
+  );
   const agoraFracaoRegua = useMemo(() => {
-    const [h, m] = nowHHMM().split(":").map(Number);
-    if (h < HORA_INICIO_RUA || h >= HORA_FIM_RUA) return null;
-    return (h + m / 60 - HORA_INICIO_RUA) / 11;
-  }, []);
+    const agora = minutosAgora() / 60;
+    if (agora < janelaRegua.inicioHora || agora >= janelaRegua.fimHora) return null;
+    return (agora - janelaRegua.inicioHora) / (janelaRegua.fimHora - janelaRegua.inicioHora);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [janelaRegua, ultimaSincronizacao]);
+
+  // Ao abrir (e só na primeira carga — uma revalidação por SSE não pode arrancar o scroll da
+  // mão do usuário), a régua rola até perto do horário atual: às 17h ela não começa em 07:00.
+  const reguaScrollRef = useRef<HTMLDivElement>(null);
+  const reguaPosicionadaRef = useRef(false);
+  useLayoutEffect(() => {
+    const el = reguaScrollRef.current;
+    if (!el || reguaPosicionadaRef.current || agoraFracaoRegua === null) return;
+    if (el.scrollWidth <= el.clientWidth) return;
+    reguaPosicionadaRef.current = true;
+    el.scrollLeft = Math.max(0, agoraFracaoRegua * el.scrollWidth - el.clientWidth / 3);
+  }, [agoraFracaoRegua, agenda]);
 
   // Correção da Agenda em curso: reservas que se sobrepõem no horário ganham lanes
   // (linhas) diferentes em vez de disputar a mesma faixa — ver calcularLanes em
   // @plataformares/shared (algoritmo puro, testado por apps/api).
   const reservasDaReguaComLane = useMemo(() => {
-    const reservasNaRegua = (agenda?.hoje ?? []).filter((r) => dentroDaRegua(r.horaInicio, r.horaFim));
-    return calcularLanes(reservasNaRegua, (r) => ({
+    // A janela é derivada das próprias reservas do dia: nenhuma fica fora da régua.
+    return calcularLanes(agenda?.hoje ?? [], (r) => ({
       inicioMinutos: paraMinutos(r.horaInicio),
       fimMinutos: paraMinutos(r.horaFim),
     }));
@@ -478,120 +621,60 @@ export function DashboardClient({ usuarioId, usuarioNome, perfil, setorNome }: D
     );
   }
 
-  return (
-    <section className={styles.page}>
-      <div className={styles.hero}>
-        <div>
-          <div className={styles.eyebrow}>{eyebrowHero()}</div>
-          <h1 className={styles.h1}>
-            {saudacao()}, {usuarioNome.split(" ")[0]}.
-            <em>{contextoHero}</em>
-          </h1>
-        </div>
-        <div className={styles.heroActions}>
-          <Link href="/relatorios" className={styles.btnOutline}>
-            Exportar briefing
-          </Link>
-          {ehAprovador ? (
-            <Link href="/reservas/aprovacoes" className={styles.btnSolid}>
-              Abrir fila de aprovações
-              <ArrowRight size={15} strokeWidth={1.75} />
-            </Link>
-          ) : (
-            <Link href="/reservas" className={styles.btnSolid}>
-              Minhas reservas
-              <ArrowRight size={15} strokeWidth={1.75} />
-            </Link>
-          )}
-        </div>
-      </div>
-
-      {erro && (
-              <div className={styles.error} role="alert">
-                {erro}
-              </div>
-            )}
-
-      {kpis && (
-        <div className={styles.kpiStrip}>
-          <div className={`${styles.kpiCell} ${styles.kpiInk}`}>
-            <span className={styles.kpiLabel}>Frota Total</span>
-            <span className={styles.kpiValue}>{kpis.totalPlataformas}</span>
-            <span className={styles.kpiSub}>unidades ativas</span>
-            <span className={styles.kpiTrend}>{kpis.manutencao > 0 ? `${kpis.manutencao} em manutenção` : "todas operacionais"}</span>
-          </div>
-          <div className={`${styles.kpiCell} ${styles.kpiGreen}`}>
-            <span className={styles.kpiLabel}>Disponíveis Agora</span>
-            <span className={styles.kpiValue}>{kpis.disponiveis}</span>
-            <span className={styles.kpiSub}>de {kpis.totalPlataformas}</span>
-            <span className={styles.kpiTrend}>
-              {kpis.totalPlataformas > 0 ? `${Math.round((kpis.disponiveis / kpis.totalPlataformas) * 100)}%` : "—"}
-            </span>
-          </div>
-          <div className={`${styles.kpiCell} ${styles.kpiBlue}`}>
-            <span className={styles.kpiLabel}>Em Operação</span>
-            <span className={styles.kpiValue}>{kpis.emUso}</span>
-            <span className={styles.kpiSub}>
-              {emUsoAgora ? `${plataformasPorId.get(emUsoAgora.plataformaId)?.codigo ?? emUsoAgora.plataformaNome} · ${emUsoAgora.setorNome}` : "—"}
-            </span>
-            <span className={styles.kpiTrend}>{emUsoAgora ? `até ${emUsoAgora.horaFim}` : ""}</span>
-          </div>
-          <div className={`${styles.kpiCell} ${styles.kpiOrange}`}>
-            <span className={styles.kpiLabel}>Em Manutenção</span>
-            <span className={styles.kpiValue}>{kpis.manutencao}</span>
-            <span className={styles.kpiSub}>plataformas indisponíveis</span>
-            <span className={styles.kpiTrend}>{manutencaoPlataformas.map((p) => p.codigo).join(" · ") || "—"}</span>
-          </div>
-          {ehAprovador ? (
-            <div className={`${styles.kpiCell} ${styles.kpiRed}`}>
-              <span className={styles.kpiLabel}>Aprovações Pendentes</span>
-              <span className={styles.kpiValue}>{kpis.pendenciasAprovacao}</span>
-              <span className={styles.kpiSub}>{slaHorasAprovacao ? `SLA médio ${slaHorasAprovacao}h` : "sem pendências"}</span>
-              <span className={`${styles.kpiTrend} ${atrasadasAprovacao > 0 ? styles.kpiTrendHazard : ""}`}>
-                {atrasadasAprovacao > 0 ? `${atrasadasAprovacao} atrasada${atrasadasAprovacao > 1 ? "s" : ""}` : "em dia"}
-              </span>
-            </div>
-          ) : (
-            <div className={`${styles.kpiCell} ${styles.kpiRed}`}>
-              <span className={styles.kpiLabel}>Reservas Hoje</span>
-              <span className={styles.kpiValue}>{kpis.reservasHoje}</span>
-              <span className={styles.kpiSub}>agendadas para hoje</span>
-              <span className={styles.kpiTrend}>{kpis.reservasProximos7Dias} nos próx. 7 dias</span>
-            </div>
-          )}
-          <div className={`${styles.kpiCell} ${styles.kpiOrange}`}>
-            <span className={styles.kpiLabel}>Checklists NR</span>
-            <span className={styles.kpiValue}>{kpis.checklistsPendentes}</span>
-            <span className={styles.kpiSub}>
-              {proximoChecklist ? `${proximoChecklist.horaInicio} · ${plataformasPorId.get(proximoChecklist.plataformaId)?.codigo ?? proximoChecklist.plataformaNome}` : "nenhum pendente"}
-            </span>
-            <span className={styles.kpiTrend}>
-              {proximoChecklist ? formatarContagemRegressiva(proximoChecklist.data, proximoChecklist.horaInicio) : ""}
-            </span>
-          </div>
-        </div>
-      )}
-
-      <div className={styles.columns}>
-      <div className={styles.mainColumn}>
-        <div className={styles.panel}>
+  /* Lista de painéis realmente renderizáveis para ESTE perfil, montada antes do JSX: um
+     painel que não se aplica não entra na lista, então não deixa contêiner nem coluna
+     reservada. A ordem aqui é a prioridade de leitura — é ela que vale no celular, onde
+     tudo vira uma pilha só. */
+  const reservasDeHoje = agenda?.hoje ?? [];
+  const paineis: PainelDef[] = [
+    {
+      id: "agenda",
+      peso:
+        ALTURA_CABECALHO_PAINEL +
+        ALTURA_PADDING_CORPO +
+        (reservasDeHoje.length > 0 ? ALTURA_FIXA_TIMELINE + alturaTimeline : ALTURA_ESTADO_VAZIO) +
+        reservasDeHoje.length * ALTURA_LINHA_AGENDA,
+      conteudo: (
+        <>
           <div className={styles.panelHeader}>
             <div>
               <div className={styles.panelEyebrow}>Operações · Hoje</div>
-              <h2 className={styles.panelTitle}>Agenda em curso</h2>
+              <h2 id={idTituloPainel("agenda")} className={styles.panelTitle}>Agenda em curso</h2>
             </div>
             <div className={styles.legend}>
               <span className={styles.legendItem}><span className={`${styles.legendDot} ${styles.legendEmUso}`} />Em uso</span>
               <span className={styles.legendItem}><span className={`${styles.legendDot} ${styles.legendConcluida}`} />Concluída</span>
-              <span className={styles.legendItem}><span className={`${styles.legendDot} ${styles.legendChecklist}`} />Checklist</span>
             </div>
           </div>
           <div className={styles.panelBody}>
             {/* Painel vazio não precisa da régua horária inteira — o estado
                 "Nenhuma reserva para hoje" já é a informação, mostrar uma linha do
                 tempo vazia por cima só empurrava o card pra baixo à toa. */}
-            {agenda && agenda.hoje.length > 0 ? (
-              <div className={styles.timeline}>
+            {/* Pendências de aprovação ficam à parte: uma linha discreta com o atalho para a
+                fila, sem misturar solicitações não confirmadas à agenda operacional. */}
+            {ehAprovador && (kpis?.pendentesAprovacao ?? 0) > 0 && (
+              <Link href="/reservas?status=pendente" className={styles.pendenciasLinha}>
+                <span>
+                  <strong>{kpis!.pendentesAprovacao}</strong>{" "}
+                  {kpis!.pendentesAprovacao === 1 ? "solicitação aguardando aprovação" : "solicitações aguardando aprovação"}
+                  {(kpis?.pendentesUrgentes ?? 0) > 0 && (
+                    <span className={styles.pendenciasUrgentes}>
+                      {kpis!.pendentesUrgentes} {kpis!.pendentesUrgentes === 1 ? "urgente" : "urgentes"}
+                    </span>
+                  )}
+                </span>
+                <ArrowRight size={14} aria-hidden="true" />
+              </Link>
+            )}
+
+            {reservasDeHoje.length > 0 ? (
+              // A régua rola na horizontal quando a janela do dia não cabe (≥72px por hora):
+              // dezenas de horas nunca são comprimidas até ficarem ilegíveis.
+              <div className={styles.timelineScroll} ref={reguaScrollRef}>
+              <div
+                className={styles.timeline}
+                style={{ minWidth: `${(janelaRegua.fimHora - janelaRegua.inicioHora) * PX_POR_HORA_REGUA}px` }}
+              >
                 {/* AGORA span da régua até o fundo das lanes — fica fora de .timelineLanes
                     de propósito (como irmão da régua) para a linha vertical atravessar as
                     duas sem precisar duplicar o cálculo de posição em dois lugares. O
@@ -603,25 +686,25 @@ export function DashboardClient({ usuarioId, usuarioNome, perfil, setorNome }: D
                   </div>
                 )}
                 <div className={styles.timelineRuler}>
-                  {HORAS_RUA.map((h) => (
-                    <span key={h} className={styles.timelineTick}>
-                      {String(h).padStart(2, "0")}:00
-                    </span>
+                  {horasRegua.map((h) => (
+                    // .timelineTick nunca existiu no CSS — o className resolvia para
+                    // `undefined` e ia parar no DOM. Os rotulos da regua sao estilizados
+                    // pelo proprio .timelineRuler (fonte/mono/cor) e pela regra
+                    // `.timelineRuler > span:nth-child(even)` da container query.
+                    <span key={h}>{String(h).padStart(2, "0")}:00</span>
                   ))}
                 </div>
                 <div className={styles.timelineLane} style={{ height: `${alturaTimeline}px` }}>
                   {reservasDaReguaComLane.map(({ item: r, lane }) => {
-                    const left = posicaoNaRegua(r.horaInicio);
-                    const right = posicaoNaRegua(r.horaFim);
+                    const left = posicaoNaRegua(r.horaInicio, janelaRegua);
+                    const right = posicaoNaRegua(r.horaFim, janelaRegua);
                     const largura = Math.max(0.02, right - left);
                     const classeCor =
                       r.status === "em_uso"
                         ? styles.barEmUso
                         : r.status === "concluida"
                           ? styles.barConcluida
-                          : checklistPendenteIds.has(r.id)
-                            ? styles.barChecklist
-                            : styles.barAgendada;
+                          : styles.barAgendada;
                     return (
                       <div
                         key={r.id}
@@ -638,176 +721,95 @@ export function DashboardClient({ usuarioId, usuarioNome, perfil, setorNome }: D
                   })}
                 </div>
               </div>
+              </div>
             ) : (
               <div className={styles.empty}>Nenhuma reserva para hoje.</div>
             )}
 
             <div className={styles.agendaList}>
-              {agenda?.hoje.map((r) => (
+              {reservasDeHoje.map((r) => (
                 <div key={r.id} className={styles.agendaRow}>
                   <span className={styles.agendaTime}>
                     {r.horaInicio}–{r.horaFim}
                   </span>
                   <div className={styles.agendaInfo}>
                     <span className={styles.agendaTitle}>{r.motivo || r.plataformaNome}</span>
-                    <span className={styles.agendaMeta}>
-                      {plataformasPorId.get(r.plataformaId)?.codigo ?? r.plataformaNome} · {r.setorNome} · {r.solicitanteNome}
+                    {/* Solicitante saiu da linha secundária: numa agenda do dia, o que
+                        identifica a reserva é o equipamento e o setor — o nome de quem
+                        pediu está no detalhe, e aqui só empurrava o texto para o corte.
+                        Reserva de setor terceirizado acrescenta a empresa ("Setor ·
+                        Empresa"): é ela que a portaria e a operação reconhecem no campo. */}
+                    <span className={styles.agendaMeta} title={r.solicitanteNome}>
+                      {plataformasPorId.get(r.plataformaId)?.codigo ?? r.plataformaNome} · {r.setorNome}
+                      {r.empresaTerceirizada?.trim() ? ` · ${r.empresaTerceirizada.trim()}` : ""}
                     </span>
                   </div>
-                  <StatusPill item={r} checklistPendenteIds={checklistPendenteIds} />
+                  <StatusPill item={r} />
                 </div>
               ))}
             </div>
           </div>
-        </div>
-
-        {ehAprovador ? (
-          <div className={styles.panel}>
-            <div className={styles.panelHeader}>
-              <div>
-                <div className={styles.panelEyebrow}>Ação Necessária</div>
-                <h2 className={styles.panelTitle}>Fila de aprovações</h2>
-              </div>
-              <span className={styles.panelHeaderMeta}>
-                {filaAprovacoes.length} pendentes{slaHorasAprovacao ? ` · SLA médio ${slaHorasAprovacao}h` : ""}
-                {atrasadasAprovacao > 0 ? ` · ${atrasadasAprovacao} atrasada${atrasadasAprovacao > 1 ? "s" : ""}` : ""}
-              </span>
-            </div>
-            <div className={styles.tableWrap}>
-              {filaAprovacoes.length === 0 ? (
-                <div className={styles.empty}>Nenhuma reserva aguardando aprovação.</div>
-              ) : (
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>Solicitação</th>
-                      <th>Setor</th>
-                      <th>Janela</th>
-                      <th>Plataforma</th>
-                      <th>Risco</th>
-                      <th>Aguardando</th>
-                      <th />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filaAprovacoes.map((r) => (
-                      <tr key={r.id}>
-                        <td>
-                          <span className={styles.tablePrimary}>{nomeCurto(r.solicitanteNome)}</span>
-                          <span className={styles.tableCodigo}>{codigoSolicitacao(r.id)}</span>
-                        </td>
-                        <td>{r.setorNome}</td>
-                        <td className={styles.tableMono}>
-                          {formatarDataCurta(r.data)} · {r.horaInicio}–{r.horaFim}
-                        </td>
-                        <td>{plataformasPorId.get(r.plataformaId)?.codigo ?? r.plataformaNome}</td>
-                        <td>
-                          {r.requerChecklist ? (
-                            <span className={styles.riskBadge}>{CATEGORIA_NR[r.plataformaCategoria] ?? "NR"}</span>
-                          ) : (
-                            <span className={styles.tableSub}>—</span>
-                          )}
-                        </td>
-                        <td className={`${styles.tableMono} ${r.slaEstourado ? styles.tableHazard : ""}`}>
-                          {formatarAguardando(r.criadoEm)}
-                        </td>
-                        <td>
-                          <div className={styles.tableActions}>
-                            <Link href="/reservas/aprovacoes" className={styles.btnGhostSm}>
-                              Rever
-                            </Link>
-                            <button
-                              type="button"
-                              className={styles.btnSolidSm}
-                              disabled={aprovandoId === r.id}
-                              onClick={() => aprovarReserva(r.id)}
-                            >
-                              Aprovar
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
+        </>
+      ),
+    },
+    /* O painel "Ação Necessária / Fila de aprovações" foi removido: sem aprovação,
+       ele só saberia exibir "0 pendentes" indefinidamente. "Minhas próximas reservas"
+       era o ramo alternativo do mesmo ternário e passa a valer para todos os perfis —
+       é informação útil para quem aprova tanto quanto para quem solicita. */
+    {
+      id: "minhas-reservas",
+      peso:
+        ALTURA_CABECALHO_PAINEL +
+        ALTURA_PADDING_CORPO +
+        (minhasProximas.length === 0 ? ALTURA_ESTADO_VAZIO : minhasProximas.length * ALTURA_LINHA_AGENDA),
+      conteudo: (
+        <>
+          <div className={styles.panelHeader}>
+            <div>
+              <div className={styles.panelEyebrow}>Agenda</div>
+              <h2 id={idTituloPainel("minhas-reservas")} className={styles.panelTitle}>Minhas próximas reservas</h2>
             </div>
           </div>
-        ) : (
-          <div className={styles.panel}>
-            <div className={styles.panelHeader}>
-              <div>
-                <div className={styles.panelEyebrow}>Agenda</div>
-                <h2 className={styles.panelTitle}>Minhas próximas reservas</h2>
-              </div>
-            </div>
-            <div className={styles.panelBody}>
-              {minhasProximas.length === 0 ? (
-                <div className={styles.empty}>Você não tem reservas nos próximos dias.</div>
-              ) : (
-                <div className={styles.agendaList}>
-                  {minhasProximas.map((r) => (
-                    <div key={r.id} className={styles.agendaRow}>
-                      <span className={styles.agendaTime}>
-                        {formatarDataCurta(r.data)} {r.horaInicio}
-                      </span>
-                      <div className={styles.agendaInfo}>
-                        <span className={styles.agendaTitle}>{r.plataformaNome}</span>
-                        <span className={styles.agendaMeta}>{r.motivo}</span>
-                      </div>
-                      <StatusPill item={r} checklistPendenteIds={checklistPendenteIds} />
+          <div className={styles.panelBody}>
+            {minhasProximas.length === 0 ? (
+              <div className={styles.empty}>Você não tem reservas nos próximos dias.</div>
+            ) : (
+              <div className={styles.agendaList}>
+                {minhasProximas.map((r) => (
+                  <div key={r.id} className={styles.agendaRow}>
+                    <span className={styles.agendaTime}>
+                      {formatarDataCurta(r.data)} {r.horaInicio}
+                    </span>
+                    <div className={styles.agendaInfo}>
+                      <span className={styles.agendaTitle}>{r.plataformaNome}</span>
+                      <span className={styles.agendaMeta}>{r.motivo}</span>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {ehAprovador && (
-          <div className={styles.panel}>
-            <div className={styles.panelHeader}>
-              <div>
-                <div className={styles.panelEyebrow}>Últimos 6 meses</div>
-                <h2 className={styles.panelTitle}>Reservas x Concluídas</h2>
+                    <StatusPill item={r} />
+                  </div>
+                ))}
               </div>
-            </div>
-            <div className={styles.panelBody}>
-              {trendData.length === 0 ? (
-                <div className={styles.empty}>Sem dados de tendência no período.</div>
-              ) : (
-                <ResponsiveContainer width="100%" height={288}>
-                  <AreaChart data={trendData} margin={{ top: 10, right: 20, left: 0, bottom: 10 }}>
-                    <defs>
-                      <linearGradient id="gReservas" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor={COR_RESERVAS} stopOpacity={0.35} />
-                        <stop offset="100%" stopColor={COR_RESERVAS} stopOpacity={0} />
-                      </linearGradient>
-                      <linearGradient id="gConcluidas" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor={COR_CONCLUIDAS} stopOpacity={0.25} />
-                        <stop offset="100%" stopColor={COR_CONCLUIDAS} stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="2 4" stroke={COR_GRADE} vertical={false} />
-                    <XAxis dataKey="mes" stroke={COR_EIXO} tickLine={false} axisLine={false} fontSize={11} />
-                    <YAxis stroke={COR_EIXO} tickLine={false} axisLine={false} fontSize={11} width={30} allowDecimals={false} />
-                    <Tooltip contentStyle={{ background: COR_TOOLTIP_BG, border: "none", borderRadius: 2, color: "#fff", fontSize: 12 }} />
-                    <Area type="monotone" dataKey="reservas" name="Reservas" stroke={COR_RESERVAS} strokeWidth={2} fill="url(#gReservas)" />
-                    <Area type="monotone" dataKey="concluidas" name="Concluídas" stroke={COR_CONCLUIDAS} strokeWidth={2} fill="url(#gConcluidas)" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              )}
-            </div>
+            )}
           </div>
-        )}
-        </div>
-
-        <div className={styles.sideColumn}>
-        <div className={styles.panel}>
+        </>
+      ),
+    },
+    /* O gráfico "Reservas x Concluídas" era derivado de /relatorios/sla-aprovacao —
+       uma métrica do fluxo de aprovação. Sem aprovação, a série "concluídas" seria
+       apenas uma fração fixa da série "reservas": um gráfico que só repete a mesma
+       curva duas vezes. Removido em vez de mantido zerado. */
+    {
+      id: "frota",
+      peso:
+        ALTURA_CABECALHO_PAINEL +
+        ALTURA_PADDING_CORPO +
+        (plataformas.length === 0 ? ALTURA_ESTADO_VAZIO : plataformas.length * ALTURA_LINHA_FROTA) +
+        ALTURA_RODAPE_PAINEL,
+      conteudo: (
+        <>
           <div className={styles.panelHeader}>
             <div>
               <div className={styles.panelEyebrow}>Frota</div>
-              <h2 className={styles.panelTitle}>Status em tempo real</h2>
+              <h2 id={idTituloPainel("frota")} className={styles.panelTitle}>Status em tempo real</h2>
             </div>
           </div>
           <div className={styles.panelBody}>
@@ -815,46 +817,57 @@ export function DashboardClient({ usuarioId, usuarioNome, perfil, setorNome }: D
               <div className={styles.empty}>Nenhuma plataforma cadastrada.</div>
             ) : (
               <div className={styles.fleetList}>
+                {/* Cada linha era cinco níveis competindo: código, nome, categoria ·
+                    local, rótulo de status e um detalhe. Ficaram três — nome (o
+                    protagonista), uma linha secundária "código · local" e o status. O
+                    detalhe só sobrevive quando ACRESCENTA algo ao rótulo: "até 15:30" sob
+                    "Em Uso" muda o que o usuário faz; "Indisponível por manutenção" sob
+                    "Em Manutenção" era a mesma frase duas vezes. */}
                 {plataformas.map((p) => {
                   const emUso = agenda?.hoje.find((r) => r.plataformaId === p.id && r.status === "em_uso");
                   const proxima = agenda?.hoje
                     .filter((r) => r.plataformaId === p.id && (r.status === "agendada" || r.status === "pendente") && r.horaInicio > nowHHMM())
                     .sort((a, b) => a.horaInicio.localeCompare(b.horaInicio))[0];
                   let statusLabel = "Disponível";
-                  let detalhe = "Disponível agora";
+                  let detalhe: string | null = null;
                   let dotClasse = styles.fleetDotDisponivel;
                   let corClasse = styles.fleetCorDisponivel;
                   if (p.status === "reservada") {
                     statusLabel = "Em Uso";
                     dotClasse = styles.fleetDotEmUso;
                     corClasse = styles.fleetCorEmUso;
-                    detalhe = emUso ? `${emUso.setorNome} · retorno ${emUso.horaFim}` : "Em uso";
+                    detalhe = emUso ? `até ${emUso.horaFim}` : null;
                   } else if (p.status === "manutencao") {
                     statusLabel = "Em Manutenção";
                     dotClasse = styles.fleetDotManutencao;
                     corClasse = styles.fleetCorManutencao;
-                    detalhe = "Indisponível por manutenção";
                   } else if (p.status === "inativa") {
                     statusLabel = "Inativa";
                     dotClasse = styles.fleetDotInativa;
                     corClasse = styles.fleetCorInativa;
-                    detalhe = "Fora de operação";
                   } else if (proxima) {
-                    detalhe = `Livre até ${proxima.horaInicio}`;
+                    detalhe = `livre até ${proxima.horaInicio}`;
                   }
                   return (
                     <div key={p.id} className={styles.fleetRow}>
-                      <span className={`${styles.fleetDot} ${dotClasse}`} />
+                      <span className={`${styles.fleetDot} ${dotClasse}`} aria-hidden="true" />
                       <div className={styles.fleetInfo}>
-                        <span className={styles.fleetCode}>{p.codigo}</span>
-                        <span className={styles.fleetName}>{p.nome}</span>
+                        {/* Nome longo trunca; categoria e nome completo ficam no title em
+                            vez de forçarem uma terceira linha na coluna estreita. */}
+                        <span
+                          className={styles.fleetName}
+                          title={`${p.nome} · ${CATEGORIA_LABEL[p.categoria] ?? p.categoria}`}
+                        >
+                          {p.nome}
+                        </span>
                         <span className={styles.fleetMeta}>
-                          {CATEGORIA_LABEL[p.categoria] ?? p.categoria} · {p.localizacao ?? "—"}
+                          {p.codigo}
+                          {p.localizacao ? ` · ${p.localizacao}` : ""}
                         </span>
                       </div>
                       <div className={styles.fleetStatus}>
                         <span className={`${styles.fleetStatusLabel} ${corClasse}`}>{statusLabel}</span>
-                        <span className={styles.fleetDetail}>{detalhe}</span>
+                        {detalhe && <span className={styles.fleetDetail}>{detalhe}</span>}
                       </div>
                     </div>
                   );
@@ -868,105 +881,77 @@ export function DashboardClient({ usuarioId, usuarioNome, perfil, setorNome }: D
               Ver frota completa <ArrowUpRight size={13} strokeWidth={1.75} />
             </Link>
           </div>
-        </div>
+        </>
+      ),
+    },
+    /* O painel de conformidade NR-18/NR-35 saiu: ele acompanhava o checklist como
+       etapa da reserva, e o checklist deixou de fazer parte desse fluxo. As normas do
+       equipamento continuam visíveis na Frota, onde são atributo do ativo. */
+  ];
 
-        <div className={`${styles.panel} ${styles.alertPanel}`}>
-          {proximoChecklist ? (
-            <>
-              <div className={styles.alertHeader}>
-                <div className={styles.alertIcon}>
-                  <AlertTriangle size={20} strokeWidth={1.75} />
-                </div>
-                <div>
-                  <div className={styles.panelEyebrow}>Conformidade · NR-18 / NR-35</div>
-                  <h2 className={styles.alertTitle}>
-                    Checklist de segurança pendente {formatarContagemRegressiva(proximoChecklist.data, proximoChecklist.horaInicio)}.
-                  </h2>
-                </div>
-              </div>
-              <div className={styles.alertBody}>
-                <div className={styles.alertMetaRow}>
-                  <span className={styles.tableMono}>
-                    {proximoChecklist.horaInicio} · {plataformasPorId.get(proximoChecklist.plataformaId)?.codigo ?? proximoChecklist.plataformaNome}
-                  </span>
-                  <span className={styles.priorityTag}>{proximoChecklist.prioridade.toUpperCase()}</span>
-                </div>
-                <p className={styles.alertSub}>
-                  {proximoChecklist.setorNome} · {proximoChecklist.solicitanteNome} · {proximoChecklist.plataformaNome}
-                </p>
-                {checklistItens.length > 0 && (
-                  <ul className={styles.checklistItemsList}>
-                    {checklistItens.map((item) => (
-                      <li key={item.id}>{item.descricao}</li>
-                    ))}
-                  </ul>
-                )}
-                <div className={styles.alertActions}>
-                  <Link href={`/reservas/${proximoChecklist.id}`} className={styles.btnSolid}>
-                    Iniciar checklist
-                  </Link>
-                  <button type="button" className={styles.btnOutlineSm} title="Disponível em uma próxima sprint" disabled>
-                    Delegar
-                  </button>
-                </div>
-              </div>
-            </>
-          ) : (
-            <div className={styles.panelBody}>
-              <div className={styles.panelEyebrow}>Conformidade · NR-18 / NR-35</div>
-              <h2 className={styles.panelTitle}>Checklists em dia</h2>
-              <p className={styles.alertSub}>Nenhum checklist de segurança pendente no momento.</p>
+  if (ehAprovador) {
+    paineis.push({
+      id: "utilizacao",
+      peso:
+        ALTURA_CABECALHO_PAINEL +
+        ALTURA_PADDING_CORPO +
+        (utilizacaoOrdenada.length === 0
+          ? ALTURA_ESTADO_VAZIO
+          : utilizacaoOrdenada.length * ALTURA_LINHA_UTILIZACAO + ALTURA_RODAPE_PAINEL),
+      conteudo: (
+        <>
+          <div className={styles.panelHeader}>
+            <div>
+              <div className={styles.panelEyebrow}>Frota · 30 dias</div>
+              <h2 id={idTituloPainel("utilizacao")} className={styles.panelTitle}>Utilização por unidade</h2>
             </div>
-          )}
-        </div>
-
-        {ehAprovador && (
-          <div className={styles.panel}>
-            <div className={styles.panelHeader}>
-              <div>
-                <div className={styles.panelEyebrow}>Frota · 30 dias</div>
-                <h2 className={styles.panelTitle}>Utilização por unidade</h2>
-              </div>
-            </div>
-            <div className={styles.panelBody}>
-              {utilizacaoOrdenada.length === 0 ? (
-                <div className={styles.empty}>Sem dados no período.</div>
-              ) : (
-                <div className={styles.utilList}>
-                  {utilizacaoOrdenada.map((p) => {
-                    const corClasse = p.taxaUtilizacao > 70 ? styles.utilBarAlta : p.taxaUtilizacao > 40 ? styles.utilBarMedia : styles.utilBarBaixa;
-                    return (
-                      <div key={p.plataformaId} className={styles.utilRow}>
-                        <div className={styles.utilLabelRow}>
-                          <span className={styles.tableMono}>{p.codigo}</span>
-                          <span className={styles.tableMono}>{p.taxaUtilizacao}%</span>
-                        </div>
-                        <div className={styles.utilTrack}>
-                          <div className={`${styles.utilFill} ${corClasse}`} style={{ width: `${Math.min(100, p.taxaUtilizacao)}%` }} />
-                        </div>
+          </div>
+          <div className={styles.panelBody}>
+            {utilizacaoOrdenada.length === 0 ? (
+              <div className={styles.empty}>Sem dados no período.</div>
+            ) : (
+              <div className={styles.utilList}>
+                {utilizacaoOrdenada.map((p) => {
+                  const corClasse = p.taxaUtilizacao > 70 ? styles.utilBarAlta : p.taxaUtilizacao > 40 ? styles.utilBarMedia : styles.utilBarBaixa;
+                  return (
+                    <div key={p.plataformaId} className={styles.utilRow}>
+                      <div className={styles.utilLabelRow}>
+                        <span className={styles.tableMono}>{p.codigo}</span>
+                        <span className={styles.tableMono}>{p.taxaUtilizacao}%</span>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-            {utilizacaoOrdenada.length > 0 && (
-              <div className={styles.panelFooter}>
-                <span>Amostra · {utilizacaoOrdenada.length} plataformas</span>
-                <span>Média · {mediaUtilizacao}%</span>
+                      <div className={styles.utilTrack}>
+                        <div className={`${styles.utilFill} ${corClasse}`} style={{ width: `${Math.min(100, p.taxaUtilizacao)}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
-        )}
-        </div>
-      </div>
+          {utilizacaoOrdenada.length > 0 && (
+            <div className={styles.panelFooter}>
+              <span>Amostra · {utilizacaoOrdenada.length} plataformas</span>
+              <span>Média · {mediaUtilizacao}%</span>
+            </div>
+          )}
+        </>
+      ),
+    });
+  }
 
-      {perfil === "admin" && (
-        <div className={styles.panel}>
+  if (perfil === "admin") {
+    paineis.push({
+      id: "ranking",
+      // Tabela de 4 colunas: fica numa faixa de largura total abaixo das pilhas (ver
+      // Composicao) em vez de espremida numa coluna estreita.
+      largo: true,
+      peso: 0,
+      conteudo: (
+        <>
           <div className={styles.panelHeader}>
             <div>
               <div className={styles.panelEyebrow}>Consumo · Período</div>
-              <h2 className={styles.panelTitle}>Ranking de setores</h2>
+              <h2 id={idTituloPainel("ranking")} className={styles.panelTitle}>Ranking de setores</h2>
             </div>
             <Link href="/relatorios" className={styles.footerLink}>
               Ver relatório completo <ArrowUpRight size={13} strokeWidth={1.75} />
@@ -1005,13 +990,101 @@ export function DashboardClient({ usuarioId, usuarioNome, perfil, setorNome }: D
               </table>
             )}
           </div>
+        </>
+      ),
+    });
+  }
+
+  return (
+    <section className={styles.page} data-perfil={perfil}>
+      <div className={styles.hero}>
+        <div className={styles.heroTexto}>
+          <div className={styles.eyebrow}>{eyebrowHero()}</div>
+          <h1 className={styles.h1}>
+            {saudacao()}, {usuarioNome.split(" ")[0]}.
+            <em>{contextoHero}</em>
+          </h1>
+        </div>
+        {/* Uma ação dominante só. "Abrir fila de aprovações" saiu junto com a fila; o
+            botão de relatórios deixou de prometer um "briefing" (que nunca existiu como
+            artefato) e passa a dizer para onde leva. */}
+        <div className={styles.heroActions}>
+          <Link href="/relatorios" className={styles.btnOutline}>
+            Ver relatório
+          </Link>
+          <Link href="/reservas" className={styles.btnSolid}>
+            {ehAprovador ? "Ver reservas" : "Minhas reservas"}
+            <ArrowRight size={15} strokeWidth={1.75} />
+          </Link>
+        </div>
+      </div>
+
+      {erro && (
+        <div className={styles.error} role="alert">
+          {erro}
         </div>
       )}
 
-      <div className={styles.footer}>
-        <span>PlataformaRes · gestão de equipamentos elevatórios · {setorNome ?? "Matriz"}</span>
-        <span>Sistema operacional · atualizado às {ultimaSincronizacao}</span>
-      </div>
+      {/* KPI = rótulo, número e UMA linha de contexto. Antes cada célula carregava duas
+          linhas auxiliares (sub + trend), e seis células somavam doze fragmentos de texto
+          disputando atenção com os próprios números — que são o motivo da faixa existir.
+          A segunda linha só reaparece quando é exceção (aprovações atrasadas), em hazard. */}
+      {kpis && (
+        <div className={styles.kpiStrip}>
+          <Link href="/plataformas" className={`${styles.kpiCell} ${styles.kpiInk}`}>
+            <span className={styles.kpiLabel}>Frota Total</span>
+            <span className={styles.kpiValue}>{kpis.totalPlataformas}</span>
+            <span className={styles.kpiSub}>
+              {kpis.manutencao > 0 ? `${kpis.manutencao} em manutenção` : "todas operacionais"}
+            </span>
+          </Link>
+          <Link href="/plataformas" className={`${styles.kpiCell} ${styles.kpiGreen}`}>
+            <span className={styles.kpiLabel}>Disponíveis Agora</span>
+            <span className={styles.kpiValue}>{kpis.disponiveis}</span>
+            <span className={styles.kpiSub}>
+              de {kpis.totalPlataformas}
+              {kpis.totalPlataformas > 0 ? ` · ${Math.round((kpis.disponiveis / kpis.totalPlataformas) * 100)}%` : ""}
+            </span>
+          </Link>
+          <Link href="/plataformas" className={`${styles.kpiCell} ${styles.kpiBlue}`}>
+            <span className={styles.kpiLabel}>Em Operação</span>
+            <span className={styles.kpiValue}>{kpis.emUso}</span>
+            <span className={styles.kpiSub}>
+              {emUsoAgora
+                ? `${plataformasPorId.get(emUsoAgora.plataformaId)?.codigo ?? emUsoAgora.plataformaNome} · até ${emUsoAgora.horaFim}`
+                : "nenhuma em uso"}
+            </span>
+          </Link>
+          <Link href="/plataformas" className={`${styles.kpiCell} ${styles.kpiOrange}`}>
+            <span className={styles.kpiLabel}>Em Manutenção</span>
+            <span className={styles.kpiValue}>{kpis.manutencao}</span>
+            {/* Os códigos das plataformas paradas vão para o title: numa célula estreita
+                eles truncavam no meio da sigla e não diziam mais nada. */}
+            <span className={styles.kpiSub} title={manutencaoPlataformas.map((p) => p.nome).join(" · ") || undefined}>
+              {manutencaoPlataformas.map((p) => p.codigo).join(" · ") || "nenhuma parada"}
+            </span>
+          </Link>
+          {/* "Aprovações Pendentes" e "Checklists NR" mediam um fluxo que não existe
+              mais — ficariam zerados para sempre. No lugar entram as duas perguntas que o
+              painel ainda precisa responder: o que está agendado e o que deu errado.
+              Cor própria (âmbar) — antes reusava o azul de "Em Operação", dois KPIs
+              distintos não deveriam compartilhar o mesmo indicador. */}
+          <Link href="/reservas" className={`${styles.kpiCell} ${styles.kpiAmber}`}>
+            <span className={styles.kpiLabel}>Reservas Hoje</span>
+            <span className={styles.kpiValue}>{kpis.reservasHoje}</span>
+            <span className={styles.kpiSub}>{kpis.reservasProximos7Dias} nos próx. 7 dias</span>
+          </Link>
+          <Link href="/nao-conformidades" className={`${styles.kpiCell} ${styles.kpiRed}`}>
+            <span className={styles.kpiLabel}>Não Conformidades</span>
+            <span className={styles.kpiValue}>{kpis.naoConformidadesRecentes}</span>
+            {/* "registradas nos últimos 30 dias" truncava em "registradas nos últi…" na
+                célula de seis colunas; o rótulo já diz o que é, sobra só o período. */}
+            <span className={styles.kpiSub}>nos últimos 30 dias</span>
+          </Link>
+        </div>
+      )}
+
+      <Composicao paineis={paineis} />
     </section>
   );
 }

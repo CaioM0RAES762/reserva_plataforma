@@ -1,0 +1,126 @@
+/* Painel "Mais filtros" — o mesmo padrão em Reservas, Histórico e Auditoria.
+ *
+ * Antes, cada uma dessas telas empilhava todos os controles de filtro em linha (até seis
+ * em Histórico), consumindo duas a três faixas de altura acima da tabela antes de o
+ * usuário ver qualquer dado. Busca e status respondem por quase todo o uso real; o resto
+ * (período, setor, plataforma, entidade) passa a viver atrás de um botão.
+ *
+ * O painel é sempre um grid horizontal no desktop e empilha no mobile — não é um
+ * "drawer": abre no fluxo, empurrando a tabela, para não cobrir o conteúdo. */
+
+.barra {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+/* Empurra tudo que vier depois (contagem de resultados, botão "Mais filtros") para a
+   direita, sem precisar de um wrapper extra em cada tela. */
+.espaco { flex: 1 1 auto; min-width: 0; }
+
+.contagem {
+  font-size: var(--text-meta);
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+.botao {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: var(--control-h-compact);
+  padding: 0 14px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: var(--paper-elev);
+  color: var(--ink-soft);
+  font-family: inherit;
+  font-size: var(--text-secondary);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.botao:hover { border-color: var(--ink-muted); color: var(--ink); }
+.botaoAberto { border-color: var(--ink-muted); color: var(--ink); }
+
+.botao svg { transition: transform 0.15s; }
+.botaoAberto svg { transform: rotate(180deg); }
+
+/* Contador de filtros secundários ativos: sem ele, fechar o painel esconderia o fato de
+   que a lista continua filtrada — o usuário veria uma tabela curta sem saber por quê. */
+.contador {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  font-weight: 600;
+}
+
+.painel {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  align-items: end;
+  gap: 14px 18px;
+  padding: 16px 18px;
+  margin-bottom: 16px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-md);
+  background: var(--paper-elev);
+}
+
+.campo { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+
+.campo label {
+  font-size: var(--text-eyebrow);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow);
+  color: var(--ink-muted);
+}
+
+.campo input,
+.campo select {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--control-h-compact);
+  padding: 0 11px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-sm);
+  background: var(--paper);
+  font-size: var(--text-secondary);
+  color: var(--ink);
+}
+.campo input:focus,
+.campo select:focus { outline: none; border-color: var(--ink-muted); }
+
+/* Ação de limpar fica alinhada com a base dos campos, na última coluna do grid, em vez
+   de ocupar uma linha própria. */
+.limpar {
+  justify-self: start;
+  min-height: var(--control-h-compact);
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: var(--ind-radius-sm);
+  background: transparent;
+  color: var(--ink-muted);
+  font-family: inherit;
+  font-size: var(--text-secondary);
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.limpar:hover { color: var(--hazard); border-color: color-mix(in oklch, var(--hazard) 30%, transparent); }
+
+@media (max-width: 640px) {
+  .painel { grid-template-columns: 1fr; }
+}

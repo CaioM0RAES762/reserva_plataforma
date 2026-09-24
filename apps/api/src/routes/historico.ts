@@ -52,7 +52,7 @@ function montarWhereHistorico(
 
   if (filtros.q) {
     dbRequest.input("q", sql.NVarChar, `%${filtros.q}%`);
-    where += " AND (s.nome LIKE @q OR u.nome LIKE @q OR p.nome LIKE @q OR r.motivo LIKE @q)";
+    where += " AND (s.nome LIKE @q OR u.nome LIKE @q OR p.nome LIKE @q OR r.motivo LIKE @q OR r.empresa_terceirizada LIKE @q)";
   }
   if (filtros.plataforma) {
     dbRequest.input("plataforma_id", sql.UniqueIdentifier, filtros.plataforma);
@@ -129,6 +129,8 @@ export async function historicoRoutes(app: FastifyInstance): Promise<void> {
       "ID",
       "Criada em",
       "Setor",
+      // Logo após o setor porque só faz sentido para "Terceirizados"; vazia nas demais linhas.
+      "Empresa terceirizada",
       "Responsável",
       "Plataforma",
       "Data",
@@ -143,6 +145,7 @@ export async function historicoRoutes(app: FastifyInstance): Promise<void> {
         row.id,
         formatarDataHoraBr(row.criado_em),
         row.setor_nome,
+        escaparCampoCsv(row.empresa_terceirizada ?? ""),
         row.solicitante_nome,
         row.plataforma_nome,
         formatarDataBr(row.data),

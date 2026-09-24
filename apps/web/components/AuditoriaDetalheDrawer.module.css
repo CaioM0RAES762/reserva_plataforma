@@ -1,0 +1,251 @@
+/* Drawer lateral do detalhe de auditoria.
+ *
+ * Drawer e não modal central: o detalhe é uma leitura de apoio à lista, e deslizar
+ * lateralmente preserva o contexto da linha de onde veio. Mantém a mesma linguagem dos
+ * modais do produto — papel elevado, hairline, raio pequeno, sem sombra pesada.
+ */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in oklch, var(--ink) 45%, transparent);
+  z-index: 200;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.drawer {
+  width: min(460px, 100vw);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--paper-elev);
+  border-left: 1px solid var(--hairline);
+  overflow: hidden;
+  animation: entrarDrawer 180ms ease;
+}
+@keyframes entrarDrawer {
+  from { transform: translateX(16px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .drawer { animation: none; }
+}
+
+/* ---------- Cabeçalho ---------- */
+.cabecalho {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  padding: 22px 22px 18px;
+  border-bottom: 1px solid var(--hairline);
+}
+.cabecalhoTexto { min-width: 0; }
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-eyebrow);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow);
+  color: var(--ink-muted);
+}
+/* O tom colore só o ícone da categoria — o mesmo critério da listagem. */
+.tom_neutro svg { color: var(--ink-muted); }
+.tom_sucesso svg { color: var(--signal); }
+.tom_atencao svg { color: var(--safety); }
+.tom_critico svg { color: var(--hazard); }
+
+.titulo {
+  margin-top: 8px;
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: var(--text-section-title);
+  line-height: 1.2;
+  color: var(--ink);
+}
+.dataExtensa {
+  margin-top: 5px;
+  font-size: var(--text-meta);
+  color: var(--ink-muted);
+}
+
+.fechar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border: 1px solid transparent;
+  border-radius: var(--ind-radius-sm);
+  background: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.fechar:hover { background: color-mix(in oklch, var(--ink) 6%, transparent); color: var(--ink); }
+
+/* ---------- Corpo ---------- */
+.corpo {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 20px 22px 28px;
+}
+
+.descricao {
+  margin-bottom: 20px;
+  font-size: var(--text-meta);
+  line-height: 1.5;
+  color: var(--ink-muted);
+}
+
+.bloco { margin-bottom: 22px; }
+.blocoTitulo {
+  margin-bottom: 7px;
+  font-size: var(--text-eyebrow);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow);
+  color: var(--ink-muted);
+}
+.valorForte {
+  font-size: var(--text-body);
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.valorFraco {
+  margin-top: 2px;
+  font-size: var(--text-meta);
+  color: var(--ink-muted);
+  overflow-wrap: anywhere;
+}
+
+/* Transição empilhada: aqui há largura para "de" e "para" ocuparem linhas próprias, o
+   que lê melhor que a seta horizontal usada na listagem. */
+.transicao {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 12px 14px;
+  border: 1px solid var(--hairline);
+  border-left: 3px solid var(--safety);
+  border-radius: var(--ind-radius-sm);
+  background: color-mix(in oklch, var(--ink) 2.5%, transparent);
+}
+.transicaoDe { font-size: var(--text-secondary); color: var(--ink-muted); }
+.transicaoSeta { font-size: var(--text-secondary); color: var(--ink-muted); line-height: 1; }
+.transicaoPara { font-size: var(--text-body); font-weight: 600; color: var(--ink); }
+
+.listaCampos { display: flex; flex-direction: column; gap: 9px; }
+.campo {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+}
+.campo dt {
+  flex-shrink: 0;
+  font-size: var(--text-meta);
+  color: var(--ink-muted);
+}
+.campo dd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: var(--text-meta);
+  color: var(--ink);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Detalhes técnicos ---------- */
+.tecnico {
+  margin-top: 26px;
+  padding-top: 16px;
+  border-top: 1px solid var(--hairline);
+}
+.tecnico summary {
+  font-size: var(--text-meta);
+  font-weight: 500;
+  color: var(--ink-muted);
+  cursor: pointer;
+}
+.tecnico summary:hover { color: var(--ink); }
+.tecnico[open] summary { margin-bottom: 14px; color: var(--ink-soft); }
+
+.mono { font-family: var(--font-mono); font-size: var(--text-micro); }
+
+/* UUID em mono e reduzido: é identificador para copiar, não informação para ler. */
+.uuid {
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  color: var(--ink-muted);
+  overflow-wrap: anywhere;
+}
+
+.copiar {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-sm);
+  background: transparent;
+  color: var(--ink-muted);
+  font-family: inherit;
+  font-size: var(--text-micro);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.copiar:hover { border-color: var(--ink-muted); color: var(--ink); }
+
+.payloadRotulo {
+  margin: 14px 0 6px;
+  font-size: var(--text-meta);
+  color: var(--ink-muted);
+}
+.payload {
+  max-height: 240px;
+  overflow: auto;
+  padding: 11px 13px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-sm);
+  background: color-mix(in oklch, var(--ink) 3%, transparent);
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  line-height: 1.5;
+  color: var(--ink-soft);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Em telas estreitas o drawer ocupa quase tudo — um painel de 460px em 360px seria a
+   tela inteira com uma faixa inútil de overlay ao lado. */
+@media (max-width: 640px) {
+  .drawer { width: 100vw; border-left: none; }
+}

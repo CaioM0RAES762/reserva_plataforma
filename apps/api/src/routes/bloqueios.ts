@@ -1,8 +1,21 @@
 import type { FastifyInstance } from "fastify";
-import { criarBloqueioSchema } from "@plataformares/shared";
+import { combinarDataHoraBrasilia, criarBloqueioSchema } from "@plataformares/shared";
 import { getPool, sql } from "../db/pool.js";
 import { autenticar, requireRole } from "../middlewares/rbac.js";
 import { reservasDentroDoIntervalo, type ReservaComData } from "../services/conflito.service.js";
+
+// "YYYY-MM-DDTHH:mm" (formato de <input type="datetime-local">, sem fuso — garantido pelo
+// regex de criarBloqueioSchema) → instante UTC real, convertendo o horário como Brasília.
+// BUG CORRIGIDO: antes usava `new Date(stringSemFuso)`, que o motor JS interpreta usando o
+// fuso do PROCESSO NODE (nunca fixado neste repo) — em vez de sempre Brasília, ficava
+// dependente de como o servidor de produção está configurado. Isso fazia bloqueios de
+// horário específico não baterem certo contra o instante da reserva (que já usa
+// combinarDataHoraBrasilia em conflito.service.ts), deixando reservas dentro do bloqueio
+// passarem sem serem barradas.
+function combinarDataHoraLocalInput(valor: string): Date {
+  const [data, hora] = valor.split("T");
+  return combinarDataHoraBrasilia(data, hora);
+}
 
 interface BloqueioRow {
   id: string;
@@ -59,8 +72,8 @@ export async function bloqueiosRoutes(app: FastifyInstance): Promise<void> {
       }
       const { motivo, confirmar } = parsed.data;
       const plataformaId = parsed.data.plataformaId ?? null;
-      const dataInicio = new Date(parsed.data.dataInicio);
-      const dataFim = new Date(parsed.data.dataFim);
+      const dataInicio = combinarDataHoraLocalInput(parsed.data.dataInicio);
+      const dataFim = combinarDataHoraLocalInput(parsed.data.dataFim);
 
       const pool = await getPool();
 
@@ -75,12 +88,15 @@ export async function bloqueiosRoutes(app: FastifyInstance): Promise<void> {
       }
 
       // RN-BLK-01: bloqueio não pode se sobrepor a reservas já agendada/em_uso sem
-      // confirmação explícita. Busca candidatas por data (faixa larga) e depois refina
-      // com a sobreposição exata via conflito.service.ts (unit-testável).
+      // confirmação explícita. Busca candidatas por data (faixa larga, com 1 dia de folga
+      // em cada ponta — dataInicio/dataFim são instantes UTC reais e o dia civil de
+      // Brasília correspondente pode cair no dia UTC anterior/seguinte perto da meia-noite)
+      // e depois refina com a sobreposição exata via conflito.service.ts (unit-testável).
+      const umDiaMs = 24 * 60 * 60 * 1000;
       const dbRequest = pool
         .request()
-        .input("data_inicio_dia", sql.Date, dataInicio)
-        .input("data_fim_dia", sql.Date, dataFim);
+        .input("data_inicio_dia", sql.Date, new Date(dataInicio.getTime() - umDiaMs))
+        .input("data_fim_dia", sql.Date, new Date(dataFim.getTime() + umDiaMs));
       let where = "r.status IN ('agendada','em_uso') AND r.data BETWEEN @data_inicio_dia AND @data_fim_dia";
       if (plataformaId) {
         dbRequest.input("plataforma_id", sql.UniqueIdentifier, plataformaId);

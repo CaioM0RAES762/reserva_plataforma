@@ -32,6 +32,10 @@ export default async function ContaPage() {
             <span className={styles.infoValue}>{usuario.email}</span>
           </div>
           <div className={styles.infoRow}>
+            <span className={styles.infoLabel}>Telefone</span>
+            <span className={styles.infoValue}>{usuario.telefone ?? "—"}</span>
+          </div>
+          <div className={styles.infoRow}>
             <span className={styles.infoLabel}>Perfil</span>
             <span className={styles.infoValue}>{usuario.perfil === "admin" ? "Admin" : "Colaborador"}</span>
           </div>

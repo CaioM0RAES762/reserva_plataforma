@@ -41,3 +41,21 @@ export interface UsuarioSessao {
 export function usuarioNoEscopoDaReserva(usuario: UsuarioSessao, setorReservaId: string): boolean {
   return usuario.perfil === "admin" || usuario.setorId === setorReservaId;
 }
+
+// Aprovação de reservas (aprovar/rejeitar/decidir substituição por urgência): Admin e Gestor
+// são aprovadores GLOBAIS — o setor do Gestor não limita esta capacidade. É deliberadamente
+// uma regra à parte de usuarioNoEscopoDaReserva, que continua valendo para as demais ações
+// do Gestor (alterar status, cancelar etc.); só o escopo de APROVAÇÃO deixou de ser por setor.
+export const PERFIS_APROVADORES: JwtPayload["perfil"][] = ["admin", "gestor_setor"];
+
+export function podeDecidirAprovacao(usuario: Pick<UsuarioSessao, "perfil">): boolean {
+  return PERFIS_APROVADORES.includes(usuario.perfil);
+}
+
+// Autor-ou-admin: regra de edição/exclusão de recursos "pessoais" (hoje só Comentário).
+// Diferente de usuarioNoEscopoDaReserva (escopo por SETOR, usado para leitura/criação), aqui a
+// comparação é por AUTORIA individual — qualquer colega do setor pode comentar e ler, mas só
+// quem escreveu (ou um admin) pode editar/excluir.
+export function usuarioEhAutorOuAdmin(usuario: Pick<JwtPayload, "perfil" | "sub">, autorId: string): boolean {
+  return usuario.perfil === "admin" || usuario.sub === autorId;
+}

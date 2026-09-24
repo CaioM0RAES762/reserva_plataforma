@@ -13,7 +13,7 @@
   letter-spacing: -0.015em;
   color: var(--ink);
 }
-.header p { font-size: var(--text-body-lg); color: var(--ink-soft); margin-top: 6px; }
+.header p { font-size: var(--text-secondary); color: var(--ink-muted); margin-top: 6px; }
 
 .btnOutline {
   background: var(--paper-elev);
@@ -31,14 +31,6 @@
 .btnOutline:hover { border-color: var(--ink-muted); background: color-mix(in oklch, var(--ink) 4%, transparent); }
 .btnOutline:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.filterBar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
-}
-
 .search {
   flex: 1;
   min-width: 180px;
@@ -53,8 +45,9 @@
 .search::placeholder { color: var(--ink-muted); }
 .search:focus { outline: none; border-color: var(--ink-muted); }
 
-.filterBar select,
-.filterBar input[type="date"] {
+/* O <select> de status vive na faixa sempre visível, ao lado da busca — os demais
+   controles moram no painel "Mais filtros" e usam o estilo de lá. */
+.selectStatus {
   min-height: var(--control-h);
   padding: 0 12px;
   border: 1px solid var(--hairline);
@@ -63,8 +56,7 @@
   font-size: var(--text-secondary);
   color: var(--ink-soft);
 }
-.filterBar select:focus,
-.filterBar input[type="date"]:focus { outline: none; border-color: var(--ink-muted); }
+.selectStatus:focus { outline: none; border-color: var(--ink-muted); }
 
 .error {
   background: var(--safety-soft);
@@ -121,3 +113,28 @@
   font-weight: 500;
 }
 .btnIcon:hover { border-color: var(--ink-muted); color: var(--ink); }
+
+/* ---------- Células de tabela (base compartilhada) ----------
+   Geometria e hierarquia em components/Tabela.module.css — ver o comentário de lá. */
+/* max-width: a linha secundária agora pode carregar "Setor · Empresa" (até 120 caracteres da
+   empresa). Sem um teto, o nowrap da base alargaria a coluna Responsável e empurraria o resto
+   da tabela para a rolagem horizontal; com ele, trunca com reticências e o title mostra tudo. */
+.tableSub {
+  composes: sub from "../../../components/Tabela.module.css";
+  max-width: 32ch;
+}
+.tableJanela { composes: janela from "../../../components/Tabela.module.css"; }
+.tableMotivo { composes: textoLongo from "../../../components/Tabela.module.css"; }
+
+/* Rótulo acessível para controles cuja função já é óbvia visualmente. */
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { apenasDigitosTelefone, MENSAGEM_TELEFONE_INVALIDO, SENHA_INICIAL_PADRAO, telefoneValido } from "@plataformares/shared";
 import styles from "./Admin.module.css";
 import { useModalAcessivel } from "../lib/useModalAcessivel";
 
@@ -14,6 +15,7 @@ export interface SetorOpcao {
 export interface UsuarioFormValues {
   nome: string;
   email: string;
+  telefone: string;
   perfil: Perfil;
   setorId: string | null;
 }
@@ -22,6 +24,7 @@ export interface UsuarioEditavel {
   id: string;
   nome: string;
   email: string;
+  telefone: string | null;
   perfil: Perfil;
   setorId: string | null;
 }
@@ -43,10 +46,16 @@ export function UsuarioModal({ usuario, setores, onClose, onSalvar }: UsuarioMod
   const { refDialogo, propsDialogo, idTitulo, aoClicarNoOverlay } = useModalAcessivel(onClose, "usuario-modal");
   const [nome, setNome] = useState(usuario?.nome ?? "");
   const [email, setEmail] = useState(usuario?.email ?? "");
+  const [telefone, setTelefone] = useState(usuario?.telefone ?? "");
   const [perfil, setPerfil] = useState<Perfil>(usuario?.perfil ?? "colaborador");
   const [setorId, setSetorId] = useState(usuario?.setorId ?? "");
   const [erro, setErro] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
+
+  // Telefone é obrigatório na criação; na edição, só valida se algo foi digitado (contas
+  // anteriores à migration 0021 podem não ter o dado, e editar nome/e-mail não deveria
+  // travar por causa disso).
+  const telefoneObrigatorio = !usuario;
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -60,12 +69,22 @@ export function UsuarioModal({ usuario, setores, onClose, onSalvar }: UsuarioMod
       setErro("Selecione um setor para os perfis Gestor de Setor e Colaborador.");
       return;
     }
+    if (telefoneObrigatorio && !telefone.trim()) {
+      setErro("Informe o número de contato.");
+      return;
+    }
+    if (telefone.trim() && !telefoneValido(telefone)) {
+      setErro(MENSAGEM_TELEFONE_INVALIDO);
+      return;
+    }
 
     setSalvando(true);
     try {
       await onSalvar({
         nome: nome.trim(),
         email: email.trim().toLowerCase(),
+        // Normalizado (só dígitos) — a máscara é só apresentação.
+        telefone: apenasDigitosTelefone(telefone),
         perfil,
         setorId: perfil === "admin" ? null : setorId,
       });
@@ -112,6 +131,18 @@ export function UsuarioModal({ usuario, setores, onClose, onSalvar }: UsuarioMod
                 />
               </div>
               <div className={styles.formGroup}>
+                <label htmlFor="us-telefone">Número de contato{telefoneObrigatorio ? " *" : ""}</label>
+                <input
+                  id="us-telefone"
+                  type="tel"
+                  inputMode="tel"
+                  value={telefone}
+                  onChange={(e) => setTelefone(e.target.value)}
+                  placeholder="(31) 99999-9999"
+                  required={telefoneObrigatorio}
+                />
+              </div>
+              <div className={styles.formGroup}>
                 <label htmlFor="us-perfil">Perfil *</label>
                 <select id="us-perfil" value={perfil} onChange={(e) => setPerfil(e.target.value as Perfil)}>
                   {(Object.keys(PERFIL_LABEL) as Perfil[]).map((p) => (
@@ -136,8 +167,12 @@ export function UsuarioModal({ usuario, setores, onClose, onSalvar }: UsuarioMod
               )}
               {!usuario && (
                 <div className={`${styles.formGroup} ${styles.formGroupFull}`}>
+                  <div className={styles.senhaInicialBox}>
+                    <span className={styles.senhaInicialLabel}>Senha inicial</span>
+                    <span className={styles.senhaInicialValor}>{SENHA_INICIAL_PADRAO}</span>
+                  </div>
                   <span className={styles.formHint}>
-                    Um código de ativação será enviado por e-mail para o novo usuário definir a senha.
+                    O usuário poderá entrar com essa senha e será obrigado a trocá-la no primeiro acesso.
                   </span>
                 </div>
               )}

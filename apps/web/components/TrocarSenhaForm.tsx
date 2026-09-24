@@ -3,8 +3,15 @@
 import { useState, type FormEvent } from "react";
 import styles from "../app/(app)/conta/page.module.css";
 import { apiFetch } from "../lib/api";
+import { PasswordStrength } from "./auth/PasswordStrength";
 
-export function TrocarSenhaForm() {
+export interface TrocarSenhaFormProps {
+  /** Chamado após a troca ter sucesso — usado pelo gate de senha provisória (login com
+   *  senha inicial) para recarregar a sessão e liberar o restante da aplicação. */
+  onSucesso?: () => void;
+}
+
+export function TrocarSenhaForm({ onSucesso }: TrocarSenhaFormProps = {}) {
   const [senhaAtual, setSenhaAtual] = useState("");
   const [novaSenha, setNovaSenha] = useState("");
   const [erro, setErro] = useState<string | null>(null);
@@ -24,6 +31,7 @@ export function TrocarSenhaForm() {
       setSucesso(true);
       setSenhaAtual("");
       setNovaSenha("");
+      onSucesso?.();
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Erro ao trocar senha.");
     } finally {
@@ -60,6 +68,7 @@ export function TrocarSenhaForm() {
           onChange={(e) => setNovaSenha(e.target.value)}
           required
         />
+        <PasswordStrength senha={novaSenha} />
       </div>
 
       <button className={styles.submit} type="submit" disabled={carregando}>

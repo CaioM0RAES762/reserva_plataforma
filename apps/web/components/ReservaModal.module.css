@@ -1,0 +1,491 @@
+/* ==========================================================================
+   Nova Reserva — modal compacto (desktop) / folha de baixo (mobile).
+
+   O "shell" (overlay + caixa + cabeçalho/corpo/rodapé) é próprio deste modal em vez de
+   compor o de Modal.module.css: no mobile ele vira uma folha ancorada embaixo, e um
+   override dependeria da ordem em que o bundler injeta os dois CSS. As lições daquela
+   base valem aqui igual:
+   - o <form> precisa ser flex para o `flex:1` do corpo valer — sem isso o corpo nunca
+     rola e o rodapé (com o botão Reservar) é cortado pela caixa com overflow:hidden;
+   - `min-height: 0` em toda a cadeia, senão um item flex se recusa a ficar menor que o
+     conteúdo e a rolagem interna não acontece;
+   - `min-width: 0` nos itens de grid/flex, senão um <select> com opção longa estoura a
+     coluna (é a causa real do scroll horizontal que já apareceu nos formulários).
+   Tokens do app (globals.css) em tudo; nada de cor ou sombra soltas.
+   ========================================================================== */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: color-mix(in oklch, var(--ink) 45%, transparent);
+}
+
+.dialog {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  width: min(560px, 100%);
+  /* 100vh de fallback; 100dvh evita que a barra de endereço móvel corte o rodapé. */
+  max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-md);
+  background: var(--paper-elev);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+/* ---------- Cabeçalho ---------- */
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--hairline);
+}
+.titulo {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: var(--text-panel-title);
+  color: var(--ink);
+}
+.fechar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: var(--ind-radius-sm);
+  background: none;
+  color: var(--ink-muted);
+  cursor: pointer;
+}
+.fechar:hover { background: color-mix(in oklch, var(--ink) 6%, transparent); color: var(--ink); }
+
+/* ---------- Corpo (a única região que rola) ---------- */
+
+.body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 20px;
+  overflow-y: auto;
+  /* Guarda de segurança, não a correção: o transbordo horizontal é resolvido na origem
+     (min-width:0). Definir overflow-y já força o eixo X a "auto"; sem esta linha qualquer
+     conteúdo indevidamente largo traria a barra lateral de volta. */
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+}
+/* Sem isto os filhos de uma coluna flex com overflow encolhem em vez de deixar o corpo rolar. */
+.body > * { flex-shrink: 0; }
+
+/* Dados automáticos (solicitante · setor): fato da sessão, em leitura — nada aqui é editável. */
+.contexto {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  margin: 0;
+  padding: 9px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-sm);
+  background: color-mix(in oklch, var(--ink) 2.5%, transparent);
+  font-size: var(--text-secondary);
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+}
+.contexto strong { font-weight: 600; color: var(--ink); }
+
+/* ---------- Campos ---------- */
+
+.campo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.rotulo {
+  font-size: var(--text-eyebrow);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow);
+  color: var(--ink-muted);
+}
+.controle {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--control-h);
+  padding: 0 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-sm);
+  background: var(--paper-elev);
+  font-size: var(--text-body);
+  color: var(--ink);
+}
+textarea.controle {
+  min-height: 64px;
+  padding: 10px 12px;
+  line-height: 1.4;
+  resize: vertical;
+}
+.controle:focus { border-color: var(--ink-muted); }
+.controle[aria-invalid="true"] { border-color: var(--hazard); }
+.erroCampo {
+  margin: 0;
+  font-size: var(--text-meta);
+  line-height: 1.4;
+  color: var(--hazard);
+}
+
+.grade2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+/* Resumo do recurso escolhido: informação de apoio e de segurança (a quantidade de pessoas
+   é validada contra estes números), em uma linha — não é entrada. */
+.recurso {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-sm);
+  background: color-mix(in oklch, var(--ink) 2.5%, transparent);
+  font-size: var(--text-meta);
+  color: var(--ink-muted);
+}
+.recurso strong {
+  font-family: var(--font-mono);
+  font-size: var(--text-secondary);
+  font-weight: 600;
+  color: var(--ink);
+}
+/* Contato de emergência do equipamento: número que se precisa ter à mão antes de subir. */
+.recursoEmergencia {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border: 1px solid color-mix(in oklch, var(--safety) 38%, transparent);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--safety) 12%, transparent);
+  color: color-mix(in oklch, var(--safety) 72%, var(--ink));
+  font-size: var(--text-micro);
+  font-weight: 600;
+}
+
+/* ---------- Data ---------- */
+
+.linhaData {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.atalhosData {
+  display: flex;
+  gap: 8px;
+}
+.chipData {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--control-h);
+  padding: 0 16px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-sm);
+  background: var(--paper-elev);
+  color: var(--ink-soft);
+  font-family: inherit;
+  font-size: var(--text-secondary);
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.chipData:hover { border-color: var(--ink-muted); color: var(--ink); }
+.chipData[aria-pressed="true"] {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+/* Prioridade: mesmo chip das datas, em altura compacta (o modal não pode crescer muito). */
+.atalhosPrioridade .chipData {
+  min-height: var(--control-h-compact);
+  padding: 0 14px;
+}
+.chipData[aria-checked="true"] {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+
+.campoData {
+  flex: 1 1 150px;
+  min-width: 0;
+}
+
+/* ---------- Contato ---------- */
+
+.contatoLinha {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin: 0;
+  font-size: var(--text-secondary);
+  color: var(--ink-soft);
+}
+.contatoLinha strong {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--ink);
+}
+.linkAcao {
+  min-height: var(--control-h-compact);
+  padding: 0 4px;
+  border: none;
+  background: none;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: var(--text-secondary);
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.linkAcao:hover { color: var(--safety); }
+
+/* ---------- Mais opções ---------- */
+
+.opcoes {
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-sm);
+}
+.opcoesToggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: var(--control-h);
+  padding: 0 12px;
+  border: none;
+  background: none;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: var(--text-secondary);
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+.opcoesToggle:hover { background: color-mix(in oklch, var(--ink) 3%, transparent); }
+.opcoesToggle svg { flex-shrink: 0; transition: transform 0.15s; }
+.opcoesToggle[aria-expanded="true"] svg { transform: rotate(180deg); }
+/* Resumo do que foge do padrão — quem fecha o painel continua vendo "3 pessoas · Urgente". */
+.opcoesResumo {
+  min-width: 0;
+  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-meta);
+  font-weight: 400;
+  color: var(--ink-muted);
+}
+.opcoesPainel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px 12px;
+  border-top: 1px solid var(--hairline);
+}
+
+.opcaoCheck {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  font-size: var(--text-body);
+  color: var(--ink);
+  cursor: pointer;
+}
+.opcaoCheck input {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--ink);
+  cursor: pointer;
+}
+/* Continuação de uma caixa marcada: recuada sob ela. */
+.opcaoAninhada {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin: -6px 0 0 28px;
+}
+.opcaoAninhada label {
+  font-size: var(--text-secondary);
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+.opcaoAninhada .controle {
+  width: 84px;
+  min-height: var(--control-h-compact);
+  padding: 0 10px;
+}
+.opcaoAjuda {
+  margin: 0;
+  font-size: var(--text-meta);
+  line-height: 1.45;
+  color: var(--ink-muted);
+}
+
+.opcaoAjudaEspaco { margin-top: 6px; }
+
+/* ---------- Alerta fixo (entre o corpo rolável e o rodapé) ----------
+   Fora do corpo de propósito: no mobile o corpo rola e um erro no topo ficaria fora da
+   tela justo quando o usuário acabou de tocar em Reservar lá embaixo. */
+.faixaAlerta {
+  flex-shrink: 0;
+  max-height: 28dvh;
+  overflow-y: auto;
+  padding: 10px 20px;
+  border-top: 1px solid color-mix(in oklch, var(--hazard) 35%, var(--hairline));
+  background: var(--safety-soft);
+  font-size: var(--text-secondary);
+  line-height: 1.4;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.faixaAlertaTitulo {
+  display: block;
+  font-weight: 600;
+  color: var(--hazard);
+}
+.faixaAlertaDetalhe {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--text-meta);
+  color: var(--ink-soft);
+}
+
+/* ---------- Rodapé ---------- */
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  flex-shrink: 0;
+  padding: 12px 20px;
+  border-top: 1px solid var(--hairline);
+  background: color-mix(in oklch, var(--ink) 2%, transparent);
+}
+/* Motivo de o botão estar desabilitado: sempre visível, ao lado do CTA — um botão cinza sem
+   explicação obriga a adivinhar o que falta. */
+.motivoBloqueio {
+  flex: 1 1 180px;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--text-meta);
+  line-height: 1.35;
+  color: var(--ink-muted);
+}
+.acoes {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.btnGhost {
+  min-height: var(--control-h);
+  padding: 0 14px;
+  border: none;
+  border-radius: var(--ind-radius-sm);
+  background: transparent;
+  color: var(--ink-soft);
+  font-family: inherit;
+  font-size: var(--text-secondary);
+  font-weight: 500;
+  cursor: pointer;
+}
+.btnGhost:hover { background: color-mix(in oklch, var(--ink) 5%, transparent); color: var(--ink); }
+.btnPrimary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--control-h);
+  padding: 0 22px;
+  border: 1px solid var(--ink);
+  border-radius: var(--ind-radius-sm);
+  background: var(--ink);
+  color: var(--paper);
+  font-family: inherit;
+  font-size: var(--text-secondary);
+  font-weight: 500;
+  cursor: pointer;
+}
+.btnPrimary:hover:not(:disabled) { background: var(--ink-soft); }
+.btnPrimary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ---------- Mobile: folha de baixo ---------- */
+
+@keyframes subirFolha {
+  from { transform: translateY(24px); opacity: 0.6; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@media (max-width: 640px) {
+  .overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+  .dialog {
+    width: 100%;
+    max-height: 92vh;
+    max-height: 92dvh;
+    border-bottom: none;
+    border-radius: var(--ind-radius-lg) var(--ind-radius-lg) 0 0;
+    animation: subirFolha 0.2s ease-out;
+  }
+  .header { padding: 12px 16px; }
+  .body { padding: 14px 16px; gap: 14px; }
+  .faixaAlerta { padding: 10px 16px; }
+  /* Rodapé sempre visível (não faz parte do corpo rolável) e respeitando a barra de gestos. */
+  .footer {
+    padding: 10px 16px;
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+  }
+  .motivoBloqueio { flex-basis: 100%; }
+  .acoes { flex: 1; margin-left: 0; }
+  .btnPrimary { flex: 1; }
+  .fechar { width: 44px; height: 44px; margin-right: -8px; }
+  .linkAcao { min-height: 44px; padding: 0 8px; }
+  .opcaoCheck { min-height: 44px; }
+  .opcaoAninhada { margin-top: -10px; }
+  .opcaoAninhada .controle { min-height: 44px; }
+  /* 16px+: abaixo disso o iOS dá zoom na página ao focar o campo. */
+  .controle { font-size: max(16px, var(--text-body)); }
+}

@@ -3,11 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "node ../../scripts/check-port-free.mjs 3000 && next dev",
+    "dev": "node ../../scripts/check-port-free.mjs 3000 && next dev --port 3000",
     "build": "next build",
     "start": "next start",
     "lint": "tsc --noEmit -p tsconfig.json",
-    "test": "echo \"sem testes unitarios de frontend nesta sprint (S1)\" && exit 0"
+    "test": "vitest run"
   },
   "dependencies": {
     "@plataformares/shared": "workspace:*",

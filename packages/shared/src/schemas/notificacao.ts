@@ -4,6 +4,8 @@ export const TIPOS_NOTIFICACAO = [
   "reserva_pendente",
   "reserva_aprovada",
   "reserva_rejeitada",
+  "reserva_substituida",
+  "reserva_cancelada",
   "checklist_pendente",
   "ocorrencia_reportada",
   "bloqueio_criado",

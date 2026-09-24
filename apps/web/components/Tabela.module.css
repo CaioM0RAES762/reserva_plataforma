@@ -1,0 +1,54 @@
+/* Vocabulário compartilhado de célula de tabela.
+ *
+ * Reservas, Fila de Aprovações, Histórico e Auditoria resolvem o mesmo problema de
+ * hierarquia: um dado principal, uma linha secundária abaixo dele, um carimbo de
+ * data/hora em mono e um texto longo que precisa truncar. Cada folha tinha a sua própria
+ * versão — ou, pior, estilos inline (`style={{maxWidth: 200, fontSize: ...}}`) — e o
+ * resultado eram quatro tabelas com quatro ritmos diferentes.
+ *
+ * Segue o mesmo padrão de Modal.module.css: esta é a fonte única, e cada folha reexpõe as
+ * classes via `composes`, então nenhum componente precisa importar dois módulos.
+ */
+
+/* Nível 2: contexto do dado principal (setor sob o responsável, código sob o nome). */
+.sub {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--text-meta);
+  color: var(--ink-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Data + horário como um dado só. Mono e tabular para as linhas alinharem coluna a
+   coluna — é o que permite comparar janelas correndo o olho verticalmente. */
+.janela {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--ink-soft);
+}
+
+/* Texto livre (motivo, descrição): trunca em uma linha e entrega o conteúdo inteiro no
+   title. Antes, células de 3–4 linhas de motivo davam a cada registro a altura de uma
+   ficha e faziam a tabela perder o ritmo de varredura. */
+.textoLongo {
+  max-width: 28ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-muted);
+}
+
+/* Ausência de dado — cinza, nunca com o peso de um valor real. */
+.vazio { color: var(--ink-muted); }
+
+/* Coluna de exceções (prioridade, SLA, pendências). Vazia na maioria das linhas por
+   definição: é isso que faz as poucas preenchidas saltarem. */
+.sinais {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}

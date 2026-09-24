@@ -11,8 +11,16 @@ export const CHAVES_CONFIGURACAO = [
   "horario_expediente_inicio",
   "horario_expediente_fim",
   "sla_aprovacao_urgente_horas",
+  // Migration 0023: política de aprovação de reservas de colaboradores.
+  "modo_aprovacao_reservas",
 ] as const;
 export type ChaveConfiguracao = (typeof CHAVES_CONFIGURACAO)[number];
+
+/* 'manual' (padrão): Colaborador solicita, reserva fica pendente até Admin/Gestor decidir.
+   'automatica': reserva válida de Colaborador já nasce agendada. Em qualquer modo, urgente
+   que conflita com reserva existente nasce pendente e exige decisão manual. */
+export const MODOS_APROVACAO_RESERVAS = ["manual", "automatica"] as const;
+export type ModoAprovacaoReservas = (typeof MODOS_APROVACAO_RESERVAS)[number];
 
 export const configuracaoPublicaSchema = z.object({
   chave: z.enum(CHAVES_CONFIGURACAO),
@@ -31,6 +39,7 @@ export const atualizarConfiguracoesSchema = z
     horarioExpedienteInicio: z.string().regex(HORA_REGEX, "Use o formato HH:mm").optional(),
     horarioExpedienteFim: z.string().regex(HORA_REGEX, "Use o formato HH:mm").optional(),
     slaAprovacaoUrgenteHoras: z.number().int().min(1).max(72).optional(),
+    modoAprovacaoReservas: z.enum(MODOS_APROVACAO_RESERVAS).optional(),
   })
   .refine((dados) => Object.keys(dados).length > 0, {
     message: "Informe ao menos um campo para atualizar.",

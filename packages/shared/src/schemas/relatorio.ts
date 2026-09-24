@@ -1,14 +1,18 @@
 import { z } from "zod";
-import { CATEGORIAS_PLATAFORMA } from "../enums.js";
+import { CATEGORIAS_PLATAFORMA, STATUS_NAO_CONFORMIDADE } from "../enums.js";
 
 // RF-REL-01..06 (SDD §6.7) — período é obrigatório em toda consulta de relatório
 // (evita agregar a base inteira por acidente); `setor` é opcional e só tem efeito para
 // o Admin (RN implícita: Gestor de Setor é sempre restrito ao próprio setor no backend,
 // mesmo que envie ?setor=<outro> — mesmo padrão de RF-HIST-01/montarWhereHistorico).
+// `plataforma`/`categoria` (expansão da área de Relatórios) são filtros globais
+// adicionais, aplicados igualmente a todos os endpoints que fizer sentido.
 export const relatorioQuerySchema = z.object({
   dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data inicial inválida."),
   dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data final inválida."),
   setor: z.string().uuid().optional(),
+  plataforma: z.string().uuid().optional(),
+  categoria: z.enum(CATEGORIAS_PLATAFORMA).optional(),
 });
 export type RelatorioQueryInput = z.infer<typeof relatorioQuerySchema>;
 
@@ -68,6 +72,14 @@ export const slaAprovacaoRespostaSchema = z.object({
   periodo: periodoSchema,
   tempoMedioAprovacaoHoras: z.number().nullable(),
   totalDecisoes: z.number(),
+  // PARTE 27/28 — aprovação/rejeição são derivadas da ÚLTIMA ação de LogAuditoria para
+  // cada reserva decidida (mesma fonte de `tempoMedioAprovacaoHoras`), não do status atual
+  // da reserva (que pode já ter avançado para em_uso/concluida).
+  totalAprovadas: z.number(),
+  totalRejeitadas: z.number(),
+  taxaAprovacao: z.number(),
+  taxaRejeicao: z.number(),
+  pendentesAtuais: z.number(),
   porStatus: z.array(distribuicaoItemSchema),
   porPrioridade: z.array(distribuicaoItemSchema),
   porCategoria: z.array(distribuicaoItemSchema),
@@ -94,10 +106,165 @@ export const segurancaRespostaSchema = z.object({
 });
 export type SegurancaResposta = z.infer<typeof segurancaRespostaSchema>;
 
-// RF-REL-06 — exportação de qualquer um dos 4 relatórios em PDF ou Excel.
+// RF-REL-06 — exportação de qualquer um dos 4 relatórios em PDF ou Excel. Os 3 relatórios
+// novos abaixo (operacional/bloqueios/checklists) não entram nesta exportação nesta
+// rodada — corte de escopo documentado no relatório técnico final.
 export const RELATORIOS_EXPORTAVEIS = ["utilizacao", "ranking-setores", "sla-aprovacao", "seguranca"] as const;
 export const exportarRelatorioQuerySchema = relatorioQuerySchema.extend({
   relatorio: z.enum(RELATORIOS_EXPORTAVEIS),
   formato: z.enum(["pdf", "excel"]),
 });
 export type ExportarRelatorioQueryInput = z.infer<typeof exportarRelatorioQuerySchema>;
+
+// ---------------------------------------------------------------------------
+// Expansão de Relatórios & Indicadores — GET /relatorios/operacional
+// (Visão Geral + Uso da Frota: totais do período, evolução diária, horários de maior
+// demanda, ranking de plataformas mais reservadas)
+// ---------------------------------------------------------------------------
+
+export const evolucaoDiariaItemSchema = z.object({
+  data: z.string(), // YYYY-MM-DD
+  quantidadeReservas: z.number(),
+  horasReservadas: z.number(),
+});
+export const demandaPorHoraItemSchema = z.object({
+  hora: z.number(), // 0-23, hora civil de início do intervalo
+  quantidade: z.number(),
+});
+export const rankingPlataformaItemSchema = z.object({
+  plataformaId: z.string().uuid(),
+  codigo: z.string(),
+  nome: z.string(),
+  totalReservas: z.number(),
+  horasReservadas: z.number(),
+});
+export const operacionalRespostaSchema = z.object({
+  periodo: periodoSchema,
+  totalReservas: z.number(),
+  horasReservadasTotais: z.number(),
+  totalCanceladas: z.number(),
+  taxaCancelamento: z.number(),
+  evolucaoDiaria: z.array(evolucaoDiariaItemSchema),
+  demandaPorHora: z.array(demandaPorHoraItemSchema),
+  rankingPlataformas: z.array(rankingPlataformaItemSchema),
+});
+export type OperacionalResposta = z.infer<typeof operacionalRespostaSchema>;
+
+// ---------------------------------------------------------------------------
+// Expansão de Relatórios & Indicadores — GET /relatorios/bloqueios (Indisponibilidade)
+// ---------------------------------------------------------------------------
+
+export const motivoBloqueioItemSchema = z.object({
+  motivo: z.string(),
+  horasBloqueadas: z.number(),
+  ocorrencias: z.number(),
+});
+export const tendenciaBloqueioItemSchema = z.object({
+  data: z.string(), // YYYY-MM-DD
+  horasBloqueadas: z.number(),
+});
+export const bloqueiosRelatorioRespostaSchema = z.object({
+  periodo: periodoSchema,
+  horasBloqueadasTotais: z.number(),
+  totalBloqueios: z.number(),
+  // Ranking pelos valores literais de `motivo` (texto livre — não existe um campo "tipo"
+  // de bloqueio no schema atual, então motivos com texto ligeiramente diferente aparecem
+  // como entradas separadas).
+  porMotivo: z.array(motivoBloqueioItemSchema),
+  tendencia: z.array(tendenciaBloqueioItemSchema),
+});
+export type BloqueiosRelatorioResposta = z.infer<typeof bloqueiosRelatorioRespostaSchema>;
+
+// ---------------------------------------------------------------------------
+// Expansão de Relatórios & Indicadores — GET /relatorios/checklists
+// (Segurança & Checklists)
+// ---------------------------------------------------------------------------
+
+export const conformidadeSemanalItemSchema = z.object({
+  semanaInicio: z.string(), // YYYY-MM-DD, segunda-feira da semana
+  taxaConformidade: z.number(),
+  totalFinalizados: z.number(),
+});
+export const naoConformidadePorPlataformaItemSchema = z.object({
+  plataformaId: z.string().uuid(),
+  plataformaNome: z.string(),
+  naoConformidades: z.number(),
+});
+export const itemChecklistCriticoSchema = z.object({
+  itemDescricao: z.string(),
+  ocorrencias: z.number(),
+});
+export const checklistPorCategoriaItemSchema = z.object({
+  categoria: z.enum(CATEGORIAS_PLATAFORMA),
+  totalRealizados: z.number(),
+  totalConformes: z.number(),
+  totalNaoConformes: z.number(),
+});
+export const checklistPorSetorItemSchema = z.object({
+  setorId: z.string().uuid(),
+  setorNome: z.string(),
+  totalRealizados: z.number(),
+  totalConformes: z.number(),
+  totalNaoConformes: z.number(),
+});
+export const relacaoReservaChecklistSchema = z.object({
+  reservasQueExigiamChecklist: z.number(),
+  reservasComChecklistRealizado: z.number(),
+  reservasIniciadasAposChecklist: z.number(),
+});
+export const checklistsRelatorioRespostaSchema = z.object({
+  periodo: periodoSchema,
+  totalExigidos: z.number(),
+  totalConcluidos: z.number(),
+  taxaConclusao: z.number(),
+  totalConformes: z.number(),
+  totalNaoConformes: z.number(),
+  taxaConformidade: z.number(),
+  tempoMedioConclusaoHoras: z.number().nullable(),
+  evolucaoConformidade: z.array(conformidadeSemanalItemSchema),
+  naoConformidadePorPlataforma: z.array(naoConformidadePorPlataformaItemSchema),
+  itensCriticos: z.array(itemChecklistCriticoSchema),
+  porCategoria: z.array(checklistPorCategoriaItemSchema),
+  porSetor: z.array(checklistPorSetorItemSchema),
+  relacaoReservaChecklist: relacaoReservaChecklistSchema,
+});
+export type ChecklistsRelatorioResposta = z.infer<typeof checklistsRelatorioRespostaSchema>;
+
+// ---------------------------------------------------------------------------
+// GET /relatorios/nao-conformidades — substitui a aba "Segurança & Checklists".
+// Fonte: Comentario.tipo='nao_conformidade' + NaoConformidade (migration 0021), não
+// checklist. taxaResolucao é `null` (não `0`) quando total=0 — matematicamente não
+// aplicável, a UI mostra "—".
+// ---------------------------------------------------------------------------
+
+export const naoConformidadeSemanalItemSchema = z.object({
+  semanaInicio: z.string(), // YYYY-MM-DD, segunda-feira da semana
+  total: z.number(),
+});
+export const naoConformidadePorSetorItemSchema = z.object({
+  setorId: z.string().uuid(),
+  setorNome: z.string(),
+  total: z.number(),
+});
+export const naoConformidadePorPlataformaItemSchema2 = z.object({
+  plataformaId: z.string().uuid(),
+  plataformaNome: z.string(),
+  total: z.number(),
+});
+export const naoConformidadePorStatusItemSchema = z.object({
+  status: z.enum(STATUS_NAO_CONFORMIDADE),
+  total: z.number(),
+});
+export const naoConformidadesRelatorioRespostaSchema = z.object({
+  periodo: periodoSchema,
+  total: z.number(),
+  abertas: z.number(),
+  emAnalise: z.number(),
+  resolvidas: z.number(),
+  taxaResolucao: z.number().nullable(),
+  evolucao: z.array(naoConformidadeSemanalItemSchema),
+  porSetor: z.array(naoConformidadePorSetorItemSchema),
+  porPlataforma: z.array(naoConformidadePorPlataformaItemSchema2),
+  porStatus: z.array(naoConformidadePorStatusItemSchema),
+});
+export type NaoConformidadesRelatorioResposta = z.infer<typeof naoConformidadesRelatorioRespostaSchema>;

@@ -5,6 +5,7 @@ import styles from "../app/(app)/historico/page.module.css";
 import { apiDownload, apiFetch, mensagemDeErro } from "../lib/api";
 import { useDebounce } from "../lib/useDebounce";
 import { Paginacao } from "./Paginacao";
+import { CampoFiltro, FiltrosAvancados } from "./FiltrosAvancados";
 import { ReservaStatusBadge } from "./ReservaStatusBadge";
 import { ReservaDetalheModal, type ReservaDetalhe } from "./ReservaDetalheModal";
 
@@ -44,6 +45,11 @@ function formatarDataHora(iso: string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+/** "Terceirizados · ACME" quando a reserva tem empresa; só o setor nos demais casos. */
+function setorComEmpresa(r: Pick<ReservaDetalhe, "setorNome" | "empresaTerceirizada">): string {
+  return r.empresaTerceirizada ? `${r.setorNome} · ${r.empresaTerceirizada}` : r.setorNome;
 }
 
 export function HistoricoClient({ perfil, setorId }: HistoricoClientProps) {
@@ -148,12 +154,16 @@ export function HistoricoClient({ perfil, setorId }: HistoricoClientProps) {
 
   const periodoInvalido = Boolean(dataDe && dataAte && dataAte < dataDe);
 
+  // Quantos filtros secundários estão aplicados — vira o contador do botão "Mais
+  // filtros", para que uma tabela curta nunca fique sem explicação na tela.
+  const filtrosAvancadosAtivos = [setorFiltro, plataformaFiltro, dataDe, dataAte].filter(Boolean).length;
+
   return (
     <section>
       <div className={styles.header}>
         <div>
           <h1>Histórico</h1>
-          <p>Registro completo de todas as reservas</p>
+          <p>Registro completo de reservas</p>
         </div>
         <button className={styles.btnOutline} onClick={exportarCsv} disabled={exportando}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -165,42 +175,85 @@ export function HistoricoClient({ perfil, setorId }: HistoricoClientProps) {
         </button>
       </div>
 
-      <div className={styles.filterBar}>
+      {/* Busca e status ficam à vista; setor, plataforma e período — que juntos eram
+          quatro controles ocupando uma faixa inteira acima da tabela — passam para
+          "Mais filtros", com um contador para nenhum deles filtrar em silêncio. */}
+      <FiltrosAvancados
+        ativos={filtrosAvancadosAtivos}
+        onLimpar={() => {
+          setSetorFiltro("");
+          setPlataformaFiltro("");
+          setDataDe("");
+          setDataAte("");
+        }}
+        avancados={
+          <>
+            {perfil === "admin" && (
+              <CampoFiltro label="Setor" htmlFor="hist-setor">
+                <select id="hist-setor" value={setorFiltro} onChange={(e) => setSetorFiltro(e.target.value)}>
+                  <option value="">Todos</option>
+                  {setores.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.nome}
+                    </option>
+                  ))}
+                </select>
+              </CampoFiltro>
+            )}
+            <CampoFiltro label="Plataforma" htmlFor="hist-plataforma">
+              <select
+                id="hist-plataforma"
+                value={plataformaFiltro}
+                onChange={(e) => setPlataformaFiltro(e.target.value)}
+              >
+                <option value="">Todas</option>
+                {plataformas.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.nome}
+                  </option>
+                ))}
+              </select>
+            </CampoFiltro>
+            <CampoFiltro label="De" htmlFor="hist-de">
+              <input
+                id="hist-de"
+                type="date"
+                value={dataDe}
+                onChange={(e) => setDataDe(e.target.value)}
+                max={dataAte || undefined}
+              />
+            </CampoFiltro>
+            <CampoFiltro label="Até" htmlFor="hist-ate">
+              <input
+                id="hist-ate"
+                type="date"
+                value={dataAte}
+                onChange={(e) => setDataAte(e.target.value)}
+                // Impede montar um período invertido no próprio seletor, em vez de deixar
+                // o usuário submeter e receber uma lista vazia sem explicação.
+                min={dataDe || undefined}
+              />
+            </CampoFiltro>
+          </>
+        }
+      >
         <input
           type="search"
-          placeholder="Buscar por setor, responsável, plataforma ou motivo..."
+          placeholder="Buscar no histórico..."
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
           className={styles.search}
           aria-label="Buscar no histórico"
         />
-        {perfil === "admin" && (
-          <select
-            value={setorFiltro}
-            onChange={(e) => setSetorFiltro(e.target.value)}
-            aria-label="Filtrar por setor"
-          >
-            <option value="">Todos os setores</option>
-            {setores.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.nome}
-              </option>
-            ))}
-          </select>
-        )}
+        <label htmlFor="hist-status" className={styles.visuallyHidden}>
+          Filtrar por status
+        </label>
         <select
-          value={plataformaFiltro}
-          onChange={(e) => setPlataformaFiltro(e.target.value)}
-          aria-label="Filtrar por plataforma"
+          id="hist-status"
+          className={styles.selectStatus}
+          value={statusFiltro}
+          onChange={(e) => setStatusFiltro(e.target.value)}
         >
-          <option value="">Todas as plataformas</option>
-          {plataformas.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.nome}
-            </option>
-          ))}
-        </select>
-        <select value={statusFiltro} onChange={(e) => setStatusFiltro(e.target.value)} aria-label="Filtrar por status">
           <option value="">Todos os status</option>
           <option value="pendente">Pendente</option>
           <option value="agendada">Agendada</option>
@@ -209,23 +262,7 @@ export function HistoricoClient({ perfil, setorId }: HistoricoClientProps) {
           <option value="cancelada">Cancelada</option>
           <option value="rejeitada">Rejeitada</option>
         </select>
-        <input
-          type="date"
-          value={dataDe}
-          onChange={(e) => setDataDe(e.target.value)}
-          aria-label="Data inicial"
-          max={dataAte || undefined}
-        />
-        <input
-          type="date"
-          value={dataAte}
-          onChange={(e) => setDataAte(e.target.value)}
-          aria-label="Data final"
-          // Impede montar um período invertido no próprio seletor, em vez de deixar o
-          // usuário submeter e receber uma lista vazia sem explicação.
-          min={dataDe || undefined}
-        />
-      </div>
+      </FiltrosAvancados>
 
       {periodoInvalido && (
         <div className={styles.error} role="alert">
@@ -241,10 +278,11 @@ export function HistoricoClient({ perfil, setorId }: HistoricoClientProps) {
       <div className={styles.tableWrap}>
         <table className={styles.table}>
           <thead>
+            {/* Nove colunas viraram seis. ID e "Data/Hora Reserva" (o momento em que a
+                reserva foi criada — não o da utilização) eram os dois primeiros dados que
+                o olho batia, e nenhum dos dois é o que se procura ao ler um histórico:
+                foram para o title do responsável. Setor desceu para a linha secundária. */}
             <tr>
-              <th scope="col">ID</th>
-              <th scope="col">Data/Hora Reserva</th>
-              <th scope="col">Setor</th>
               <th scope="col">Responsável</th>
               <th scope="col">Plataforma</th>
               <th scope="col">Período</th>
@@ -256,36 +294,42 @@ export function HistoricoClient({ perfil, setorId }: HistoricoClientProps) {
           <tbody aria-busy={carregando}>
             {carregando && registros.length === 0 ? (
               <tr>
-                <td colSpan={9} className={styles.empty}>
+                <td colSpan={6} className={styles.empty}>
                   Carregando...
                 </td>
               </tr>
             ) : registros.length === 0 ? (
               <tr>
-                <td colSpan={9} className={styles.empty}>
-                  Nenhum registro encontrado para os filtros aplicados.
+                <td colSpan={6} className={styles.empty}>
+                  Nenhum registro encontrado.
                 </td>
               </tr>
             ) : (
               registros.map((r) => (
                 <tr key={r.id}>
-                  <td>
-                    <strong style={{ color: "var(--primary)", fontSize: "var(--text-secondary)" }}>{r.id.slice(0, 8)}</strong>
+                  {/* O id curto e a data de criação viraram title: são rastreabilidade
+                      (para citar um registro ou conferir quando foi pedido), não o que se
+                      lê varrendo a lista. O id também estava em var(--primary) — o azul da
+                      paleta legada, que destoava da identidade industrial do resto. */}
+                  <td title={`${r.id.slice(0, 8)} · criada em ${formatarDataHora(r.criadoEm)}`}>
+                    <strong>{r.solicitanteNome}</strong>
+                    {/* Para "Terceirizados", o setor sozinho não diz quem é o solicitante — a
+                        empresa completa a identificação. Sem valor (setor interno ou reserva
+                        anterior à migration 0020), a linha continua só com o setor. A célula
+                        trunca em uma linha, então o texto inteiro vai no title. */}
+                    <span
+                      className={styles.tableSub}
+                      title={r.empresaTerceirizada ? setorComEmpresa(r) : undefined}
+                    >
+                      {setorComEmpresa(r)}
+                    </span>
                   </td>
-                  <td style={{ fontSize: "var(--text-secondary)" }}>{formatarDataHora(r.criadoEm)}</td>
-                  <td>{r.setorNome}</td>
-                  <td>{r.solicitanteNome}</td>
                   <td>{r.plataformaNome}</td>
-                  <td style={{ whiteSpace: "nowrap", fontSize: "var(--text-secondary)" }}>
-                    {formatarData(r.data)}
-                    <br />
-                    {r.horaInicio}–{r.horaFim}
+                  <td className={styles.tableJanela}>
+                    {formatarData(r.data)} · {r.horaInicio}–{r.horaFim}
                   </td>
-                  <td
-                    style={{ maxWidth: 200, fontSize: "var(--text-secondary)", color: "var(--ink-soft)" }}
-                    title={r.motivo}
-                  >
-                    {r.motivo.length > 60 ? `${r.motivo.slice(0, 60)}…` : r.motivo}
+                  <td className={styles.tableMotivo} title={r.motivo}>
+                    {r.motivo}
                   </td>
                   <td>
                     <ReservaStatusBadge status={r.status} />

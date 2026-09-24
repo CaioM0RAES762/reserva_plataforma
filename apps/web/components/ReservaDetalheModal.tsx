@@ -1,44 +1,42 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import styles from "../app/(app)/reservas/page.module.css";
 import local from "./ReservaDetalheModal.module.css";
-import { apiFetch } from "../lib/api";
+import { apiFetch, ApiRequestError } from "../lib/api";
+import { Building2, Phone, PhoneCall } from "lucide-react";
+import {
+  CODIGO_CONFIRMAR_INTERRUPCAO_EM_USO,
+  CODIGO_CONFLITO_SUBSTITUIVEL,
+  formatarTelefone,
+  telefoneParaLink,
+  type ConflitoAprovacao,
+} from "@plataformares/shared";
 import { useModalAcessivel } from "../lib/useModalAcessivel";
 import { ReservaStatusBadge } from "./ReservaStatusBadge";
 import { PriorityBadge } from "./PriorityBadge";
-import { ChecklistFillModal, type ChecklistResumo } from "./ChecklistFillModal";
-import { AnexosComentarios } from "./AnexosComentarios";
+import { ComentariosReserva } from "./ComentariosReserva";
 
 // Passo a passo do caminho feliz — cancelada/rejeitada são estados terminais à parte
 // (ver terminalBanner) e não aparecem aqui, pois quebram a progressão linear.
 //
-// "Checklist" só entra quando a reserva exige um (reserva.requerChecklist) — o checklist
-// agora é portão da APROVAÇÃO (RN-CHK-03), não mais do início de uso, então a etapa fica
-// entre "Solicitada" e "Aprovada". Nenhuma dessas chaves é o `status` real da reserva no
-// banco (que continua só pendente/agendada/em_uso/concluida/...) — "checklist" é uma
-// sub-fase de status="pendente", distinguida por chaveEtapaAtiva() abaixo usando o estado
-// do checklist, não um valor novo de status.
-type EtapaChave = "solicitada" | "checklist" | "aprovada" | "em_uso" | "concluida";
+/* Fluxo com aprovação (migration 0022): solicitação de colaborador passa por "Aprovação";
+   reserva criada por Admin/Gestor já nasce agendada (a etapa aparece concluída). Cancelada
+   e rejeitada não percorrem a régua: caem no banner terminal. */
+type EtapaChave = "pendente" | "agendada" | "em_uso" | "concluida";
 
-function montarEtapas(requerChecklist: boolean): Array<{ chave: EtapaChave; label: string }> {
-  const etapas: Array<{ chave: EtapaChave; label: string }> = [{ chave: "solicitada", label: "Solicitada" }];
-  if (requerChecklist) etapas.push({ chave: "checklist", label: "Checklist" });
-  etapas.push(
-    { chave: "aprovada", label: "Aprovada" },
-    { chave: "em_uso", label: "Em uso" },
-    { chave: "concluida", label: "Concluída" }
-  );
-  return etapas;
-}
+const ETAPAS: Array<{ chave: EtapaChave; label: string }> = [
+  { chave: "pendente", label: "Aprovação" },
+  { chave: "agendada", label: "Agendada" },
+  { chave: "em_uso", label: "Em uso" },
+  { chave: "concluida", label: "Concluída" },
+];
 
-function chaveEtapaAtiva(status: string, requerChecklist: boolean, checklistPronto: boolean): EtapaChave {
-  if (status === "pendente") {
-    return requerChecklist && !checklistPronto ? "checklist" : "aprovada";
-  }
-  if (status === "agendada") return "aprovada";
+function chaveEtapaAtiva(status: string): EtapaChave {
   if (status === "em_uso") return "em_uso";
-  return "concluida";
+  if (status === "concluida") return "concluida";
+  if (status === "pendente") return "pendente";
+  return "agendada";
 }
 
 function IconCalendario() {
@@ -92,6 +90,10 @@ export interface ReservaDetalhe {
   id: string;
   setorId: string;
   setorNome: string;
+  /* Empresa informada quando o setor é "Terceirizados" (ver empresaTerceirizada.ts em
+     shared). Null em setores internos e em reservas anteriores à migration 0020 — o modal
+     só mostra a linha quando há valor, para não poluir o detalhe com "—" em toda reserva. */
+  empresaTerceirizada: string | null;
   // Corrigir/melhorar Reservas: usado para destacar "minhas reservas" na listagem —
   // comparação sempre por id, nunca por nome (ver ReservasClient).
   solicitanteId: string;
@@ -107,11 +109,17 @@ export interface ReservaDetalhe {
   motivo: string;
   prioridade: "normal" | "alta" | "urgente";
   status: string;
+  telefoneContato: string | null;
+  plataformaTelefoneEmergencia: string | null;
   aprovadoPorNome: string | null;
   segundaAprovacaoPorNome: string | null;
   motivoRejeicao: string | null;
   horaInicioReal: string | null;
   horaFimReal: string | null;
+  // Substituição por urgência (migration 0022): cancelada com vínculo para a urgente.
+  substituidaPorId?: string | null;
+  motivoCancelamento?: string | null;
+  usoContabilizadoMinutos?: number | null;
   // S9 (RF-RES-03): presente quando a reserva faz parte de uma série semanal.
   recorrenciaId?: string | null;
   criadoEm: string;
@@ -138,7 +146,6 @@ interface ReservaDetalheModalProps {
   onReservarNovamente?: (reserva: ReservaDetalhe) => void;
 }
 
-type GravidadeOcorrencia = "baixa" | "media" | "alta";
 
 function formatarData(data: string): string {
   const [ano, mes, dia] = data.split("-");
@@ -156,49 +163,77 @@ export function ReservaDetalheModal({
 }: ReservaDetalheModalProps) {
   const [executando, setExecutando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
-  const [mostrarFormRejeicao, setMostrarFormRejeicao] = useState(false);
-  const [motivoRejeicao, setMotivoRejeicao] = useState("");
-  // Inicializado com o que a lista/detalhe já tinha carregado; atualizado ao vivo pelo
-  // ChecklistFillModal (onAtualizado) sem precisar fechar este modal nem refazer a busca
-  // da reserva inteira — ver ChecklistFillModal.tsx.
-  const [checklistResumo, setChecklistResumo] = useState<ChecklistResumo>({
-    finalizadoEm: reserva.checklistFinalizadoEm,
-    todosConformes: reserva.checklistTodosConformes,
-    totalItens: 0,
-    totalRespondidos: 0,
-  });
-  const [checklistModalAberto, setChecklistModalAberto] = useState(false);
-  // RF-RES-16/UC-04: ao concluir o uso, pergunta se houve ocorrência/avaria antes de
-  // finalizar — "perguntando" não bloqueia estruturalmente a conclusão em duas chamadas
-  // (POST /ocorrencia, depois PATCH /status concluir), mas garante que a ocorrência fique
-  // registrada como parte do mesmo fluxo de conclusão.
-  const [etapaConcluir, setEtapaConcluir] = useState<"nenhuma" | "perguntar" | "formOcorrencia">("nenhuma");
-  const [ocorrenciaDescricao, setOcorrenciaDescricao] = useState("");
-  const [ocorrenciaGravidade, setOcorrenciaGravidade] = useState<GravidadeOcorrencia>("baixa");
-  const [ocorrenciaGeraManutencao, setOcorrenciaGeraManutencao] = useState(false);
+  // Decisão de aprovação. `substituicao` guarda os conflitos devolvidos pelo backend quando a
+  // urgente colide com reserva existente — a substituição só acontece depois de o aprovador
+  // ver esses dados e confirmar aqui (nunca implicitamente, nunca com alert()).
+  const [rejeitando, setRejeitando] = useState(false);
+  const [motivoRejeicaoTexto, setMotivoRejeicaoTexto] = useState("");
+  const [substituicao, setSubstituicao] = useState<{
+    conflitos: ConflitoAprovacao[];
+    emUso: boolean;
+    mensagem: string;
+  } | null>(null);
+  const [confirmaInterrupcao, setConfirmaInterrupcao] = useState(false);
+  // Conflito que impede a aprovação e NÃO admite substituição (reserva normal sobre horário
+  // confirmado, urgente sobre urgente, bloqueio de agenda) — informado já ao abrir.
+  const [avisoAnalise, setAvisoAnalise] = useState<string | null>(null);
 
-  const { refDialogo, propsDialogo, idTitulo, aoClicarNoOverlay } = useModalAcessivel(onClose, "reserva-detalhe");
+  const { refDialogo, propsDialogo, idTitulo, aoClicarNoOverlay } = useModalAcessivel(
+    onClose,
+    "reserva-detalhe"
+  );
 
-  // S7 (RN-RES-07/08): Admin não tem restrição de escopo; Gestor de Setor só age em
-  // reservas do próprio setor e, para aprovar, só quando ainda não deu sua própria
-  // aprovação (RN-RES-08 — dupla aprovação já em andamento, aguardando o Admin).
+  // Admin não tem restrição de escopo; Gestor de Setor só age em reservas do próprio setor.
   const noEscopo = perfil === "admin" || reserva.setorId === setorId;
   const ehAprovador = perfil === "admin" || perfil === "gestor_setor";
-  const podeAprovarRejeitar =
-    ehAprovador &&
-    noEscopo &&
-    reserva.status === "pendente" &&
-    !(perfil === "gestor_setor" && reserva.aprovadoPorNome !== null);
-  // RF-CHK-06/RN-CHK-03: o checklist agora é portão da APROVAÇÃO, não mais do início de
-  // uso — "pronto" cobre tanto "não exige checklist" quanto "exige e já foi finalizado
-  // sem não conformidade". O backend revalida sempre; isto só decide se o botão Aprovar
-  // fica habilitado, com o motivo explicado ao usuário em vez de um 409 sem contexto.
-  const checklistPronto =
-    !reserva.requerChecklist || (checklistResumo.finalizadoEm !== null && checklistResumo.todosConformes === true);
-  const aprovarBloqueadoPeloChecklist = podeAprovarRejeitar && reserva.requerChecklist && !checklistPronto;
-  const podeIniciarUso = ehAprovador && noEscopo && reserva.status === "agendada" && checklistPronto;
+  /* Iniciar/concluir são FALLBACK administrativo: no fluxo normal quem move a reserva é o
+     sincronizador por horário no servidor. Ficam disponíveis para exceções operacionais
+     (equipamento liberado antes, uso encerrado adiantado) e por isso são ações
+     secundárias, não os botões dominantes do modal. */
+  const podeIniciarUso = ehAprovador && noEscopo && reserva.status === "agendada";
   const podeConcluir = ehAprovador && noEscopo && reserva.status === "em_uso";
   const podeCancelar = ["pendente", "agendada", "em_uso"].includes(reserva.status) && noEscopo;
+  // Aprovar/rejeitar/substituir: Admin e Gestor de QUALQUER setor (aprovadores globais). O
+  // backend aplica a mesma regra — esconder aqui é só para não oferecer um botão que daria 403.
+  const podeDecidir = ehAprovador && reserva.status === "pendente";
+
+  // Pré-análise ao abrir: se a solicitação (tipicamente urgente) conflita com uma reserva
+  // confirmada, o aprovador vê o conflito e a decisão antes de clicar em qualquer coisa. A
+  // decisão em si (POST /aprovar) revalida tudo de novo no servidor.
+  useEffect(() => {
+    if (!podeDecidir) return;
+    let cancelado = false;
+    apiFetch<{
+      conflitos: ConflitoAprovacao[];
+      bloqueio: { motivo: string } | null;
+      emUso: boolean;
+      podeSubstituir: boolean;
+    }>(`/api/v1/reservas/${reserva.id}/analise-aprovacao`)
+      .then((analise) => {
+        if (cancelado) return;
+        if (analise.podeSubstituir) {
+          setSubstituicao({
+            conflitos: analise.conflitos,
+            emUso: analise.emUso,
+            mensagem:
+              "Esta solicitação urgente conflita com uma reserva existente. Mantenha a reserva atual ou substitua-a e aprove a urgente.",
+          });
+        } else if (analise.bloqueio) {
+          setAvisoAnalise(`O horário está bloqueado na agenda (${analise.bloqueio.motivo}). Bloqueio não pode ser substituído.`);
+        } else if (analise.conflitos.length > 0) {
+          const c = analise.conflitos[0];
+          setAvisoAnalise(
+            reserva.prioridade === "urgente"
+              ? `O horário já está ocupado por outra reserva urgente (${c.setorNome}, ${c.horaInicio}–${c.horaFim}). Urgência não substitui urgência.`
+              : `O horário já foi confirmado para ${c.setorNome} (${c.horaInicio}–${c.horaFim}). Esta solicitação não pode ser aprovada.`
+          );
+        }
+      })
+      .catch(() => undefined); // a pré-análise é só conveniência; a aprovação revalida
+    return () => {
+      cancelado = true;
+    };
+  }, [podeDecidir, reserva.id, reserva.prioridade]);
   // S9 (RF-RES-03): "Cancelar série" só faz sentido enquanto a própria ocorrência ainda
   // está pendente/agendada — em_uso/concluída/etc. já saíram do fluxo de agendamento.
   const podeCancelarSerie =
@@ -221,25 +256,6 @@ export function ReservaDetalheModal({
     }
   }
 
-  function aprovar() {
-    return executarAcao(() =>
-      apiFetch(`/api/v1/reservas/${reserva.id}/aprovar`, { method: "POST", body: JSON.stringify({}) })
-    );
-  }
-
-  function confirmarRejeicao() {
-    if (motivoRejeicao.trim().length < 5) {
-      setErro("Informe um motivo com no mínimo 5 caracteres.");
-      return;
-    }
-    return executarAcao(() =>
-      apiFetch(`/api/v1/reservas/${reserva.id}/rejeitar`, {
-        method: "POST",
-        body: JSON.stringify({ motivo: motivoRejeicao.trim() }),
-      })
-    );
-  }
-
   function iniciarUso() {
     return executarAcao(() =>
       apiFetch(`/api/v1/reservas/${reserva.id}/status`, {
@@ -249,12 +265,11 @@ export function ReservaDetalheModal({
     );
   }
 
-  function iniciarFluxoConcluir() {
-    setEtapaConcluir("perguntar");
-  }
-
-  function concluirSemOcorrencia() {
-    setEtapaConcluir("nenhuma");
+  /* Concluir passou a ser uma ação direta. O antigo fluxo perguntava "houve ocorrência?"
+     e abria um formulário separado — mecanismo que agora está consolidado na timeline de
+     comentários (marcar um comentário como não conformidade). Duas portas para registrar
+     a mesma coisa deixariam o histórico dividido entre dois lugares. */
+  function concluir() {
     return executarAcao(() =>
       apiFetch(`/api/v1/reservas/${reserva.id}/status`, {
         method: "PATCH",
@@ -263,26 +278,49 @@ export function ReservaDetalheModal({
     );
   }
 
-  function confirmarOcorrenciaEConcluir() {
-    if (ocorrenciaDescricao.trim().length < 5) {
-      setErro("Descreva a ocorrência com pelo menos 5 caracteres.");
-      return;
+  async function aprovar(opcoes: { substituirConflitantes?: boolean; confirmarInterrupcaoEmUso?: boolean } = {}) {
+    setErro(null);
+    setExecutando(true);
+    try {
+      await apiFetch(`/api/v1/reservas/${reserva.id}/aprovar`, { method: "POST", body: JSON.stringify(opcoes) });
+      setSubstituicao(null);
+      await onAtualizado();
+    } catch (err) {
+      const codigo = err instanceof ApiRequestError ? err.codigo : undefined;
+      if (
+        err instanceof ApiRequestError &&
+        (codigo === CODIGO_CONFLITO_SUBSTITUIVEL || codigo === CODIGO_CONFIRMAR_INTERRUPCAO_EM_USO)
+      ) {
+        const corpo = err.corpo ?? {};
+        setSubstituicao({
+          conflitos: (corpo.conflitos as ConflitoAprovacao[] | undefined) ?? [],
+          emUso: Boolean(corpo.emUso) || codigo === CODIGO_CONFIRMAR_INTERRUPCAO_EM_USO,
+          mensagem: err.message,
+        });
+        setConfirmaInterrupcao(false);
+      } else {
+        setErro(err instanceof Error ? err.message : "Não foi possível aprovar a reserva.");
+      }
+    } finally {
+      setExecutando(false);
     }
-    return executarAcao(async () => {
-      await apiFetch(`/api/v1/reservas/${reserva.id}/ocorrencia`, {
-        method: "POST",
-        body: JSON.stringify({
-          descricao: ocorrenciaDescricao.trim(),
-          gravidade: ocorrenciaGravidade,
-          geraManutencao: ocorrenciaGeraManutencao,
-        }),
-      });
-      await apiFetch(`/api/v1/reservas/${reserva.id}/status`, {
-        method: "PATCH",
-        body: JSON.stringify({ acao: "concluir" }),
-      });
-      setEtapaConcluir("nenhuma");
+  }
+
+  function confirmarSubstituicao() {
+    if (!substituicao) return;
+    return aprovar({
+      substituirConflitantes: true,
+      confirmarInterrupcaoEmUso: substituicao.emUso && confirmaInterrupcao,
     });
+  }
+
+  function rejeitar() {
+    return executarAcao(() =>
+      apiFetch(`/api/v1/reservas/${reserva.id}/rejeitar`, {
+        method: "POST",
+        body: JSON.stringify({ motivo: motivoRejeicaoTexto.trim() }),
+      })
+    );
   }
 
   function reservarNovamente() {
@@ -333,13 +371,15 @@ export function ReservaDetalheModal({
               <ReservaStatusBadge status={reserva.status} />
               {reserva.status === "rejeitada" && reserva.motivoRejeicao
                 ? reserva.motivoRejeicao
-                : "Esta reserva não segue mais o fluxo normal de aprovação/uso."}
+                : reserva.status === "cancelada" && reserva.motivoCancelamento
+                  ? reserva.motivoCancelamento
+                  : "Esta reserva não segue mais o fluxo normal de uso."}
             </div>
           ) : (
             <div className={local.stepper}>
               {(() => {
-                const etapas = montarEtapas(reserva.requerChecklist);
-                const chaveAtiva = chaveEtapaAtiva(reserva.status, reserva.requerChecklist, checklistPronto);
+                const etapas = ETAPAS;
+                const chaveAtiva = chaveEtapaAtiva(reserva.status);
                 const indiceAtual = etapas.findIndex((e) => e.chave === chaveAtiva);
                 return etapas.map((etapa, i) => {
                   // A última etapa ("Concluída") é um estado final, não "em andamento" — ao
@@ -359,6 +399,123 @@ export function ReservaDetalheModal({
                 });
               })()}
             </div>
+          )}
+
+          {podeDecidir && avisoAnalise && !substituicao && (
+            <p className={local.avisoPendente} role="status">
+              {avisoAnalise}
+            </p>
+          )}
+
+          {reserva.status === "pendente" && !podeDecidir && (
+            <p className={local.avisoPendente}>Solicitação aguardando aprovação de um Admin ou Gestor do setor.</p>
+          )}
+
+          {podeDecidir && substituicao && (
+            <section className={local.decisao} aria-labelledby="decisao-titulo">
+              <h4 id="decisao-titulo" className={local.decisaoTitulo}>
+                Atenção: conflito com reserva existente
+              </h4>
+              <p className={local.decisaoTexto}>{substituicao.mensagem}</p>
+              <div className={local.decisaoBloco}>
+                <span className={local.decisaoRotulo}>
+                  {substituicao.conflitos.length === 1 ? "Reserva atual" : "Reservas atuais"}
+                </span>
+                {substituicao.conflitos.map((c) => (
+                  <dl key={c.id} className={local.decisaoLinha}>
+                    <div>
+                      <dt>Plataforma</dt>
+                      <dd>{c.plataformaNome}</dd>
+                    </div>
+                    <div>
+                      <dt>Horário</dt>
+                      <dd>
+                        {c.horaInicio}–{c.horaFim}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Responsável</dt>
+                      <dd>{c.solicitanteNome}</dd>
+                    </div>
+                    <div>
+                      <dt>Setor</dt>
+                      <dd>{c.setorNome}</dd>
+                    </div>
+                    <div>
+                      <dt>Prioridade</dt>
+                      <dd>
+                        <PriorityBadge prioridade={c.prioridade} />
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Status</dt>
+                      <dd>
+                        <ReservaStatusBadge status={c.status} />
+                      </dd>
+                    </div>
+                  </dl>
+                ))}
+              </div>
+              <div className={local.decisaoBloco}>
+                <span className={local.decisaoRotulo}>Nova solicitação</span>
+                <dl className={local.decisaoLinha}>
+                  <div>
+                    <dt>Responsável</dt>
+                    <dd>{reserva.solicitanteNome}</dd>
+                  </div>
+                  <div>
+                    <dt>Setor</dt>
+                    <dd>{reserva.setorNome}</dd>
+                  </div>
+                  <div>
+                    <dt>Horário</dt>
+                    <dd>
+                      {reserva.horaInicio}–{reserva.horaFim}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Prioridade</dt>
+                    <dd>
+                      <PriorityBadge prioridade={reserva.prioridade} />
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+              {substituicao.emUso && (
+                <label className={local.decisaoEmUso}>
+                  <input
+                    type="checkbox"
+                    checked={confirmaInterrupcao}
+                    onChange={(e) => setConfirmaInterrupcao(e.target.checked)}
+                  />
+                  Esta plataforma está atualmente em uso. Confirmo que a substituição encerrará a reserva atual.
+                </label>
+              )}
+              <p className={local.decisaoNota}>
+                A reserva substituída não é apagada: fica cancelada, com o motivo e o vínculo para esta reserva
+                urgente.
+              </p>
+            </section>
+          )}
+
+          {podeDecidir && rejeitando && !substituicao && (
+            <section className={local.decisao} aria-labelledby="rejeicao-titulo">
+              <h4 id="rejeicao-titulo" className={local.decisaoTitulo}>
+                Rejeitar solicitação
+              </h4>
+              <label htmlFor="rd-motivo-rejeicao" className={local.decisaoRotulo}>
+                Motivo (visível ao solicitante)
+              </label>
+              <textarea
+                id="rd-motivo-rejeicao"
+                className={local.decisaoTextarea}
+                rows={2}
+                maxLength={500}
+                value={motivoRejeicaoTexto}
+                onChange={(e) => setMotivoRejeicaoTexto(e.target.value)}
+                autoFocus
+              />
+            </section>
           )}
 
           <div className={local.summaryCard}>
@@ -412,6 +569,21 @@ export function ReservaDetalheModal({
                 <span className={local.summaryValue}>{reserva.setorNome}</span>
               </div>
             </div>
+            {/* Vem logo após o Setor porque é o que identifica QUEM é o solicitante quando
+                o setor é "Terceirizados" (a pessoa é da empresa, não da casa). Só renderiza
+                com valor: reservas antigas e de setores internos não têm o dado, e uma linha
+                "—" em toda reserva seria ruído. */}
+            {reserva.empresaTerceirizada && (
+              <div className={local.summaryRow} data-campo="empresa-terceirizada">
+                <div className={local.summaryIcon}>
+                  <Building2 size={14} strokeWidth={1.75} />
+                </div>
+                <div className={local.summaryText}>
+                  <span className={local.summaryLabel}>Empresa terceirizada</span>
+                  <span className={local.summaryValue}>{reserva.empresaTerceirizada}</span>
+                </div>
+              </div>
+            )}
             <div className={local.summaryRow}>
               <div className={local.summaryIcon}>
                 <IconPessoa />
@@ -421,23 +593,50 @@ export function ReservaDetalheModal({
                 <span className={local.summaryValue}>{reserva.solicitanteNome}</span>
               </div>
             </div>
+            {/* Dois telefones, rotulados de forma inequívoca: "quem é o responsável por
+                esta reserva agora" e "para onde ligar se o equipamento der problema". Se
+                fossem só "Telefone" e "Telefone 2", alguém acabaria discando o errado no
+                pior momento. Ambos viram link tel: — em campo, o acesso é pelo celular. */}
+            {reserva.telefoneContato && (
+              <div className={local.summaryRow}>
+                <div className={local.summaryIcon}>
+                  <Phone size={14} strokeWidth={1.75} />
+                </div>
+                <div className={local.summaryText}>
+                  <span className={local.summaryLabel}>Contato do responsável</span>
+                  <a className={local.summaryValue} href={`tel:${telefoneParaLink(reserva.telefoneContato)}`}>
+                    {formatarTelefone(reserva.telefoneContato)}
+                  </a>
+                </div>
+              </div>
+            )}
+            {reserva.plataformaTelefoneEmergencia && (
+              <div className={local.summaryRow}>
+                <div className={local.summaryIcon}>
+                  <PhoneCall size={14} strokeWidth={1.75} />
+                </div>
+                <div className={local.summaryText}>
+                  <span className={local.summaryLabel}>Emergência da plataforma</span>
+                  <a
+                    className={local.summaryValue}
+                    href={`tel:${telefoneParaLink(reserva.plataformaTelefoneEmergencia)}`}
+                  >
+                    {formatarTelefone(reserva.plataformaTelefoneEmergencia)}
+                  </a>
+                </div>
+              </div>
+            )}
+
             {reserva.aprovadoPorNome && (
               <div className={`${local.summaryRow} ${local.summaryRowFull}`}>
                 <div className={local.summaryIcon}>
                   <IconChecagem />
                 </div>
                 <div className={local.summaryText}>
-                  <span className={local.summaryLabel}>
-                    {reserva.status === "pendente" ? "1ª aprovação (Gestor)" : "Aprovado por"}
-                  </span>
+                  <span className={local.summaryLabel}>Aprovada por</span>
                   <span className={local.summaryValue}>{reserva.aprovadoPorNome}</span>
                   {reserva.segundaAprovacaoPorNome && (
-                    <span className={local.summarySub}>2ª aprovação (Admin): {reserva.segundaAprovacaoPorNome}</span>
-                  )}
-                  {reserva.status === "pendente" && !reserva.segundaAprovacaoPorNome && (
-                    <span className={local.summarySub}>
-                      Aguardando a segunda aprovação do Admin (RN-RES-08 — prioridade urgente ou plataforma de risco alto).
-                    </span>
+                    <span className={local.summarySub}>2ª aprovação: {reserva.segundaAprovacaoPorNome}</span>
                   )}
                 </div>
               </div>
@@ -446,169 +645,87 @@ export function ReservaDetalheModal({
 
           <p className={local.motivoBlock}>{reserva.motivo}</p>
 
-          {reserva.requerChecklist && (
-            <div className={local.checklistCard}>
-              <div className={local.checklistCardHeader}>
-                <span className={local.checklistCardTitle}>Checklist de Segurança</span>
-                <span
-                  className={`${local.checklistBadge} ${
-                    checklistResumo.finalizadoEm
-                      ? checklistResumo.todosConformes
-                        ? local.checklistBadgeOk
-                        : local.checklistBadgeBloqueado
-                      : local.checklistBadgePendente
-                  }`}
-                >
-                  {checklistResumo.finalizadoEm ? (checklistResumo.todosConformes ? "Concluído" : "Não conforme") : "Pendente"}
-                </span>
-              </div>
-              {checklistResumo.finalizadoEm && (
-                <p className={local.checklistCardMeta}>
-                  Finalizado em {new Date(checklistResumo.finalizadoEm).toLocaleString("pt-BR")}
-                  {checklistResumo.todosConformes === false &&
-                    " — revise a plataforma antes de aprovar esta reserva (RN-CHK-02)."}
-                </p>
-              )}
-              <button type="button" className={styles.btnGhost} onClick={() => setChecklistModalAberto(true)}>
-                {checklistResumo.finalizadoEm ? "Ver checklist" : "Preencher checklist"}
-              </button>
-            </div>
-          )}
-          {aprovarBloqueadoPeloChecklist && !mostrarFormRejeicao && (
-            <p style={{ color: "var(--red)", fontSize: "var(--text-secondary)", marginTop: 8 }}>
-              O botão &quot;Aprovar&quot; fica bloqueado até o checklist de segurança acima ser finalizado sem
-              itens obrigatórios não conformes (RN-CHK-03).
-            </p>
-          )}
-
-          {mostrarFormRejeicao && (
-            <div className={styles.formGroup} style={{ marginTop: 14 }}>
-              <label htmlFor="motivo-rejeicao">Motivo da rejeição *</label>
-              <textarea
-                id="motivo-rejeicao"
-                rows={2}
-                value={motivoRejeicao}
-                onChange={(e) => setMotivoRejeicao(e.target.value)}
-                placeholder="Explique por que a reserva está sendo rejeitada..."
-              />
-            </div>
-          )}
-
-          {etapaConcluir === "perguntar" && (
-            <div className={styles.formGroup} style={{ marginTop: 14, gap: 10 }}>
-              <span style={{ fontSize: "var(--text-body)", fontWeight: 600 }}>
-                Houve alguma ocorrência ou avaria durante o uso? (RF-RES-16)
-              </span>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button type="button" className={styles.btnGhost} disabled={executando} onClick={concluirSemOcorrencia}>
-                  Não, concluir normalmente
-                </button>
-                <button
-                  type="button"
-                  className={styles.btnPrimary}
-                  disabled={executando}
-                  onClick={() => setEtapaConcluir("formOcorrencia")}
-                >
-                  Sim, reportar ocorrência
-                </button>
-              </div>
-            </div>
-          )}
-
-          {etapaConcluir === "formOcorrencia" && (
-            <div className={styles.formGrid} style={{ marginTop: 14 }}>
-              <div className={`${styles.formGroup} ${styles.formGroupFull}`}>
-                <label htmlFor="ocorrencia-descricao">Descrição da ocorrência *</label>
-                <textarea
-                  id="ocorrencia-descricao"
-                  rows={2}
-                  value={ocorrenciaDescricao}
-                  onChange={(e) => setOcorrenciaDescricao(e.target.value)}
-                  placeholder="Descreva a avaria ou ocorrência..."
-                />
-              </div>
-              <div className={styles.formGroup}>
-                <label htmlFor="ocorrencia-gravidade">Gravidade</label>
-                <select
-                  id="ocorrencia-gravidade"
-                  value={ocorrenciaGravidade}
-                  onChange={(e) => setOcorrenciaGravidade(e.target.value as GravidadeOcorrencia)}
-                >
-                  <option value="baixa">Baixa</option>
-                  <option value="media">Média</option>
-                  <option value="alta">Alta</option>
-                </select>
-              </div>
-              <div className={styles.formGroup} style={{ justifyContent: "flex-end" }}>
-                <label style={{ display: "flex", alignItems: "center", gap: 8, textTransform: "none" }}>
-                  <input
-                    type="checkbox"
-                    checked={ocorrenciaGeraManutencao}
-                    onChange={(e) => setOcorrenciaGeraManutencao(e.target.checked)}
-                  />
-                  Abrir manutenção automática (RN-PLAT-04 — bloqueia novas reservas na plataforma)
-                </label>
-              </div>
-              <div className={`${styles.formGroupFull}`} style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                <button type="button" className={styles.btnGhost} disabled={executando} onClick={() => setEtapaConcluir("perguntar")}>
-                  Voltar
-                </button>
-                <button type="button" className={styles.btnPrimary} disabled={executando} onClick={confirmarOcorrenciaEConcluir}>
-                  Registrar Ocorrência e Concluir
-                </button>
-              </div>
-            </div>
-          )}
-
-          {noEscopo && <AnexosComentarios reservaId={reserva.id} />}
+          {/* Seção única de comentários — substituiu as abas "Anexos | Comentários". É
+              também onde se registra não conformidade, consolidando o antigo formulário
+              de ocorrência que ficava no fluxo de conclusão. Ler e comentar são abertos a
+              qualquer usuário autenticado (conteúdo operacional compartilhado, não pessoal);
+              só editar/excluir um comentário já existente continua restrito a quem o
+              escreveu (ou admin) — regra aplicada pelo próprio backend em PATCH/DELETE
+              (podeEditar/podeExcluir de cada entrada), não aqui. */}
+          <ComentariosReserva reservaId={reserva.id} />
         </div>
         <div className={styles.modalFooter}>
           <button type="button" className={styles.btnGhost} onClick={onClose}>
             Fechar
           </button>
-          {podeAprovarRejeitar && !mostrarFormRejeicao && (
+          {/* Decisão de aprovação: ações dominantes do modal enquanto a reserva está pendente. */}
+          {podeDecidir && substituicao && (
             <>
               <button
                 type="button"
                 className={styles.btnGhost}
                 disabled={executando}
-                onClick={() => setMostrarFormRejeicao(true)}
+                onClick={() => setSubstituicao(null)}
               >
-                Rejeitar
+                Manter reserva atual
               </button>
               <button
                 type="button"
-                className={styles.btnPrimary}
-                disabled={executando || aprovarBloqueadoPeloChecklist}
-                title={aprovarBloqueadoPeloChecklist ? "Finalize o checklist de segurança antes de aprovar." : undefined}
-                onClick={aprovar}
+                className={styles.btnDanger}
+                disabled={executando || (substituicao.emUso && !confirmaInterrupcao)}
+                onClick={confirmarSubstituicao}
               >
+                Substituir e aprovar urgente
+              </button>
+            </>
+          )}
+          {podeDecidir && rejeitando && !substituicao && (
+            <>
+              <button type="button" className={styles.btnGhost} disabled={executando} onClick={() => setRejeitando(false)}>
+                Voltar
+              </button>
+              <button
+                type="button"
+                className={styles.btnDanger}
+                disabled={executando || motivoRejeicaoTexto.trim().length < 3}
+                onClick={rejeitar}
+              >
+                Confirmar rejeição
+              </button>
+            </>
+          )}
+          {podeDecidir && !rejeitando && !substituicao && (
+            <>
+              <button type="button" className={styles.btnGhost} disabled={executando} onClick={() => setRejeitando(true)}>
+                Rejeitar
+              </button>
+              <button type="button" className={styles.btnPrimary} disabled={executando} onClick={() => aprovar()}>
                 Aprovar
               </button>
             </>
           )}
-          {mostrarFormRejeicao && (
-            <>
-              <button
-                type="button"
-                className={styles.btnGhost}
-                disabled={executando}
-                onClick={() => setMostrarFormRejeicao(false)}
-              >
-                Voltar
-              </button>
-              <button type="button" className={styles.btnPrimary} disabled={executando} onClick={confirmarRejeicao}>
-                Confirmar Rejeição
-              </button>
-            </>
-          )}
+          {/* Iniciar/concluir viraram ações SECUNDÁRIAS (btnGhost): no fluxo normal o
+              sincronizador faz as duas por horário, e um botão preto sugerindo que alguém
+              precisa clicar contradiria o comportamento real do sistema. */}
           {podeIniciarUso && (
-            <button type="button" className={styles.btnPrimary} disabled={executando} onClick={iniciarUso}>
-              Iniciar Uso
+            <button
+              type="button"
+              className={styles.btnGhost}
+              disabled={executando}
+              onClick={iniciarUso}
+              title="A reserva inicia sozinha no horário agendado. Use apenas para antecipar."
+            >
+              Iniciar agora
             </button>
           )}
-          {podeConcluir && etapaConcluir === "nenhuma" && (
-            <button type="button" className={styles.btnPrimary} disabled={executando} onClick={iniciarFluxoConcluir}>
+          {podeConcluir && (
+            <button
+              type="button"
+              className={styles.btnGhost}
+              disabled={executando}
+              onClick={concluir}
+              title="A reserva conclui sozinha no horário final. Use apenas para encerrar antes."
+            >
               Concluir
             </button>
           )}
@@ -617,12 +734,12 @@ export function ReservaDetalheModal({
               Reservar Novamente
             </button>
           )}
-          {podeCancelar && !mostrarFormRejeicao && (
+          {podeCancelar && !podeDecidir && (
             <button type="button" className={styles.btnDanger} disabled={executando} onClick={cancelar}>
               Cancelar Reserva
             </button>
           )}
-          {podeCancelarSerie && !mostrarFormRejeicao && (
+          {podeCancelarSerie && (
             <button type="button" className={styles.btnDanger} disabled={executando} onClick={cancelarSerie}>
               Cancelar Série
             </button>
@@ -630,15 +747,6 @@ export function ReservaDetalheModal({
         </div>
       </div>
 
-      {checklistModalAberto && (
-        <ChecklistFillModal
-          reservaId={reserva.id}
-          plataformaNome={reserva.plataformaNome}
-          somenteLeitura={checklistSomenteLeitura}
-          onClose={() => setChecklistModalAberto(false)}
-          onAtualizado={setChecklistResumo}
-        />
-      )}
     </div>
   );
 }

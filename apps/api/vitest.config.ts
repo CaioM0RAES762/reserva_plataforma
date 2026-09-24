@@ -12,5 +12,7 @@ export default defineConfig({
     // essa disputa por estado compartilhado (mesmo padrão de causa raiz documentado em
     // rateLimit.ts) sem precisar mockar o rate limiter nos testes de integração.
     fileParallelism: false,
+    // Nenhum teste enfileira e-mail real (ver o arquivo).
+    setupFiles: ["./src/tests/setup/semFilaDeEmailReal.ts"],
   },
 });

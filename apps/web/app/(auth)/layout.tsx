@@ -26,7 +26,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         </div>
 
         <footer className={styles.legalFooter}>
-          MetalSider · Segurança do Trabalho e Manutenção Industrial
+          MetalSider · Sistema de gerenciamento operaciona de reservas.
         </footer>
       </div>
 

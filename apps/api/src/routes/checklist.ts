@@ -22,7 +22,7 @@ import {
   validarRespostasParaFinalizar,
   type ItemTemplateChecklist,
 } from "../services/checklist.service.js";
-import { estadoFinal } from "../services/aprovacao.service.js";
+import { estadoFinal } from "../services/reservaEstado.service.js";
 import { armazenamentoService, gerarUrlAcessoOuNulo } from "../services/storage.service.js";
 import { enfileirarEmail } from "../services/queue.js";
 import { templateChecklistNaoConforme } from "../services/email.service.js";

@@ -7,7 +7,7 @@ import {
 } from "@plataformares/shared";
 import { getPool, sql } from "../db/pool.js";
 import { autenticar, requireRole } from "../middlewares/rbac.js";
-import { gerarCodigoVerificacao, hashPassword } from "../utils/password.js";
+import { SENHA_INICIAL_PADRAO, hashPassword } from "../utils/password.js";
 import { EmailNaoEnviadoError } from "../services/email.service.js";
 import { emitirEEnviarCodigo } from "../services/otp.service.js";
 
@@ -15,18 +15,20 @@ interface UsuarioRow {
   id: string;
   nome: string;
   email: string;
+  telefone: string | null;
   perfil: string;
   setor_id: string | null;
   setor_nome: string | null;
   ativo: boolean;
   email_verificado: boolean;
+  senha_provisoria: boolean;
   criado_em: Date;
   ultimo_login: Date | null;
 }
 
 const SELECT_USUARIO = `
-  u.id, u.nome, u.email, u.perfil, u.setor_id, s.nome AS setor_nome,
-  u.ativo, u.email_verificado, u.criado_em, u.ultimo_login`;
+  u.id, u.nome, u.email, u.telefone, u.perfil, u.setor_id, s.nome AS setor_nome,
+  u.ativo, u.email_verificado, u.senha_provisoria, u.criado_em, u.ultimo_login`;
 const FROM_USUARIO = "FROM Usuario u LEFT JOIN Setor s ON s.id = u.setor_id";
 
 function mapUsuario(row: UsuarioRow) {
@@ -34,11 +36,13 @@ function mapUsuario(row: UsuarioRow) {
     id: row.id,
     nome: row.nome,
     email: row.email,
+    telefone: row.telefone,
     perfil: row.perfil,
     setorId: row.setor_id,
     setorNome: row.setor_nome,
     ativo: row.ativo,
     emailVerificado: row.email_verificado,
+    senhaProvisoria: row.senha_provisoria,
     criadoEm: row.criado_em,
     ultimoLogin: row.ultimo_login,
   };
@@ -110,8 +114,16 @@ export async function usuariosRoutes(app: FastifyInstance): Promise<void> {
   // /api/v1/auth/cadastrar, público), esta rota deixou de ser o único jeito de uma conta
   // nascer — o caso comum (colaborador) passa por lá. Esta continua existindo para o Admin
   // criar diretamente contas gestor_setor/admin (perfis que o autocadastro nunca atribui) ou
-  // casos excepcionais. Mesma semântica: nasce inativo quanto a email_verificado (ativo=1,
-  // email_verificado=0) e recebe um código de ativação por e-mail.
+  // casos excepcionais.
+  //
+  // Diferente do autocadastro: aqui o Admin já validou a pessoa (digitou o e-mail dela, está
+  // dando a senha para ela pessoalmente), então a conta nasce PRONTA para logar — senha
+  // inicial fixa (SENHA_INICIAL_PADRAO, hasheada, nunca em texto puro no banco/log/resposta),
+  // ativo=1, email_verificado=1 (o Admin vouching pelo e-mail substitui a prova por código) e
+  // senha_provisoria=1, que obriga a troca no primeiro login (PATCH /conta/senha zera essa
+  // flag). Sem e-mail de ativação — a senha já é entregue na própria tela ao Admin. O fluxo de
+  // autocadastro/ativação por código (auth.ts) continua intacto e é o único usado para contas
+  // que nascem sozinhas.
   app.post(
     "/api/v1/usuarios",
     { preHandler: [autenticar, requireRole(["admin"])] },
@@ -120,7 +132,7 @@ export async function usuariosRoutes(app: FastifyInstance): Promise<void> {
       if (!parsed.success) {
         return reply.status(422).send({ erro: "Dados inválidos.", detalhes: parsed.error.flatten() });
       }
-      const { nome, email, perfil, setorId } = parsed.data;
+      const { nome, email, telefone, perfil, setorId } = parsed.data;
 
       if (perfil !== "admin" && !setorId) {
         return reply
@@ -137,7 +149,7 @@ export async function usuariosRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(409).send({ erro: "Já existe um usuário com este e-mail." });
       }
 
-      const senhaPlaceholder = await hashPassword(gerarCodigoVerificacao() + gerarCodigoVerificacao());
+      const senhaInicialHash = await hashPassword(SENHA_INICIAL_PADRAO);
       const setorFinal = perfil === "admin" ? null : setorId ?? null;
 
       const transaction = pool.transaction();
@@ -148,13 +160,15 @@ export async function usuariosRoutes(app: FastifyInstance): Promise<void> {
           .request()
           .input("nome", sql.NVarChar, nome)
           .input("email", sql.NVarChar, email)
-          .input("senha_hash", sql.VarChar, senhaPlaceholder)
+          .input("telefone", sql.NVarChar, telefone.trim())
+          .input("senha_hash", sql.VarChar, senhaInicialHash)
           .input("perfil", sql.VarChar, perfil)
           .input("setor_id", sql.UniqueIdentifier, setorFinal)
           .query<{ id: string }>(
-            `INSERT INTO Usuario (nome, email, senha_hash, perfil, setor_id, ativo, email_verificado)
+            `INSERT INTO Usuario
+               (nome, email, telefone, senha_hash, perfil, setor_id, ativo, email_verificado, senha_provisoria)
              OUTPUT INSERTED.id
-             VALUES (@nome, @email, @senha_hash, @perfil, @setor_id, 1, 0)`
+             VALUES (@nome, @email, @telefone, @senha_hash, @perfil, @setor_id, 1, 1, 1)`
           );
         novoId = insercao.recordset[0].id;
 
@@ -175,34 +189,11 @@ export async function usuariosRoutes(app: FastifyInstance): Promise<void> {
         throw err;
       }
 
-      // O código de ativação e seu envio ficam FORA da transação de criação: a conta já
-      // existe (commit acima) e não deve ser desfeita por uma falha transitória de e-mail
-      // (rede, provedor fora do ar por um instante). Antes, esta chamada era fire-and-forget
-      // (`enfileirarEmail`) e a rota respondia 201 sem nunca saber se o envio funcionou —
-      // agora o resultado real do envio é refletido em `codigoEnviado`/`avisoEnvio` na
-      // resposta, e o Admin tem "Reenviar código" na lista de usuários para recuperar sem
-      // precisar recriar a conta.
-      let codigoEnviado = true;
-      let avisoEnvio: string | undefined;
-      try {
-        await emitirEEnviarCodigo({
-          usuarioId: novoId,
-          email,
-          tipo: "ativacao_conta",
-          tipoObservabilidade: "ACTIVATION",
-        });
-      } catch (err) {
-        const detalhe = err instanceof EmailNaoEnviadoError ? err.message : "erro interno";
-        request.log.error({ err, usuarioId: novoId }, "conta criada, mas falha ao enviar o código de ativação inicial");
-        codigoEnviado = false;
-        avisoEnvio = `Conta criada, mas não foi possível enviar o e-mail de ativação agora (${detalhe}). Use "Reenviar código" para tentar de novo.`;
-      }
-
       const completo = await pool
         .request()
         .input("id", sql.UniqueIdentifier, novoId)
         .query<UsuarioRow>(`SELECT ${SELECT_USUARIO} ${FROM_USUARIO} WHERE u.id = @id`);
-      return reply.status(201).send({ ...mapUsuario(completo.recordset[0]), codigoEnviado, avisoEnvio });
+      return reply.status(201).send(mapUsuario(completo.recordset[0]));
     }
   );
 
@@ -216,7 +207,7 @@ export async function usuariosRoutes(app: FastifyInstance): Promise<void> {
       if (!parsed.success) {
         return reply.status(422).send({ erro: "Dados inválidos.", detalhes: parsed.error.flatten() });
       }
-      const { nome, email, setorId } = parsed.data;
+      const { nome, email, telefone, setorId } = parsed.data;
 
       const pool = await getPool();
       const atual = await pool
@@ -244,6 +235,11 @@ export async function usuariosRoutes(app: FastifyInstance): Promise<void> {
       }
 
       const setorFinal = usuario.perfil === "admin" ? null : setorId ?? null;
+      // Campo vazio (ou omitido) no formulário significa "não informado" — grava NULL,
+      // nunca "" (mesmo padrão de Plataforma.telefoneEmergencia). Igual ao resto desta rota
+      // (nome/email/setor), a edição sempre reenvia o objeto completo, não é um PATCH
+      // parcial — a tela de edição já vem preenchida com o telefone atual.
+      const telefoneFinal = telefone?.trim() || null;
       const transaction = pool.transaction();
       await transaction.begin();
       try {
@@ -252,9 +248,11 @@ export async function usuariosRoutes(app: FastifyInstance): Promise<void> {
           .input("id", sql.UniqueIdentifier, id)
           .input("nome", sql.NVarChar, nome)
           .input("email", sql.NVarChar, email)
+          .input("telefone", sql.NVarChar, telefoneFinal)
           .input("setor_id", sql.UniqueIdentifier, setorFinal)
           .query(
-            `UPDATE Usuario SET nome = @nome, email = @email, setor_id = @setor_id WHERE id = @id`
+            `UPDATE Usuario SET nome = @nome, email = @email, telefone = @telefone, setor_id = @setor_id
+             WHERE id = @id`
           );
         await registrarAuditoriaUsuario(transaction, request.usuario!.sub, "editar_usuario", id, {
           nome,

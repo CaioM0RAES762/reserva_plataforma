@@ -4,6 +4,7 @@ import {
   atualizarStatusPlataformaSchema,
   criarPlataformaSchema,
   editarPlataformaSchema,
+  horimetroAtualHoras,
 } from "@plataformares/shared";
 import { getPool, sql } from "../db/pool.js";
 import { autenticar, requireRole } from "../middlewares/rbac.js";
@@ -30,6 +31,7 @@ interface PlataformaRow {
   codigo: string;
   nome: string;
   localizacao: string | null;
+  telefone_emergencia: string | null;
   capacidade: number | null;
   status: string;
   categoria: string;
@@ -41,13 +43,10 @@ interface PlataformaRow {
   altura_maxima_m: number | null;
   capacidade_operadores: number | null;
   horimetro_horas: number | null;
+  horimetro_uso_minutos: number;
   utilizacao_30d: number | null;
   evento_texto: string | null;
   evento_detalhe: string | null;
-  exige_checklist: boolean;
-  checklist_template_id: string | null;
-  checklist_template_nome: string | null;
-  checklist_total_questoes: number | null;
   inicio_automatico_padrao: boolean;
   fim_automatico_padrao: boolean;
   criado_em: Date;
@@ -60,6 +59,7 @@ async function mapPlataforma(row: PlataformaRow, aoFalharImagem?: (erro: unknown
     codigo: row.codigo,
     nome: row.nome,
     localizacao: row.localizacao,
+    telefoneEmergencia: row.telefone_emergencia,
     capacidade: row.capacidade,
     status: row.status,
     categoria: row.categoria,
@@ -73,18 +73,15 @@ async function mapPlataforma(row: PlataformaRow, aoFalharImagem?: (erro: unknown
     tipoEquipamento: row.tipo_equipamento,
     alturaMaximaM: row.altura_maxima_m,
     capacidadeOperadores: row.capacidade_operadores,
+    // Baseline (cadastro/correção) + uso real contabilizado pelas reservas (migration 0022).
     horimetroHoras: row.horimetro_horas,
+    horimetroUsoMinutos: row.horimetro_uso_minutos ?? 0,
+    horimetroAtualHoras: horimetroAtualHoras(row.horimetro_horas, row.horimetro_uso_minutos ?? 0),
     utilizacao30d: row.utilizacao_30d,
     evento: row.evento_texto ? { texto: row.evento_texto, detalhe: row.evento_detalhe } : null,
+    // NR-18/NR-35 continuam derivadas de categoria/altura: são informação de segurança do
+    // equipamento em si, independentes do checklist que saiu do fluxo de reserva.
     normas: calcularNormasPlataforma(row.categoria, row.altura_maxima_m),
-    // Configuração de segurança do equipamento — o que decide se a reserva desta plataforma
-    // passa pela etapa de checklist antes da aprovação. O nome/contagem do template vêm
-    // junto para a Frota exibir "NR-18/35 — Plataforma Elevatória · 6 questões" e oferecer o
-    // atalho de edição sem uma segunda requisição.
-    exigeChecklist: row.exige_checklist,
-    checklistTemplateId: row.checklist_template_id,
-    checklistTemplateNome: row.checklist_template_nome,
-    checklistTotalQuestoes: row.checklist_total_questoes,
     inicioAutomaticoPadrao: row.inicio_automatico_padrao,
     fimAutomaticoPadrao: row.fim_automatico_padrao,
     criadoEm: row.criado_em,
@@ -93,10 +90,9 @@ async function mapPlataforma(row: PlataformaRow, aoFalharImagem?: (erro: unknown
 }
 
 const SELECT_COLUNAS =
-  "id, codigo, nome, localizacao, capacidade, status, categoria, risco, aprovacao_automatica, " +
-  "observacoes, imagem_url, tipo_equipamento, altura_maxima_m, capacidade_operadores, horimetro_horas, " +
-  "utilizacao_30d, evento_texto, evento_detalhe, exige_checklist, checklist_template_id, " +
-  "checklist_template_nome, checklist_total_questoes, inicio_automatico_padrao, fim_automatico_padrao, " +
+  "id, codigo, nome, localizacao, telefone_emergencia, capacidade, status, categoria, risco, aprovacao_automatica, " +
+  "observacoes, imagem_url, tipo_equipamento, altura_maxima_m, capacidade_operadores, horimetro_horas, horimetro_uso_minutos, " +
+  "utilizacao_30d, evento_texto, evento_detalhe, inicio_automatico_padrao, fim_automatico_padrao, " +
   "criado_em, atualizado_em";
 
 // CTE reutilizada pela listagem e por buscarPlataformaPorId (recarrega o registro
@@ -105,21 +101,16 @@ const SELECT_COLUNAS =
 function buildQueryPlataformas(whereEOrder: string): string {
   return `
     WITH PlataformaComStatus AS (
-      SELECT p.id, p.codigo, p.nome, p.localizacao, p.capacidade,
+      SELECT p.id, p.codigo, p.nome, p.localizacao, p.telefone_emergencia, p.capacidade,
              ${sqlStatusPlataformaDerivado("p")} AS status,
              p.categoria, p.risco, p.aprovacao_automatica, p.observacoes, p.imagem_url,
              p.tipo_equipamento, p.altura_maxima_m, p.capacidade_operadores, p.horimetro_horas,
+             p.horimetro_uso_minutos,
              ${sqlUtilizacao30dPlataforma("p")} AS utilizacao_30d,
              evento_ativo.texto AS evento_texto, evento_ativo.detalhe AS evento_detalhe,
-             p.exige_checklist, p.checklist_template_id,
-             tpl.nome AS checklist_template_nome,
-             CASE WHEN tpl.id IS NULL THEN NULL ELSE (
-               SELECT COUNT(*) FROM ChecklistItemTemplate it WHERE it.template_id = tpl.id AND it.ativo = 1
-             ) END AS checklist_total_questoes,
              p.inicio_automatico_padrao, p.fim_automatico_padrao,
              p.criado_em, p.atualizado_em
       FROM Plataforma p
-      LEFT JOIN ChecklistTemplate tpl ON tpl.id = p.checklist_template_id
       ${sqlEventoAtivoPlataforma("p")}
     )
     SELECT ${SELECT_COLUNAS} FROM PlataformaComStatus ${whereEOrder}
@@ -244,33 +235,31 @@ export async function plataformasRoutes(app: FastifyInstance): Promise<void> {
           .input("altura_maxima_m", sql.Decimal(4, 1), parsed.data.alturaMaximaM ?? null)
           .input("capacidade_operadores", sql.Int, parsed.data.capacidadeOperadores ?? null)
           .input("horimetro_horas", sql.Int, parsed.data.horimetroHoras ?? null)
-          .input("exige_checklist", sql.Bit, parsed.data.exigeChecklist)
-          // Só persiste o vínculo quando a plataforma de fato exige checklist — assim
-          // desmarcar "exige" não deixa um template órfão apontado, que voltaria a valer
-          // silenciosamente se a opção fosse remarcada depois.
-          .input(
-            "checklist_template_id",
-            sql.UniqueIdentifier,
-            parsed.data.exigeChecklist ? parsed.data.checklistTemplateId ?? null : null
-          )
+          // Campo vazio no formulário significa "não informado" — grava NULL, nunca "".
+          .input("telefone_emergencia", sql.NVarChar, parsed.data.telefoneEmergencia?.trim() || null)
           .input("inicio_automatico_padrao", sql.Bit, parsed.data.inicioAutomaticoPadrao)
           .input("fim_automatico_padrao", sql.Bit, parsed.data.fimAutomaticoPadrao)
           .query(
+            // exige_checklist / checklist_template_id saíram do INSERT junto com o
+            // acoplamento entre checklist e reserva. As colunas continuam na tabela
+            // (migration 0018 não as remove) para não invalidar o histórico já gravado,
+            // mas nenhuma escrita nova as define — ficam no default 0/NULL.
             `INSERT INTO Plataforma (
                id, codigo, nome, localizacao, capacidade, categoria, risco, aprovacao_automatica,
                observacoes, imagem_url, tipo_equipamento, altura_maxima_m, capacidade_operadores, horimetro_horas,
-               exige_checklist, checklist_template_id, inicio_automatico_padrao, fim_automatico_padrao
+               telefone_emergencia, inicio_automatico_padrao, fim_automatico_padrao
              )
              VALUES (
                @id, @codigo, @nome, @localizacao, @capacidade, @categoria, @risco, @aprovacao_automatica,
                @observacoes, @imagem_url, @tipo_equipamento, @altura_maxima_m, @capacidade_operadores, @horimetro_horas,
-               @exige_checklist, @checklist_template_id, @inicio_automatico_padrao, @fim_automatico_padrao
+               @telefone_emergencia, @inicio_automatico_padrao, @fim_automatico_padrao
              )`
           );
 
         await registrarAuditoria(transaction, request.usuario!.sub, "criar_plataforma", novoId, {
           codigo,
           nome: parsed.data.nome,
+          telefoneEmergencia: parsed.data.telefoneEmergencia?.trim() || null,
         });
 
         await transaction.commit();
@@ -306,11 +295,16 @@ export async function plataformasRoutes(app: FastifyInstance): Promise<void> {
       const atual = await pool
         .request()
         .input("id", sql.UniqueIdentifier, id)
-        .query<{ id: string; imagem_url: string | null }>("SELECT id, imagem_url FROM Plataforma WHERE id = @id");
+        .query<{ id: string; imagem_url: string | null; telefone_emergencia: string | null }>(
+          "SELECT id, imagem_url, telefone_emergencia FROM Plataforma WHERE id = @id"
+        );
       if (atual.recordset.length === 0) {
         return reply.status(404).send({ erro: "Plataforma não encontrada." });
       }
       const imagemAnteriorBlob = atual.recordset[0].imagem_url;
+      // Lido ANTES do UPDATE para poder comparar e só auditar quando o número realmente muda.
+      const telefoneEmergenciaAnterior = atual.recordset[0].telefone_emergencia;
+      const telefoneEmergenciaNovo = parsed.data.telefoneEmergencia?.trim() || null;
 
       const duplicado = await pool
         .request()
@@ -359,38 +353,72 @@ export async function plataformasRoutes(app: FastifyInstance): Promise<void> {
           .input("tipo_equipamento", sql.NVarChar, parsed.data.tipoEquipamento ?? null)
           .input("altura_maxima_m", sql.Decimal(4, 1), parsed.data.alturaMaximaM ?? null)
           .input("capacidade_operadores", sql.Int, parsed.data.capacidadeOperadores ?? null)
-          .input("horimetro_horas", sql.Int, parsed.data.horimetroHoras ?? null)
-          .input("exige_checklist", sql.Bit, parsed.data.exigeChecklist)
-          .input(
-            "checklist_template_id",
-            sql.UniqueIdentifier,
-            parsed.data.exigeChecklist ? parsed.data.checklistTemplateId ?? null : null
-          )
+          .input("telefone_emergencia", sql.NVarChar, telefoneEmergenciaNovo)
           .input("inicio_automatico_padrao", sql.Bit, parsed.data.inicioAutomaticoPadrao)
           .input("fim_automatico_padrao", sql.Bit, parsed.data.fimAutomaticoPadrao)
           .query(
+            // horimetro_horas NÃO é gravado aqui: o horímetro é automático, e reenviar o formulário
+            // não pode sobrescrever o uso acumulado. Mudança de valor é uma correção explícita,
+            // tratada logo abaixo (com lock na linha e auditoria própria).
             `UPDATE Plataforma SET
                codigo = @codigo, nome = @nome, localizacao = @localizacao,
                capacidade = @capacidade, categoria = @categoria, risco = @risco,
                aprovacao_automatica = @aprovacao_automatica, observacoes = @observacoes,
                imagem_url = @imagem_url, tipo_equipamento = @tipo_equipamento,
                altura_maxima_m = @altura_maxima_m, capacidade_operadores = @capacidade_operadores,
-               horimetro_horas = @horimetro_horas,
-               exige_checklist = @exige_checklist, checklist_template_id = @checklist_template_id,
+               telefone_emergencia = @telefone_emergencia,
                inicio_automatico_padrao = @inicio_automatico_padrao,
                fim_automatico_padrao = @fim_automatico_padrao,
                atualizado_em = SYSUTCDATETIME()
              WHERE id = @id`
           );
 
-        // A configuração de checklist entra na auditoria: "por que esta reserva não pediu
-        // checklist?" precisa ser respondível pelo histórico, não só pelo estado atual.
         await registrarAuditoria(transaction, request.usuario!.sub, "editar_plataforma", id, {
           codigo,
           nome: parsed.data.nome,
-          exigeChecklist: parsed.data.exigeChecklist,
-          checklistTemplateId: parsed.data.exigeChecklist ? parsed.data.checklistTemplateId ?? null : null,
         });
+
+        /* Correção manual do horímetro (Admin). O formulário envia o horímetro atual em horas
+           inteiras; só há correção quando o valor DIFERE do atual. Corrigir redefine o
+           baseline e zera o uso acumulado (que passa a estar contido no valor informado).
+           UPDLOCK: uma conclusão de reserva simultânea espera — o incremento dela não se perde
+           entre a leitura e a gravação. */
+        if (parsed.data.horimetroHoras !== undefined) {
+          const horimetro = await transaction
+            .request()
+            .input("id", sql.UniqueIdentifier, id)
+            .query<{ horimetro_horas: number | null; horimetro_uso_minutos: number }>(
+              "SELECT horimetro_horas, horimetro_uso_minutos FROM Plataforma WITH (UPDLOCK, ROWLOCK) WHERE id = @id"
+            );
+          const { horimetro_horas: baseAnterior, horimetro_uso_minutos: usoAnterior } = horimetro.recordset[0];
+          const atualHoras = horimetroAtualHoras(baseAnterior, usoAnterior);
+          const novoValor = parsed.data.horimetroHoras;
+          if (atualHoras === null || Math.floor(atualHoras) !== novoValor) {
+            await transaction
+              .request()
+              .input("id", sql.UniqueIdentifier, id)
+              .input("horimetro_horas", sql.Int, novoValor)
+              .query("UPDATE Plataforma SET horimetro_horas = @horimetro_horas, horimetro_uso_minutos = 0 WHERE id = @id");
+            await registrarAuditoria(transaction, request.usuario!.sub, "corrigir_horimetro", id, {
+              codigo,
+              horimetroAnteriorHoras: atualHoras,
+              horimetroNovoHoras: novoValor,
+              baselineAnteriorHoras: baseAnterior,
+              usoIncorporadoMinutos: usoAnterior,
+            });
+          }
+        }
+
+        /* Telefone de emergência ganha evento PRÓPRIO quando muda. É o número que alguém
+           vai discar no pior momento possível: "quem trocou isso e quando?" precisa ser
+           respondível sem abrir o payload de um evento genérico de edição. */
+        if (telefoneEmergenciaAnterior !== telefoneEmergenciaNovo) {
+          await registrarAuditoria(transaction, request.usuario!.sub, "atualizar_telefone_emergencia", id, {
+            codigo,
+            telefoneAnterior: telefoneEmergenciaAnterior,
+            telefoneNovo: telefoneEmergenciaNovo,
+          });
+        }
 
         await transaction.commit();
         // Remove o blob antigo só depois do commit confirmar a troca/remoção (best-effort).

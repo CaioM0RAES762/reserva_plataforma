@@ -5,7 +5,7 @@ import styles from "../app/(app)/plataformas/page.module.css";
 import local from "./PlataformaModal.module.css";
 import { apiFetch } from "../lib/api";
 import { useModalAcessivel } from "../lib/useModalAcessivel";
-import { ChecklistTemplatesModal, type ChecklistTemplateResumo } from "./ChecklistTemplatesModal";
+import { MENSAGEM_TELEFONE_INVALIDO, telefoneValido } from "@plataformares/shared";
 
 export interface PlataformaFormValues {
   codigo: string;
@@ -21,8 +21,7 @@ export interface PlataformaFormValues {
   capacidadeOperadores?: number;
   horimetroHoras?: number;
   categoria?: string;
-  exigeChecklist: boolean;
-  checklistTemplateId?: string | null;
+  telefoneEmergencia?: string;
   inicioAutomaticoPadrao: boolean;
   fimAutomaticoPadrao: boolean;
 }
@@ -42,10 +41,9 @@ export interface PlataformaEditavel {
   alturaMaximaM: number | null;
   capacidadeOperadores: number | null;
   horimetroHoras: number | null;
-  exigeChecklist: boolean;
-  checklistTemplateId: string | null;
-  checklistTemplateNome: string | null;
-  checklistTotalQuestoes: number | null;
+  // Baseline + uso contabilizado (migration 0022). Ausente = só o baseline.
+  horimetroAtualHoras?: number | null;
+  telefoneEmergencia: string | null;
   inicioAutomaticoPadrao: boolean;
   fimAutomaticoPadrao: boolean;
 }
@@ -88,7 +86,14 @@ export function PlataformaModal({ plataforma, onClose, onSalvar }: PlataformaMod
   const [capacidadeOperadores, setCapacidadeOperadores] = useState(
     plataforma?.capacidadeOperadores?.toString() ?? ""
   );
-  const [horimetroHoras, setHorimetroHoras] = useState(plataforma?.horimetroHoras?.toString() ?? "");
+  // Na edição o campo mostra o horímetro ATUAL (baseline + uso) em horas inteiras e só é
+  // enviado se o Admin mudar o valor — reenviar o formulário nunca sobrescreve o uso
+  // acumulado. Mudança = correção explícita, auditada no backend (corrigir_horimetro).
+  const horimetroInicial = (() => {
+    const atual = plataforma?.horimetroAtualHoras ?? plataforma?.horimetroHoras ?? null;
+    return atual === null ? "" : String(Math.floor(atual));
+  })();
+  const [horimetroHoras, setHorimetroHoras] = useState(horimetroInicial);
   const [status, setStatus] = useState(
     plataforma && plataforma.status !== "reservada" ? plataforma.status : "disponivel"
   );
@@ -105,37 +110,22 @@ export function PlataformaModal({ plataforma, onClose, onSalvar }: PlataformaMod
   // plataforma marcada como "elevatoria" no banco entrar no fluxo com checklist.
   const [categoria, setCategoria] = useState(plataforma?.categoria ?? "outro");
 
-  // Seção SEGURANÇA — a configuração que define o fluxo da reserva desta plataforma.
-  const [exigeChecklist, setExigeChecklist] = useState(plataforma?.exigeChecklist ?? false);
-  const [checklistTemplateId, setChecklistTemplateId] = useState<string | null>(
-    plataforma?.checklistTemplateId ?? null
-  );
-  const [templates, setTemplates] = useState<ChecklistTemplateResumo[]>([]);
-  const [editorTemplate, setEditorTemplate] = useState<
-    { modo: "editar"; id: string } | { modo: "criar" } | null
-  >(null);
+  // Contato acionado quando algo dá errado COM O EQUIPAMENTO durante o uso.
+  const [telefoneEmergencia, setTelefoneEmergencia] = useState(plataforma?.telefoneEmergencia ?? "");
 
-  // Seção AUTOMAÇÃO — padrões herdados por novas reservas desta plataforma.
+  // Seção AUTOMAÇÃO — padrões herdados por novas reservas desta plataforma. Nascem
+  // ligados: iniciar/concluir por horário é o comportamento normal do fluxo.
   const [inicioAutomaticoPadrao, setInicioAutomaticoPadrao] = useState(
-    plataforma?.inicioAutomaticoPadrao ?? false
+    plataforma?.inicioAutomaticoPadrao ?? true
   );
-  const [fimAutomaticoPadrao, setFimAutomaticoPadrao] = useState(plataforma?.fimAutomaticoPadrao ?? false);
+  const [fimAutomaticoPadrao, setFimAutomaticoPadrao] = useState(plataforma?.fimAutomaticoPadrao ?? true);
 
-  async function carregarTemplates() {
-    try {
-      setTemplates(await apiFetch<ChecklistTemplateResumo[]>("/api/v1/checklist-modelos"));
-    } catch {
-      // A lista de templates é auxiliar: falhar aqui não pode impedir a edição dos demais
-      // campos do equipamento. O seletor fica vazio e o erro aparece só ao tentar salvar
-      // com "exige checklist" marcado sem template.
-    }
-  }
-
-  useEffect(() => {
-    void carregarTemplates();
-  }, []);
-
-  const templateSelecionado = templates.find((t) => t.id === checklistTemplateId) ?? null;
+  // Mesmo validador do schema no backend — o formulário não pode aceitar o que a API
+  // rejeita. Vazio é válido: nem todo ativo tem uma linha própria.
+  const erroTelefone =
+    telefoneEmergencia.trim() !== "" && !telefoneValido(telefoneEmergencia)
+      ? MENSAGEM_TELEFONE_INVALIDO
+      : null;
 
   async function handleSelecionarImagem(arquivo: File | undefined) {
     if (!arquivo) return;
@@ -165,10 +155,8 @@ export function PlataformaModal({ plataforma, onClose, onSalvar }: PlataformaMod
       setErro("Preencha os campos obrigatórios.");
       return;
     }
-    // Mesma regra validada no backend (editarPlataformaSchema): "exige checklist" sem
-    // template deixaria a plataforma impossível de aprovar — não há o que preencher.
-    if (exigeChecklist && !checklistTemplateId) {
-      setErro("Selecione o template de checklist exigido por esta plataforma.");
+    if (erroTelefone) {
+      setErro(erroTelefone);
       return;
     }
 
@@ -186,10 +174,10 @@ export function PlataformaModal({ plataforma, onClose, onSalvar }: PlataformaMod
         tipoEquipamento: tipoEquipamento.trim() || undefined,
         alturaMaximaM: alturaMaximaM ? Number(alturaMaximaM) : undefined,
         capacidadeOperadores: capacidadeOperadores ? Number(capacidadeOperadores) : undefined,
-        horimetroHoras: horimetroHoras ? Number(horimetroHoras) : undefined,
+        horimetroHoras:
+          horimetroHoras && (!plataforma || horimetroHoras !== horimetroInicial) ? Number(horimetroHoras) : undefined,
         categoria,
-        exigeChecklist,
-        checklistTemplateId: exigeChecklist ? checklistTemplateId : null,
+        telefoneEmergencia: telefoneEmergencia.trim() || undefined,
         inicioAutomaticoPadrao,
         fimAutomaticoPadrao,
       });
@@ -272,6 +260,28 @@ export function PlataformaModal({ plataforma, onClose, onSalvar }: PlataformaMod
                 />
               </div>
               <div className={styles.formGroup}>
+                <label htmlFor="pf-telefone">Telefone para emergência</label>
+                {/* type="tel", nunca "number": o valor carrega DDD entre parênteses,
+                    hífen, +55 e às vezes ramal — "number" descartaria a formatação e
+                    ainda comeria o zero à esquerda do DDD. */}
+                <input
+                  id="pf-telefone"
+                  type="tel"
+                  inputMode="tel"
+                  maxLength={40}
+                  value={telefoneEmergencia}
+                  onChange={(e) => setTelefoneEmergencia(e.target.value)}
+                  placeholder="(31) 3333-0000"
+                  aria-invalid={erroTelefone ? true : undefined}
+                  aria-describedby={erroTelefone ? "pf-telefone-erro" : undefined}
+                />
+                {erroTelefone && (
+                  <span id="pf-telefone-erro" className={styles.fieldError} role="alert">
+                    {erroTelefone}
+                  </span>
+                )}
+              </div>
+              <div className={styles.formGroup}>
                 <label htmlFor="pf-capacidade">Capacidade (kg)</label>
                 <input
                   id="pf-capacidade"
@@ -322,14 +332,20 @@ export function PlataformaModal({ plataforma, onClose, onSalvar }: PlataformaMod
                 />
               </div>
               <div className={styles.formGroup}>
-                <label htmlFor="pf-horimetro">Horímetro (h)</label>
+                <label htmlFor="pf-horimetro">{plataforma ? "Horímetro atual (h)" : "Horímetro inicial (h)"}</label>
                 <input
                   id="pf-horimetro"
                   type="number"
                   min="0"
                   value={horimetroHoras}
                   onChange={(e) => setHorimetroHoras(e.target.value)}
+                  aria-describedby="pf-horimetro-ajuda"
                 />
+                <p id="pf-horimetro-ajuda" className={local.ajuda}>
+                  {plataforma
+                    ? "Atualizado automaticamente pelo uso das reservas concluídas. Alterar o valor registra uma correção na auditoria."
+                    : "Valor atual do equipamento. A partir daqui, o uso das reservas é somado automaticamente."}
+                </p>
               </div>
               {plataforma && (
                 <div className={styles.formGroup}>
@@ -353,75 +369,10 @@ export function PlataformaModal({ plataforma, onClose, onSalvar }: PlataformaMod
               </div>
             </div>
 
-            {/* SEGURANÇA — define se a reserva deste equipamento passa pela etapa de
-                checklist antes da aprovação. É esta configuração, e nada mais, que decide
-                o fluxo: nenhum equipamento é tratado de forma especial pelo código. */}
-            <section className={local.secao}>
-              <h4 className={local.secaoTitulo}>Segurança</h4>
-
-              <label className={local.check}>
-                <input
-                  type="checkbox"
-                  checked={exigeChecklist}
-                  onChange={(e) => setExigeChecklist(e.target.checked)}
-                />
-                Exige checklist de segurança antes da aprovação
-              </label>
-              <p className={local.ajuda}>
-                {exigeChecklist
-                  ? "Fluxo: Solicitada → Checklist → Aprovada → Em uso → Concluída."
-                  : "Fluxo: Solicitada → Aprovada → Em uso → Concluída."}
-              </p>
-
-              {exigeChecklist && (
-                <div className={local.blocoTemplate}>
-                  <div className={styles.formGroup}>
-                    <label htmlFor="pf-template">Template de checklist</label>
-                    <select
-                      id="pf-template"
-                      value={checklistTemplateId ?? ""}
-                      onChange={(e) => setChecklistTemplateId(e.target.value || null)}
-                    >
-                      <option value="">Selecione um template…</option>
-                      {templates.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.nome} ({t.totalQuestoes}{" "}
-                          {t.totalQuestoes === 1 ? "questão" : "questões"})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {templateSelecionado && (
-                    <p className={local.templateResumo}>
-                      {templateSelecionado.nome} · {templateSelecionado.totalQuestoes}{" "}
-                      {templateSelecionado.totalQuestoes === 1 ? "questão" : "questões"}
-                    </p>
-                  )}
-
-                  {/* Atalhos para o MESMO editor usado na área de Checklists — sem sair
-                      desta tela, sem navegar para outra página e voltar. */}
-                  <div className={local.templateAcoes}>
-                    {checklistTemplateId && (
-                      <button
-                        type="button"
-                        className={styles.btnIcon}
-                        onClick={() => setEditorTemplate({ modo: "editar", id: checklistTemplateId })}
-                      >
-                        Editar template
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      className={styles.btnIcon}
-                      onClick={() => setEditorTemplate({ modo: "criar" })}
-                    >
-                      + Criar novo template
-                    </button>
-                  </div>
-                </div>
-              )}
-            </section>
+            {/* A seção "Segurança" (exige checklist / template) foi REMOVIDA: o checklist
+                deixou de ser etapa da reserva, então a configuração não decidia mais nada.
+                As execuções NR-18/35 já realizadas continuam no histórico, e as normas do
+                equipamento seguem derivadas de categoria/altura na Frota. */}
 
             {/* AUTOMAÇÃO — padrão herdado por novas reservas. A reserva pode sobrescrever, e
                 quem executa a transição é o worker do backend, não o navegador. */}
@@ -460,24 +411,6 @@ export function PlataformaModal({ plataforma, onClose, onSalvar }: PlataformaMod
         </form>
       </div>
 
-      {editorTemplate && (
-        <ChecklistTemplatesModal
-          templateIdInicial={editorTemplate.modo === "editar" ? editorTemplate.id : undefined}
-          iniciarCriando={editorTemplate.modo === "criar"}
-          onClose={() => {
-            setEditorTemplate(null);
-            void carregarTemplates();
-          }}
-          onAlterado={() => void carregarTemplates()}
-          // Fechar o editor já com o template associado ao equipamento: o Admin criou o
-          // template porque nenhum servia, então associá-lo é sempre o próximo passo.
-          onSelecionarTemplate={(template) => {
-            setChecklistTemplateId(template.id);
-            setEditorTemplate(null);
-            void carregarTemplates();
-          }}
-        />
-      )}
     </div>
   );
 }

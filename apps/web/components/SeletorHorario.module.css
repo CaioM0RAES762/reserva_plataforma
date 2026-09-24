@@ -1,0 +1,339 @@
+/* ==========================================================================
+   Seletor de horário da "Nova Reserva": chips de início por período, faixa de
+   ocupação, chips de duração e o resumo destacado.
+
+   Tokens do app (globals.css) — nada de cor solta. Horários em --font-mono para
+   os dígitos alinharem entre linhas. Ocupação e estado nunca dependem só de cor:
+   sempre há o texto "Ocupado", a faixa e a descrição.
+   ========================================================================== */
+
+.seletor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* Mesmo idioma dos rótulos de campo do formulário (eyebrow em caixa alta). */
+.rotulo {
+  font-size: var(--text-eyebrow);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow);
+  color: var(--ink-muted);
+}
+
+/* Só para leitor de tela (mesmo recorte de .visuallyHidden das outras telas). */
+.somenteLeitor {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.corpo {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  /* Reserva altura: a troca esqueleto -> chips não empurra o resto do formulário. */
+  min-height: 56px;
+}
+
+/* ---------- Estados (sem plataforma, carregando, erro, vazio) ---------- */
+
+.estado {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px dashed var(--hairline);
+  border-radius: var(--ind-radius-sm);
+  background: color-mix(in oklch, var(--ink) 2.5%, transparent);
+  font-size: var(--text-secondary);
+  line-height: 1.45;
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+}
+.estado p { margin: 0; }
+.estadoAlerta {
+  border-style: solid;
+  border-color: color-mix(in oklch, var(--hazard) 35%, var(--hairline));
+  background: var(--safety-soft);
+  color: var(--ink);
+}
+.estadoNota {
+  font-size: var(--text-meta);
+  color: var(--ink-muted);
+}
+
+/* Ação dentro de um estado ("Tentar novamente", "Ver próximo horário disponível"):
+   botão secundário com contorno — a ação primária da tela continua sendo Reservar. */
+.acao {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-h-compact);
+  padding: 0 14px;
+  border: 1px solid var(--ink);
+  border-radius: var(--ind-radius-sm);
+  background: transparent;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: var(--text-secondary);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.acao:hover:not(:disabled) { background: var(--ink); color: var(--paper); }
+.acao:disabled { opacity: 0.55; cursor: progress; }
+
+/* ---------- Chips de início ---------- */
+
+.grupos {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.periodo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.periodoRotulo {
+  font-size: var(--text-micro);
+  font-weight: 600;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+/* auto-fill + minmax: as colunas se ajustam ao espaço (4 em 375px, 8 no desktop) sem
+   media query, e cada chip tem a mesma largura — a grade lê como uma régua de horários. */
+.chips {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(68px, 1fr));
+  gap: 6px;
+  min-width: 0;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: var(--control-h-compact);
+  padding: 0 8px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-sm);
+  background: var(--paper-elev);
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+  font-size: var(--text-secondary);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.chip:hover { border-color: var(--ink-muted); color: var(--ink); }
+/* Selecionado por aria-pressed: o mesmo atributo que o leitor de tela anuncia comanda o
+   estilo, então visual e semântica não podem divergir. */
+.chip[aria-pressed="true"] {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+
+/* Chip "Personalizado" + campo de horário na mesma linha: o chip nunca deve encolher
+   abaixo do próprio texto (min-width:max-content, como em .duracao .chip), e o campo cresce
+   para ocupar o espaço restante, quebrando para a linha de baixo só se não couber. */
+.linhaPersonalizada {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+.linhaPersonalizada .chip {
+  flex: 0 0 auto;
+  min-width: max-content;
+  padding: 0 14px;
+}
+.linhaPersonalizada .inputHora {
+  flex: 1 1 140px;
+  min-width: 120px;
+  width: auto;
+}
+
+/* ---------- Faixa de ocupação ---------- */
+
+.ocupacoes {
+  list-style: none;
+  margin: 0;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  border: 1px solid var(--hairline);
+  border-left: 3px solid var(--hazard);
+  border-radius: var(--ind-radius-sm);
+  background: color-mix(in oklch, var(--ink) 2.5%, transparent);
+  font-size: var(--text-meta);
+  line-height: 1.4;
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+}
+.ocupadoRotulo {
+  font-size: var(--text-micro);
+  font-weight: 700;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--hazard);
+}
+.faixa {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.ocupacoesResto { color: var(--ink-muted); }
+
+.dica {
+  margin: 0;
+  font-size: var(--text-meta);
+  line-height: 1.45;
+  color: var(--ink-muted);
+}
+
+.aviso {
+  margin: 0;
+  padding: 9px 12px;
+  border: 1px solid color-mix(in oklch, var(--safety) 40%, var(--hairline));
+  border-radius: var(--ind-radius-sm);
+  background: var(--safety-soft);
+  font-size: var(--text-secondary);
+  line-height: 1.4;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Duração e resumo ---------- */
+
+.duracao {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--hairline);
+}
+/* Poucos chips (1h, 2h, 4h, Personalizado) e de larguras diferentes: flex que cresce, em vez
+   da grade uniforme dos horários — "Personalizado" não cabe numa célula de 68px. */
+.duracao .chips {
+  display: flex;
+  flex-wrap: wrap;
+}
+.duracao .chip {
+  flex: 1 1 64px;
+  /* .chip zera o min-width para caber em célula de grade; aqui o chip nunca pode ficar
+     menor que o próprio texto ("Personalizado"). */
+  min-width: max-content;
+  padding: 0 14px;
+  font-family: inherit;
+}
+
+.campoFim {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.selectFim,
+.inputHora {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--control-h);
+  padding: 0 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-sm);
+  background: var(--paper-elev);
+  font-family: var(--font-mono);
+  font-size: var(--text-body);
+  color: var(--ink);
+}
+.inputHora:focus { border-color: var(--ink-muted); }
+.inputHora[aria-invalid="true"] { border-color: var(--hazard); }
+
+/* "Horário final": lista de atalhos (70%) + duração exata HH:mm (30%) na mesma linha —
+   um único rótulo, duas formas de expressar a mesma duração. Empilha em modal estreito. */
+.linhaFim {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+.linhaFim .selectFim {
+  flex: 2 1 180px;
+  width: auto;
+}
+.linhaFim .inputHora {
+  flex: 1 1 100px;
+  width: auto;
+}
+
+.erroCampo {
+  margin: 0;
+  font-size: var(--text-meta);
+  line-height: 1.4;
+  color: var(--hazard);
+}
+
+/* Resumo da reserva: é a frase que o usuário confirma. Barra lateral em --safety (o
+   accent da identidade) e fundo suave — destaque por posição e peso, sem sombra. */
+.resumo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 2px 0 0;
+  padding: 10px 14px;
+  border: 1px solid color-mix(in oklch, var(--safety) 35%, var(--hairline));
+  border-left: 4px solid var(--safety);
+  border-radius: var(--ind-radius-sm);
+  background: var(--safety-soft);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.resumoRotulo {
+  font-size: var(--text-micro);
+  font-weight: 600;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.resumo strong {
+  font-family: var(--font-mono);
+  font-size: var(--text-body);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.35;
+}
+
+/* Alvos de toque de 44px em tela pequena ou dispositivo de toque (RNF-04): o padrão de 34px
+   é para ponteiro fino. */
+@media (max-width: 640px), (pointer: coarse) {
+  .chip,
+  .acao { min-height: 44px; }
+  .selectFim,
+  .inputHora {
+    min-height: 44px;
+    /* 16px+: abaixo disso o iOS dá zoom na página ao focar o campo. */
+    font-size: max(16px, var(--text-body));
+  }
+}

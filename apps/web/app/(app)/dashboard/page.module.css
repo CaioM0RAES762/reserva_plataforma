@@ -3,6 +3,20 @@
   flex-direction: column;
   gap: 24px;
   max-width: 1600px;
+  /* CAUSA RAIZ do "buraco" à direita com a sidebar recolhida: um bloco com max-width sem
+     margin auto se alinha à ESQUERDA do container por padrão do modelo de caixa CSS. Área
+     útil = viewport − sidebar − padding; ela ultrapassa 1600px assim que a sidebar recolhe
+     (ou em qualquer monitor grande o bastante mesmo expandida), e o excedente virava vão
+     vazio à direita em vez de ser dividido nas duas bordas. O resto do shell (AppShell,
+     Sidebar, Topbar.module.css .wrapper/.wrapperCollapsed) já recalcula a largura
+     corretamente — o bug era só esta regra, sem margin-inline.
+  */
+  margin-inline: auto;
+  /* A largura que importa aqui é a da ÁREA ÚTIL (janela menos a sidebar, que pode estar
+     expandida, recolhida ou fora da tela), não a da janela. A faixa de KPIs abaixo se
+     adapta a esse contêiner por container query em vez de media query de viewport — com
+     viewport, a 1280px de janela e sidebar expandida a faixa tentava 6 colunas em ~940px. */
+  container-type: inline-size;
 }
 
 .loading { padding: 32px; text-align: center; color: var(--ink-muted); font-size: var(--text-secondary); }
@@ -25,6 +39,16 @@
   justify-content: space-between;
   gap: 24px;
   flex-wrap: wrap;
+  padding-bottom: 22px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+/* Único destaque sutil do cabeçalho: um friso vertical laranja — o mesmo acento usado no
+   resto do produto (ver ComentariosReserva, badges), não um elemento novo. Sinaliza "isto é
+   a sua visão operacional de hoje" sem virar hero/banner. */
+.heroTexto {
+  padding-left: 16px;
+  border-left: 2px solid var(--safety);
 }
 
 .eyebrow {
@@ -33,7 +57,7 @@
   text-transform: uppercase;
   letter-spacing: var(--tracking-eyebrow);
   color: var(--ink-soft);
-  margin-bottom: 14px;
+  margin-bottom: 10px;
 }
 
 .h1 {
@@ -98,31 +122,39 @@
 
 /* ---------- KPI strip ---------- */
 
+/* `minmax(0, 1fr)` e não `1fr`: a trilha `1fr` tem mínimo `auto` (= largura do conteúdo),
+   e o .kpiSub é nowrap — a célula não encolhia abaixo do texto e a faixa transbordava em
+   telas estreitas. Com mínimo 0 a coluna encolhe e o texto trunca/quebra dentro dela. */
 .kpiStrip {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   border: 1px solid var(--hairline);
   border-radius: var(--ind-radius-md);
   background: var(--paper-elev);
   overflow: hidden;
-}
-@media (max-width: 1100px) {
-  .kpiStrip { grid-template-columns: repeat(3, 1fr); }
-}
-@media (max-width: 640px) {
-  .kpiStrip { grid-template-columns: repeat(2, 1fr); }
 }
 
 .kpiCell {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 22px 22px 20px;
-  border-left: 1px solid var(--hairline);
+  gap: 5px;
+  min-width: 0;
+  /* Menos altura: a célula perdeu a quarta linha (ver DashboardClient), então o padding
+     generoso que compensava o texto empilhado virou espaço morto. */
+  padding: 20px 20px 18px;
+  /* Divisória mais sutil que um hairline cheio — a grade não deveria competir com os
+     números, só separar o suficiente para a leitura não escorregar de uma célula pra outra. */
+  border-left: 1px solid color-mix(in oklch, var(--hairline) 65%, transparent);
   margin-left: -1px;
+  color: inherit;
+  text-decoration: none;
+  transition: background 0.15s;
 }
-.kpiCell:nth-child(-n+6) { border-top: none; }
+/* Hover sutil (célula virou link — KPIs com rota natural ficam clicáveis): leve mudança de
+   fundo, sem elevar/sombrear — nada que faça a faixa parecer um conjunto de cards soltos. */
+.kpiCell:hover { background: color-mix(in oklch, var(--ink) 3%, transparent); }
+.kpiCell:focus-visible { outline: 2px solid var(--ink-muted); outline-offset: -2px; }
 .kpiCell::before {
   content: "";
   position: absolute;
@@ -135,6 +167,7 @@
 .kpiGreen::before { background: var(--signal); }
 .kpiBlue::before { background: var(--chart-3); }
 .kpiOrange::before { background: var(--safety); }
+.kpiAmber::before { background: var(--caution); }
 .kpiRed::before { background: var(--hazard); }
 
 .kpiLabel {
@@ -147,7 +180,7 @@
 .kpiValue {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  font-size: 2.4rem;
+  font-size: 2.2rem;
   font-weight: 500;
   color: var(--ink);
   letter-spacing: -0.01em;
@@ -161,43 +194,59 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.kpiTrend {
-  font-family: var(--font-mono);
-  font-size: var(--text-meta);
-  color: var(--ink-soft);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-height: 1em;
-}
-.kpiTrendHazard { color: var(--hazard); font-weight: 500; }
 
-/* ---------- Duas colunas independentes ----------
-   Antes disto o Centro de Operações empilhava três `.grid12` (Agenda/Frota,
-   Aprovações/Checklist, Gráfico/Utilização), cada um sua própria grade de 12 colunas.
-   Como cada linha era um container de grid separado, a altura do painel mais alto de
-   CADA linha empurrava o início da linha seguinte inteira — um painel de listagem
-   crescendo (Status em tempo real, Fila de aprovações) abria um vão vazio embaixo do
-   painel mais curto da coluna oposta (Agenda em curso).
-   A correção não é de `gap`: é trocar de "grade com N linhas" para duas pilhas
-   verticais independentes lado a lado — cada card empilha só sobre o próximo card DA
-   MESMA coluna, então a altura da coluna da direita nunca dita a posição da esquerda. */
-.columns {
+/* 6 células = 6x1, 3x2 ou 2x3: sempre divisível, sem célula órfã na última linha. Os
+   limites são da área útil (.page é o contêiner), não da janela. Ficam DEPOIS das regras
+   base de .kpiCell/.kpiSub de propósito: mesma especificidade, quem vem por último vence. */
+@container (max-width: 1000px) {
+  .kpiStrip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  /* Ao quebrar em mais de uma linha, as células da segunda linha ganham a linha-guia que a
+     faixa de uma linha só nunca precisou. */
+  .kpiCell:nth-child(n+4) { border-top: 1px solid var(--hairline); }
+}
+@container (max-width: 600px) {
+  .kpiStrip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kpiCell:nth-child(n+3) { border-top: 1px solid var(--hairline); }
+  .kpiCell { padding: 16px 14px 14px; }
+  .kpiCell::before { left: 16px; }
+  /* Com 2 colunas a célula tem ~140px de texto: nowrap cortaria o contexto de cada KPI no
+     meio ("1 em manutenç…"). Aqui a linha de contexto pode ocupar duas linhas. */
+  .kpiSub { white-space: normal; }
+}
+
+/* ---------- Composição dos painéis ----------
+   Antes: duas pilhas fixas (.mainColumn 2fr / .sideColumn minmax(320px,1fr)) dentro de um
+   grid com `align-items: start`, mais o Ranking como irmão de largura total. Cada pilha
+   tinha a altura da SOMA dos seus painéis; a mais curta terminava cedo e deixava um vão
+   sob ela, e o Ranking só começava depois da mais alta. O vão variava com o perfil (a pilha
+   lateral só tinha "Utilização" para gestor/admin) e com os dados (nº de reservas hoje, nº
+   de plataformas) — por isso `gap`/`min-height` nunca resolveriam: a causa era a divisão
+   em pilhas decidida sem olhar para o que cada painel contém. Além disso a quebra para uma
+   coluna era por viewport (1100px), ignorando que a sidebar de 288px reduz a área útil.
+   Agora quem decide é <Composicao> (DashboardClient): recebe a lista de painéis que
+   realmente existem, mede a largura deste contêiner e distribui os painéis em N pilhas de
+   altura parecida. Aqui fica só o que o CSS sabe fazer: empilhar dentro da pilha e
+   posicionar as pilhas lado a lado. O `grid-template-columns` de 2+ colunas vem inline do
+   componente (mesma constante usada no cálculo de quantas colunas cabem). */
+.composicao {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
+  /* Uma coluna é o padrão (celular, tablet, área útil estreita); o componente troca por
+     `minmax(0, 1.3fr) repeat(n, minmax(0, 1fr))` quando cabem mais. `minmax(0, …)` deixa
+     a trilha encolher abaixo do conteúdo (timeline, tabela) em vez de estourar a página. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 24px;
+  /* `start`: cada pilha tem a altura do próprio conteúdo. Esticar deixaria os painéis da
+     pilha mais curta com miolo vazio para igualar a altura — o vão só mudaria de lugar. */
   align-items: start;
 }
-.mainColumn,
-.sideColumn {
+.pilha {
   display: flex;
   flex-direction: column;
   gap: 24px;
   min-width: 0;
 }
-@media (max-width: 1100px) {
-  .columns { grid-template-columns: 1fr; }
-}
+/* Painel de tabela larga (Ranking): linha própria abaixo das pilhas, largura total. */
+.painelLargo { grid-column: 1 / -1; }
 
 .panel {
   background: var(--paper-elev);
@@ -247,7 +296,52 @@
    .timeline reserva padding-top só para o rótulo "AGORA", e a linha vertical atravessa
    régua + lanes de ponta a ponta sem nunca colidir com os números da régua abaixo dela. */
 
-.timeline { position: relative; padding-top: 20px; margin-bottom: 16px; }
+/* `container-type`: a largura do painel varia de ~330px (celular) a ~900px (2 colunas em
+   tela larga) e a régua precisa reagir à largura DO PAINEL, não da janela — com a
+   composição em colunas, uma janela de 1440px pode ter a Agenda numa coluna de 450px. */
+/* A janela da régua é dinâmica (pode ir de 05:00 a 23:00): quando não cabe com ≥72px por
+   hora, este contêiner rola na horizontal em vez de comprimir as horas. O `min-width` do
+   .timeline vem inline, calculado a partir da janela. */
+.timelineScroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin-bottom: 16px;
+  scrollbar-width: thin;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+.timelineScroll .timeline { margin-bottom: 8px; }
+
+/* Solicitações aguardando aprovação (Admin/Gestor): uma linha discreta acima da régua, com
+   atalho para a fila — nunca misturadas à agenda confirmada. */
+.pendenciasLinha {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 8px 12px;
+  border: 1px solid var(--hairline);
+  border-left: 3px solid var(--safety);
+  border-radius: var(--ind-radius-sm);
+  background: var(--paper-elev);
+  font-size: var(--text-meta);
+  color: var(--ink);
+}
+.pendenciasLinha:hover { background: color-mix(in oklch, var(--ink) 3%, var(--paper-elev)); }
+.pendenciasUrgentes {
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: var(--ind-radius-sm);
+  background: color-mix(in oklch, var(--hazard) 12%, transparent);
+  color: var(--hazard);
+  font-size: var(--text-micro);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+}
+
+.timeline { position: relative; padding-top: 20px; margin-bottom: 16px; container-type: inline-size; }
 .timelineRuler {
   display: flex;
   justify-content: space-between;
@@ -256,6 +350,9 @@
   color: var(--ink-muted);
   margin-bottom: 8px;
 }
+/* Sem afinamento de rótulos: a janela é dinâmica e a régua tem no mínimo 72px por hora
+   (rola na horizontal quando não cabe), então os rótulos nunca se encostam. A regra antiga
+   (esconder os pares abaixo de 480px) só alinhava com as 11 marcações fixas de 07–17h. */
 .timelineLane {
   position: relative;
   /* Altura definida inline (style={{height}}) conforme o número de lanes do dia — o
@@ -376,24 +473,42 @@
 .fleetDotManutencao { background: var(--safety); }
 .fleetDotInativa { background: var(--ink-muted); }
 
+/* Duas linhas, nesta ordem: nome (protagonista) e "código · local" em mono discreto.
+   A ordenação por `order` sumiu junto com a terceira linha — a ordem agora é a do DOM. */
 .fleetInfo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.fleetCode { font-family: var(--font-mono); font-size: var(--text-micro); font-weight: 500; color: var(--ink-muted); order: 3; }
-.fleetName { font-size: var(--text-body); font-weight: 600; color: var(--ink); order: 1; }
-.fleetMeta { font-size: var(--text-meta); color: var(--ink-muted); order: 2; }
+.fleetName {
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fleetMeta {
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  color: var(--ink-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 .fleetStatus { flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; text-align: right; }
-.fleetStatusLabel { font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+.fleetStatusLabel { font-size: var(--text-eyebrow); font-weight: 600; text-transform: uppercase; letter-spacing: var(--tracking-label); }
 .fleetCorDisponivel { color: var(--signal); }
 .fleetCorEmUso { color: var(--chart-3); }
 .fleetCorManutencao { color: var(--safety); }
 .fleetCorInativa { color: var(--ink-muted); }
-.fleetDetail { font-size: var(--text-meta); color: var(--ink-muted); white-space: nowrap; }
+.fleetDetail { font-family: var(--font-mono); font-size: var(--text-micro); color: var(--ink-muted); white-space: nowrap; }
 
 .panelFooter {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  /* `wrap`: em ~330px "Última sincronização: 14:32" + "Ver frota completa" não cabem lado
+     a lado; sem quebra, o link espremia e partia no meio da frase. */
+  flex-wrap: wrap;
+  gap: 4px 12px;
   padding: 13px 24px;
   border-top: 1px solid var(--hairline);
   font-family: var(--font-mono);
@@ -517,48 +632,22 @@
 .alertTitle { font-family: var(--font-display); font-weight: 500; font-size: 1.2rem; color: var(--ink); margin-top: 5px; line-height: 1.32; }
 .alertBody { padding: 0 24px 20px 26px; }
 .alertMetaRow { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+/* Só renderizado quando a prioridade é alta/urgente (ver DashboardClient) — ou seja,
+   sempre uma exceção. Por isso vem em hazard, não no cinza neutro de antes, que o
+   igualava a um rótulo qualquer. */
 .priorityTag {
   padding: 2px 9px;
   font-size: var(--text-micro);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: var(--tracking-label);
-  color: var(--ink-soft);
-  border: 1px solid var(--hairline);
+  color: var(--hazard);
+  background: color-mix(in oklch, var(--hazard) 10%, transparent);
+  border: 1px solid color-mix(in oklch, var(--hazard) 30%, transparent);
   border-radius: var(--ind-radius-sm);
 }
-.alertSub { font-size: var(--text-secondary); color: var(--ink-soft); margin-bottom: 12px; }
-.checklistItemsList { list-style: none; display: flex; flex-direction: column; gap: 8px; margin: 12px 0 18px; }
-.checklistItemsList li {
-  position: relative;
-  padding-left: 17px;
-  font-size: var(--text-secondary);
-  color: var(--ink-soft);
-}
-.checklistItemsList li::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 8px;
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: var(--ink-muted);
-}
+.alertSub { font-size: var(--text-meta); color: var(--ink-muted); margin-bottom: 10px; }
 .alertActions { display: flex; align-items: center; gap: 8px; }
-.btnOutlineSm {
-  display: inline-flex;
-  align-items: center;
-  height: 40px;
-  padding: 0 16px;
-  font-size: var(--text-secondary);
-  font-weight: 500;
-  color: var(--ink-soft);
-  background: transparent;
-  border: 1px solid var(--hairline);
-  border-radius: var(--ind-radius-sm);
-}
-.btnOutlineSm:disabled { opacity: 0.45; cursor: default; }
 
 /* ---------- Utilization bars ---------- */
 
@@ -584,27 +673,13 @@
 }
 .distribuicaoFill { display: block; height: 100%; background: var(--ink); border-radius: var(--ind-radius-sm); }
 
-/* ---------- Footer ---------- */
-
-.footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding-top: 20px;
-  border-top: 1px solid var(--hairline);
-  font-family: var(--font-mono);
-  font-size: var(--text-meta);
-  color: var(--ink-muted);
-  flex-wrap: wrap;
-}
-
 /* ---------- Responsividade em telas estreitas (RNF-04) ----------
    O Dashboard foi redesenhado depois da matriz de responsividade da S14 e reintroduziu
    transbordo horizontal: a 360px o documento media 519px de largura (159px além da
    viewport), obrigando a rolagem lateral da página inteira. Três causas, corrigidas
-   abaixo: os dois botões do hero lado a lado, a régua de 11 horários em uma linha e a
-   tabela de ranking com 4 colunas de largura fixa. */
+   abaixo: os dois botões do hero lado a lado, a régua de 11 horários em uma linha (agora
+   por container query, junto da própria régua) e a tabela de ranking com 4 colunas de
+   largura fixa. */
 
 @media (max-width: 640px) {
   /* Os botões do hero (198px + 146px + gap) não cabem em 360px lado a lado. */
@@ -617,13 +692,6 @@
     justify-content: center;
   }
 
-  /* A régua 07:00–17:00 tem 11 marcações fixas; abaixo de 640px exibe de 2 em 2 para
-     caber sem espremer os rótulos (os blocos da linha do tempo continuam posicionados
-     pela mesma fração de tempo — só os rótulos ficam mais esparsos). */
-  .timelineRuler > span:nth-child(even) {
-    display: none;
-  }
-
   /* A tabela de ranking rola dentro do próprio painel, nunca empurrando a página.
      `.tableWrap` já tem overflow-x: auto, mas a tabela herdava width:100% do container
      e estourava mesmo assim por causa da largura mínima do conteúdo das células. */
@@ -634,9 +702,40 @@
     min-width: 460px;
   }
 
-  /* Cabeçalhos de painel com título + ação empilham em vez de disputar a mesma linha. */
+  /* Cabeçalho, corpo e rodapé do painel compartilham o mesmo recuo lateral. Só o cabeçalho
+     encolhia (16px) e o corpo continuava em 24px: o texto do título e o da lista ficavam
+     desalinhados, e a lista perdia 16px de largura útil justo onde cada pixel importa. */
   .panelHeader {
     padding: 16px;
+  }
+  .panelBody {
+    padding: 14px 16px 18px;
+  }
+  .panelFooter {
+    padding: 12px 16px;
+  }
+  .table th:first-child, .table td:first-child { padding-left: 16px; }
+  .table th:last-child, .table td:last-child { padding-right: 16px; }
+}
+
+@media (max-width: 480px) {
+  /* Linha de agenda em ~280px de texto: horário + selo + título em uma linha deixavam ~75px
+     para o título ("Ele…"). O horário e o selo dividem a primeira linha (horário à
+     esquerda, selo à direita) e título/meta ganham a largura toda na linha de baixo. */
+  .agendaRow {
+    flex-wrap: wrap;
+    gap: 6px 10px;
+  }
+  .agendaTime {
+    order: 1;
+    flex: 1 1 auto;
+  }
+  .agendaRow > .pill {
+    order: 2;
+  }
+  .agendaInfo {
+    order: 3;
+    flex: 1 1 100%;
   }
 }
 

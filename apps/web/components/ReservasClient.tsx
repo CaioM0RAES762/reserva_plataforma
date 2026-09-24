@@ -2,12 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { CalendarPlus, Clock, MapPin, Search, TriangleAlert } from "lucide-react";
+import { CalendarPlus, MapPin, Search, TriangleAlert } from "lucide-react";
+import { ULTIMO_MINUTO_RESERVAVEL, minutosParaHora } from "@plataformares/shared";
 import styles from "../app/(app)/reservas/page.module.css";
 import { apiFetch, mensagemDeErro } from "../lib/api";
 import { useDebounce } from "../lib/useDebounce";
+import { invalidarDisponibilidade } from "../lib/useDisponibilidade";
+import { idsDeUsuarioIguais } from "../lib/disponibilidadeOwnership";
 import { useEventosSSE } from "../lib/useEventosSSE";
+import { DisponibilidadeTimeline, type SelecaoHorario } from "./DisponibilidadeTimeline";
 import { ReservaStatusBadge } from "./ReservaStatusBadge";
+import { CampoFiltro, FiltrosAvancados } from "./FiltrosAvancados";
 import { Paginacao } from "./Paginacao";
 import { ReservaModal, type ReservaFormValues, type ReservaValoresIniciais } from "./ReservaModal";
 import { ReservaDetalheModal, type ReservaDetalhe } from "./ReservaDetalheModal";
@@ -23,9 +28,16 @@ interface ReservasClientProps {
   // destacar "minhas reservas" — sempre por id, nunca por nome (dois usuários podem
   // ter nomes parecidos/iguais).
   usuarioId: string;
+  /** Telefone do perfil (GET /conta) — repassado ao ReservaModal para pré-preencher o
+   *  contato automaticamente. */
+  telefonePerfil?: string | null;
 }
 
 const POR_PAGINA = 50;
+
+// Preferência (por navegador) de manter a seção "Disponibilidade" recolhida. Só conveniência
+// de leitura: a tela funciona igual sem ela (modo privado, storage bloqueado).
+const CHAVE_DISPONIBILIDADE_RECOLHIDA = "reservas.disponibilidade.recolhida";
 
 // Filtros rápidos: os mesmos status do domínio, na ordem do fluxo operacional. Substituem
 // a combobox de status — um clique em vez de abrir a lista e escolher.
@@ -44,12 +56,17 @@ const FILTROS_RAPIDOS: Array<{ chave: string; label: string }> = [
 // reservas de 2027 aparecerem misturadas com as da semana atual.
 type AtalhoPeriodo = "hoje" | "semana" | "7dias" | "30dias" | "personalizado";
 
+// Um <select> compacto no lugar de cinco chips: o período é sempre um filtro ativo (a
+// tela nunca opera sobre "todas as datas"), então o que interessa é ler o intervalo
+// vigente de relance — não manter cinco alvos de clique ocupando uma faixa inteira acima
+// da lista. "Personalizado" não é escolhido aqui: ele se ativa sozinho quando o usuário
+// mexe nas datas dentro de "Mais filtros".
 const ATALHOS_PERIODO: Array<{ chave: AtalhoPeriodo; label: string }> = [
   { chave: "hoje", label: "Hoje" },
   { chave: "semana", label: "Esta semana" },
   { chave: "7dias", label: "Próximos 7 dias" },
   { chave: "30dias", label: "Próximos 30 dias" },
-  { chave: "personalizado", label: "Personalizado" },
+  { chave: "personalizado", label: "Período personalizado" },
 ];
 
 function paraISO(data: Date): string {
@@ -131,6 +148,14 @@ function tituloDoDia(data: string): string {
   return nomeDoDia.charAt(0).toUpperCase() + nomeDoDia.slice(1);
 }
 
+// Empresa terceirizada da reserva (campo novo de ReservaDetalhe, preenchido só quando o setor é
+// "Terceirizados"). Acesso tolerante: continua correto se o tipo ainda não declara o campo ou se
+// a API antiga não o devolve.
+function empresaDaReserva(reserva: Reserva): string | null {
+  const valor = (reserva as Reserva & { empresaTerceirizada?: string | null }).empresaTerceirizada;
+  return typeof valor === "string" && valor.trim() ? valor.trim() : null;
+}
+
 function iniciais(nome: string): string {
   return nome
     .trim()
@@ -148,13 +173,24 @@ function codigoReserva(id: string): string {
   return `RS-${id.replace(/-/g, "").slice(0, 4).toUpperCase()}`;
 }
 
-export function ReservasClient({ solicitanteNome, setorNome, perfil, setorId, usuarioId }: ReservasClientProps) {
+export function ReservasClient({
+  solicitanteNome,
+  setorNome,
+  perfil,
+  setorId,
+  usuarioId,
+  telefonePerfil,
+}: ReservasClientProps) {
   // Atalhos do Dashboard/Calendário chegam aqui como ?status=agendada / ?data=AAAA-MM-DD;
   // lidos só na montagem, o usuário continua livre para trocar os filtros normalmente
   // depois. `?data=` vira um período "Personalizado" de um dia só, em vez de perder o
   // deep link agora que não existe mais um campo de data única.
   const searchParams = useSearchParams();
   const dataDeepLink = searchParams.get("data");
+  // "Ver reserva" (Não Conformidades e qualquer outro link externo) chega como
+  // ?reserva=<id> — busca direto por id em vez de depender da reserva estar na página
+  // atual da listagem (poderia estar em outro período/filtro/página).
+  const reservaDeepLinkId = searchParams.get("reserva");
   const [reservas, setReservas] = useState<Reserva[]>([]);
   const [total, setTotal] = useState(0);
   const [pagina, setPagina] = useState(0);
@@ -165,14 +201,70 @@ export function ReservasClient({ solicitanteNome, setorNome, perfil, setorId, us
   // Padrão: "esta semana" — antes a tela carregava sem filtro de período nenhum, então
   // reservas de qualquer data (inclusive anos à frente) apareciam misturadas com as da
   // semana atual, ordenadas por criação. Agora sempre existe um intervalo real.
-  const [atalhoPeriodo, setAtalhoPeriodo] = useState<AtalhoPeriodo>(() => (dataDeepLink ? "personalizado" : "semana"));
-  const [dataInicioFiltro, setDataInicioFiltro] = useState(
-    () => dataDeepLink ?? intervaloParaAtalho("semana").inicio
+  // Link "?status=pendente" (sino/Central de Operações): solicitações quase sempre são para
+  // datas futuras, então a fila abre nos próximos 30 dias em vez de só "esta semana".
+  const periodoInicial: AtalhoPeriodo = searchParams.get("status") === "pendente" ? "30dias" : "semana";
+  const [atalhoPeriodo, setAtalhoPeriodo] = useState<AtalhoPeriodo>(() =>
+    dataDeepLink ? "personalizado" : periodoInicial
   );
-  const [dataFimFiltro, setDataFimFiltro] = useState(() => dataDeepLink ?? intervaloParaAtalho("semana").fim);
+  const [dataInicioFiltro, setDataInicioFiltro] = useState(
+    () => dataDeepLink ?? intervaloParaAtalho(periodoInicial).inicio
+  );
+  const [dataFimFiltro, setDataFimFiltro] = useState(() => dataDeepLink ?? intervaloParaAtalho(periodoInicial).fim);
+  // Retorno da criação que merece explicação: solicitação aguardando aprovação.
+  const [avisoCriacao, setAvisoCriacao] = useState<string | null>(null);
   const [modalAberto, setModalAberto] = useState(false);
   const [reservaSelecionada, setReservaSelecionada] = useState<Reserva | null>(null);
   const [valoresIniciais, setValoresIniciais] = useState<ReservaValoresIniciais | undefined>(undefined);
+  // null = preferência ainda não lida (só existe no cliente): a seção monta, mas sem consultar,
+  // para quem a deixou recolhida não disparar uma consulta que seria descartada.
+  const [disponibilidadeRecolhida, setDisponibilidadeRecolhida] = useState<boolean | null>(null);
+  // Sobe a cada reserva criada/cancelada aqui: a timeline refaz a consulta sem esperar o SSE.
+  const [revisaoDisponibilidade, setRevisaoDisponibilidade] = useState(0);
+  const [erroDeepLink, setErroDeepLink] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!reservaDeepLinkId) return;
+    let cancelado = false;
+    apiFetch<Reserva>(`/api/v1/reservas/${reservaDeepLinkId}`)
+      .then((reserva) => {
+        if (!cancelado) setReservaSelecionada(reserva);
+      })
+      .catch((err) => {
+        if (!cancelado) setErroDeepLink(mensagemDeErro(err, "Não foi possível abrir a reserva."));
+      });
+    return () => {
+      cancelado = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reservaDeepLinkId]);
+
+  useEffect(() => {
+    let recolhida = false;
+    try {
+      recolhida = window.localStorage.getItem(CHAVE_DISPONIBILIDADE_RECOLHIDA) === "1";
+    } catch {
+      // storage indisponível: segue aberta (o padrão).
+    }
+    setDisponibilidadeRecolhida(recolhida);
+  }, []);
+
+  function alternarDisponibilidade() {
+    const proximo = !disponibilidadeRecolhida;
+    setDisponibilidadeRecolhida(proximo);
+    try {
+      window.localStorage.setItem(CHAVE_DISPONIBILIDADE_RECOLHIDA, proximo ? "1" : "0");
+    } catch {
+      // a escolha vale nesta sessão da página mesmo sem conseguir persistir.
+    }
+  }
+
+  // A disponibilidade muda quando uma reserva é criada ou alterada aqui: descarta o cache
+  // compartilhado (a Nova Reserva usa o mesmo) e manda a timeline reconsultar.
+  function revalidarDisponibilidade() {
+    invalidarDisponibilidade();
+    setRevisaoDisponibilidade((v) => v + 1);
+  }
 
   function selecionarAtalho(atalho: AtalhoPeriodo) {
     setAtalhoPeriodo(atalho);
@@ -259,10 +351,35 @@ export function ReservasClient({ solicitanteNome, setorNome, perfil, setorId, us
   }, [reservas]);
 
   async function handleSalvar(valores: ReservaFormValues) {
-    await apiFetch("/api/v1/reservas", { method: "POST", body: JSON.stringify(valores) });
+    const criada = await apiFetch<{ status?: string; aviso?: string; reservas?: Array<{ status: string }> }>(
+      "/api/v1/reservas",
+      { method: "POST", body: JSON.stringify(valores) }
+    );
+    const statusCriada = criada?.status ?? criada?.reservas?.[0]?.status;
+    setAvisoCriacao(
+      criada?.aviso ??
+        (statusCriada === "pendente"
+          ? "Solicitação enviada. A reserva fica pendente até a aprovação de um Admin ou Gestor do setor — só então o horário fica confirmado."
+          : null)
+    );
     setModalAberto(false);
     setValoresIniciais(undefined);
+    revalidarDisponibilidade();
     await carregar();
+  }
+
+  // Clique num trecho livre da timeline: abre a Nova Reserva já com plataforma, dia e horário
+  // (fim limitado a 23:59, o máximo que um HH:mm expressa). Nada é criado até o usuário salvar.
+  function handleSelecionarHorario(selecao: SelecaoHorario) {
+    setValoresIniciais({
+      plataformaId: selecao.plataformaId,
+      motivo: "",
+      prioridade: "normal",
+      data: selecao.data,
+      horaInicio: minutosParaHora(selecao.inicioMin),
+      horaFim: minutosParaHora(Math.min(selecao.fimMin, ULTIMO_MINUTO_RESERVAVEL)),
+    });
+    setModalAberto(true);
   }
 
   // RF-RES-13: pré-preenche plataforma/motivo/prioridade (nunca data/status) de uma
@@ -276,12 +393,26 @@ export function ReservasClient({ solicitanteNome, setorNome, perfil, setorId, us
     if (!confirm("Confirma o cancelamento de todas as ocorrências futuras desta série?")) return;
     await apiFetch(`/api/v1/reservas/recorrencia/${recorrenciaId}/cancelar`, { method: "POST" });
     setReservaSelecionada(null);
+    revalidarDisponibilidade();
     await carregar();
   }
 
   // "Filtro ativo" aqui se refere só a busca/status — período é sempre um filtro ativo
   // agora (nunca "todas as datas"), então não entra nesta checagem de "algo pra limpar".
   const temFiltroSecundarioAtivo = Boolean(busca || statusFiltro);
+
+  // Contador do botão "Mais filtros": só conta o que está escondido lá dentro e difere do
+  // padrão. Sem ele, um período personalizado fechado explicaria uma lista curta sem que
+  // nada na tela dissesse por quê.
+  const filtrosAvancadosAtivos = atalhoPeriodo === "personalizado" ? 1 : 0;
+
+  // Mexer nas datas do painel implica período personalizado — não faz sentido exigir que
+  // o usuário troque o seletor antes de poder digitar um intervalo.
+  function ajustarData(campo: "inicio" | "fim", valor: string) {
+    setAtalhoPeriodo("personalizado");
+    if (campo === "inicio") setDataInicioFiltro(valor);
+    else setDataFimFiltro(valor);
+  }
 
   function abrirDetalhe(reserva: Reserva) {
     setReservaSelecionada(reserva);
@@ -305,51 +436,52 @@ export function ReservasClient({ solicitanteNome, setorNome, perfil, setorId, us
         </button>
       </header>
 
-      <div className={styles.periodoBarra} role="group" aria-label="Filtrar por período">
-        <div className={styles.chips}>
-          {ATALHOS_PERIODO.map((atalho) => (
-            <button
-              key={atalho.chave}
-              type="button"
-              className={`${styles.chip} ${atalhoPeriodo === atalho.chave ? styles.chipAtivo : ""}`}
-              onClick={() => selecionarAtalho(atalho.chave)}
-              aria-pressed={atalhoPeriodo === atalho.chave}
-            >
-              {atalho.label}
-            </button>
-          ))}
-        </div>
-        {atalhoPeriodo === "personalizado" ? (
-          <div className={styles.periodoCustom}>
-            <div className={styles.campoData}>
-              <label htmlFor="reservas-data-inicio">Data inicial</label>
+      {/* Disponibilidade das plataformas no dia, antes da listagem: quem vai reservar vê o que
+          está livre e pula direto para a Nova Reserva já preenchida. */}
+      <DisponibilidadeTimeline
+        usuarioId={usuarioId}
+        onSelecionarHorario={handleSelecionarHorario}
+        recolhida={disponibilidadeRecolhida === true}
+        onAlternarRecolhida={alternarDisponibilidade}
+        ativo={disponibilidadeRecolhida !== null}
+        revisao={revisaoDisponibilidade}
+      />
+
+      {/* Dois níveis de filtro. Nível 1 (busca + status + período) cobre praticamente
+          todo o uso real e fica sempre visível; o intervalo exato de datas vive atrás de
+          "Mais filtros". Antes eram duas faixas empilhadas com onze chips e dois campos
+          de data — mais de 150px de altura consumidos antes da primeira reserva. */}
+      <FiltrosAvancados
+        ativos={filtrosAvancadosAtivos}
+        contagem={
+          carregando && reservas.length === 0
+            ? "Carregando..."
+            : `${total} ${total === 1 ? "reserva" : "reservas"}`
+        }
+        onLimpar={() => selecionarAtalho("semana")}
+        avancados={
+          <>
+            <CampoFiltro label="De" htmlFor="reservas-data-inicio">
               <input
                 id="reservas-data-inicio"
                 type="date"
                 value={dataInicioFiltro}
                 max={dataFimFiltro || undefined}
-                onChange={(e) => setDataInicioFiltro(e.target.value)}
+                onChange={(e) => ajustarData("inicio", e.target.value)}
               />
-            </div>
-            <div className={styles.campoData}>
-              <label htmlFor="reservas-data-fim">Data final</label>
+            </CampoFiltro>
+            <CampoFiltro label="Até" htmlFor="reservas-data-fim">
               <input
                 id="reservas-data-fim"
                 type="date"
                 value={dataFimFiltro}
                 min={dataInicioFiltro || undefined}
-                onChange={(e) => setDataFimFiltro(e.target.value)}
+                onChange={(e) => ajustarData("fim", e.target.value)}
               />
-            </div>
-          </div>
-        ) : (
-          <span className={styles.periodoResumo}>
-            {formatarDataCurta(dataInicioFiltro)} – {formatarDataCurta(dataFimFiltro)}
-          </span>
-        )}
-      </div>
-
-      <div className={styles.barraFiltros}>
+            </CampoFiltro>
+          </>
+        }
+      >
         <div className={styles.campoBusca}>
           <Search size={15} strokeWidth={1.75} className={styles.campoBuscaIcone} aria-hidden="true" />
           <label htmlFor="reservas-busca" className={styles.visuallyHidden}>
@@ -358,50 +490,74 @@ export function ReservasClient({ solicitanteNome, setorNome, perfil, setorId, us
           <input
             id="reservas-busca"
             type="search"
-            placeholder="Buscar por setor, responsável, plataforma ou motivo..."
+            placeholder="Buscar reserva..."
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
           />
         </div>
 
-        <div className={styles.chips} role="group" aria-label="Filtrar por status">
-          {FILTROS_RAPIDOS.map((filtro) => (
-            <button
-              key={filtro.chave || "todas"}
-              type="button"
-              className={`${styles.chip} ${statusFiltro === filtro.chave ? styles.chipAtivo : ""}`}
-              onClick={() => setStatusFiltro(filtro.chave)}
-              aria-pressed={statusFiltro === filtro.chave}
-            >
-              {filtro.label}
-            </button>
+        <label htmlFor="reservas-periodo" className={styles.visuallyHidden}>
+          Filtrar por período
+        </label>
+        <select
+          id="reservas-periodo"
+          className={styles.seletorPeriodo}
+          value={atalhoPeriodo}
+          onChange={(e) => selecionarAtalho(e.target.value as AtalhoPeriodo)}
+        >
+          {ATALHOS_PERIODO.map((atalho) => (
+            <option key={atalho.chave} value={atalho.chave}>
+              {atalho.label}
+            </option>
           ))}
-          {temFiltroSecundarioAtivo && (
-            <button
-              type="button"
-              className={styles.btnLimpar}
-              onClick={() => {
-                setBusca("");
-                setStatusFiltro("");
-              }}
-            >
-              Limpar filtros
-            </button>
-          )}
-        </div>
-      </div>
+        </select>
+        <span className={styles.periodoResumo}>
+          {formatarDataCurta(dataInicioFiltro)} – {formatarDataCurta(dataFimFiltro)}
+        </span>
+      </FiltrosAvancados>
 
-      {/* Contagem em aria-live: o resultado muda sozinho conforme os filtros, e quem usa
-          leitor de tela não tem como perceber a tabela encolhendo. */}
-      <p className={styles.resultadoContagem} aria-live="polite">
-        {carregando && reservas.length === 0
-          ? "Carregando reservas..."
-          : `${total} ${total === 1 ? "reserva encontrada" : "reservas encontradas"}`}
-      </p>
+      <div className={styles.chips} role="group" aria-label="Filtrar por status">
+        {FILTROS_RAPIDOS.map((filtro) => (
+          <button
+            key={filtro.chave || "todas"}
+            type="button"
+            className={`${styles.chip} ${statusFiltro === filtro.chave ? styles.chipAtivo : ""}`}
+            onClick={() => setStatusFiltro(filtro.chave)}
+            aria-pressed={statusFiltro === filtro.chave}
+          >
+            {filtro.label}
+          </button>
+        ))}
+        {temFiltroSecundarioAtivo && (
+          <button
+            type="button"
+            className={styles.btnLimpar}
+            onClick={() => {
+              setBusca("");
+              setStatusFiltro("");
+            }}
+          >
+            Limpar
+          </button>
+        )}
+      </div>
 
       {erro && (
         <div className={styles.error} role="alert">
           {erro}
+        </div>
+      )}
+      {avisoCriacao && (
+        <div className={styles.avisoCriacao} role="status">
+          <span>{avisoCriacao}</span>
+          <button type="button" className={styles.btnGhost} onClick={() => setAvisoCriacao(null)}>
+            Entendi
+          </button>
+        </div>
+      )}
+      {erroDeepLink && (
+        <div className={styles.error} role="alert">
+          {erroDeepLink}
         </div>
       )}
 
@@ -420,10 +576,11 @@ export function ReservasClient({ solicitanteNome, setorNome, perfil, setorId, us
         </div>
       ) : reservas.length === 0 ? (
         <div className={styles.vazio}>
-          <p className={styles.vazioTitulo}>Nenhuma reserva encontrada neste período.</p>
-          <p className={styles.vazioTexto}>Tente alterar o período ou os filtros.</p>
+          <p className={styles.vazioTitulo}>Nenhuma reserva encontrada.</p>
           <div className={styles.vazioAcoes}>
-            {temFiltroSecundarioAtivo && (
+            {/* Uma ação só: limpar o que filtrou, se filtrou; senão, criar. Oferecer as
+                duas ao mesmo tempo fazia dois botões disputarem o mesmo estado vazio. */}
+            {temFiltroSecundarioAtivo ? (
               <button
                 type="button"
                 className={styles.btnLimpar}
@@ -434,11 +591,12 @@ export function ReservasClient({ solicitanteNome, setorNome, perfil, setorId, us
               >
                 Limpar filtros
               </button>
+            ) : (
+              <button type="button" className={styles.btnNovaReserva} onClick={abrirNovaReserva}>
+                <CalendarPlus size={16} strokeWidth={2} aria-hidden="true" />
+                Nova reserva
+              </button>
             )}
-            <button type="button" className={styles.btnNovaReserva} onClick={abrirNovaReserva}>
-              <CalendarPlus size={16} strokeWidth={2} aria-hidden="true" />
-              Nova reserva
-            </button>
           </div>
         </div>
       ) : (
@@ -465,7 +623,7 @@ export function ReservasClient({ solicitanteNome, setorNome, perfil, setorId, us
                   {itens.map((r) => {
                     // Comparação por id, nunca por nome (RN explícita desta correção —
                     // dois usuários podem ter nomes iguais/parecidos).
-                    const minhaReserva = r.solicitanteId === usuarioId;
+                    const minhaReserva = idsDeUsuarioIguais(r.solicitanteId, usuarioId);
                     return (
                     // A linha inteira abre o detalhe. Como <tr> não é focável por padrão,
                     // recebe role/tabIndex e responde a Enter/Espaço — antes, quem navega
@@ -491,34 +649,51 @@ export function ReservasClient({ solicitanteNome, setorNome, perfil, setorId, us
                           </span>
                           <span className={styles.responsavelTexto}>
                             <span className={styles.responsavelNome}>
-                              {r.solicitanteNome}
-                              {minhaReserva && <span className={styles.seloMinha}>Minha reserva</span>}
+                              <span className={styles.responsavelNomeTexto}>{r.solicitanteNome}</span>
+                              {/* Só "urgente" vira selo. Prioridade normal não muda decisão
+                                  nenhuma e virava ruído; "alta" desceu para a linha
+                                  secundária, onde informa sem disputar com o nome. E o
+                                  antigo selo "Minha reserva" saiu: o friso ember + o fundo
+                                  mais quente da linha inteira (.linhaMinha) já são o
+                                  indicador, sem custar uma pílula por linha. */}
                               {r.prioridade === "urgente" && (
                                 <span className={styles.seloUrgente}>
                                   <TriangleAlert size={11} strokeWidth={2.25} aria-hidden="true" />
                                   Urgente
                                 </span>
                               )}
-                              {r.prioridade === "alta" && <span className={styles.seloAlta}>Alta</span>}
                             </span>
-                            <span className={styles.responsavelMeta}>
-                              {r.setorNome} · {codigoReserva(r.id)}
+                            <span
+                              className={styles.responsavelMeta}
+                              title={empresaDaReserva(r) ? `${r.setorNome} · ${empresaDaReserva(r)}` : undefined}
+                            >
+                              {minhaReserva && <span className={styles.marcaMinha}>Sua reserva · </span>}
+                              {r.setorNome}
+                              {/* Setor "Terceirizados": a empresa que de fato usa o equipamento. */}
+                              {empresaDaReserva(r) && ` · ${empresaDaReserva(r)}`}
+                              {r.prioridade === "alta" && " · Prioridade alta"}
                             </span>
                           </span>
                         </div>
                       </td>
 
                       <td>
-                        <span className={styles.recursoNome}>{r.plataformaNome}</span>
-                        <span className={styles.recursoMeta}>
-                          <MapPin size={12} strokeWidth={1.75} aria-hidden="true" />
-                          {[r.plataformaLocalizacao, r.motivo].filter(Boolean).join(" · ")}
+                        {/* O código da reserva (RS-XXXX) migrou para o title: é uma
+                            referência para citar em conversa, não algo que se lê ao varrer
+                            a lista. O motivo, idem — o texto completo está no detalhe. */}
+                        <span className={styles.recursoNome} title={`${r.plataformaNome} · ${codigoReserva(r.id)}`}>
+                          {r.plataformaNome}
                         </span>
+                        {r.plataformaLocalizacao && (
+                          <span className={styles.recursoMeta} title={r.motivo}>
+                            <MapPin size={12} strokeWidth={1.75} aria-hidden="true" />
+                            {r.plataformaLocalizacao}
+                          </span>
+                        )}
                       </td>
 
                       <td>
                         <span className={styles.horario}>
-                          <Clock size={13} strokeWidth={1.75} aria-hidden="true" />
                           {r.horaInicio} – {r.horaFim}
                         </span>
                       </td>
@@ -547,8 +722,10 @@ export function ReservasClient({ solicitanteNome, setorNome, perfil, setorId, us
 
       {modalAberto && (
         <ReservaModal
+          usuarioId={usuarioId}
           solicitanteNome={solicitanteNome}
           setorNome={setorNome}
+          telefonePerfil={telefonePerfil}
           onClose={() => {
             setModalAberto(false);
             setValoresIniciais(undefined);
@@ -566,6 +743,7 @@ export function ReservasClient({ solicitanteNome, setorNome, perfil, setorId, us
           onClose={() => setReservaSelecionada(null)}
           onAtualizado={async () => {
             setReservaSelecionada(null);
+            revalidarDisponibilidade();
             await carregar();
           }}
           onCancelarSerie={handleCancelarSerie}

@@ -20,10 +20,15 @@ export interface ChaveCacheRelatorio {
   // Escopo do relatório: setor específico (Gestor de Setor, ou Admin filtrando um setor)
   // ou "global" (Admin sem filtro) — chaves diferentes nunca compartilham cache entre si.
   escopoSetorId: string | null;
+  // Filtros globais adicionais da expansão de Relatórios (PARTE 10) — plataforma e/ou
+  // categoria. Também precisam estar na chave, senão dois filtros diferentes leriam o
+  // resultado cacheado um do outro.
+  plataforma?: string;
+  categoria?: string;
 }
 
-function montarChaveCache({ relatorio, dateFrom, dateTo, escopoSetorId }: ChaveCacheRelatorio): string {
-  return `relatorio:${relatorio}:${dateFrom}:${dateTo}:${escopoSetorId ?? "global"}`;
+function montarChaveCache({ relatorio, dateFrom, dateTo, escopoSetorId, plataforma, categoria }: ChaveCacheRelatorio): string {
+  return `relatorio:${relatorio}:${dateFrom}:${dateTo}:${escopoSetorId ?? "global"}:${plataforma ?? "-"}:${categoria ?? "-"}`;
 }
 
 // Combinação relatório + período + escopo → cache por até 15 min. Em cache hit, `calcular`

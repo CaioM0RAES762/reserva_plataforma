@@ -2,13 +2,14 @@ import type { FastifyInstance } from "fastify";
 import { getPool, sql } from "../db/pool.js";
 import { autenticar } from "../middlewares/rbac.js";
 import { sqlStatusPlataformaDerivado } from "../services/plataforma.service.js";
+import { agoraEmBrasilia } from "../services/automacaoReserva.service.js";
 import { SELECT_RESERVA, FROM_RESERVA, mapReserva, type ReservaRow } from "./reservas.js";
 
 type Perfil = "admin" | "gestor_setor" | "colaborador";
 
-// Escopo padrão do módulo Dashboard (SDD §10): Admin vê o agregado global; Gestor de
-// Setor e Colaborador só veem dados do próprio setor — mesmo critério já usado em
-// /historico e /relatorios (resolverEscopoSetor).
+// Escopo por setor — hoje só no contador de não conformidades. Agenda do dia, KPIs de
+// reservas e pendências são OPERACIONAIS e globais para todos os perfis (ver rotas abaixo);
+// "Minhas próximas" é pessoal (filtrada por solicitante, não por setor).
 function aplicarEscopoSetor(
   dbRequest: ReturnType<Awaited<ReturnType<typeof getPool>>["request"]>,
   perfil: Perfil,
@@ -20,58 +21,25 @@ function aplicarEscopoSetor(
   return ` AND ${alias}.setor_id = @setor_id`;
 }
 
-// Mesmo critério de "Pendências de Aprovação" usado desde S7: Admin vê todas as
-// pendentes; Gestor de Setor só as do próprio setor que ainda aguardam sua própria
-// decisão; Colaborador não aprova (0).
-async function contarPendenciasAprovacao(
-  pool: Awaited<ReturnType<typeof getPool>>,
-  perfil: Perfil,
-  setorId: string | null
-): Promise<number> {
-  if (perfil === "admin") {
-    const result = await pool.request().query<{ total: number }>(
-      "SELECT COUNT(*) AS total FROM Reserva WHERE status = 'pendente'"
-    );
-    return result.recordset[0]?.total ?? 0;
-  }
-  if (perfil === "gestor_setor") {
-    const result = await pool
-      .request()
-      .input("setor_id", sql.UniqueIdentifier, setorId)
-      .query<{ total: number }>(
-        `SELECT COUNT(*) AS total FROM Reserva
-         WHERE status = 'pendente' AND setor_id = @setor_id AND aprovado_por_id IS NULL`
-      );
-    return result.recordset[0]?.total ?? 0;
-  }
-  return 0;
+// "Hoje" é o dia civil de Brasília, calculado na aplicação (mesma estratégia do job de
+// automação). CAST(GETDATE() AS DATE) dependia do fuso do servidor de banco: num SQL Server
+// em UTC, a partir das 21:00 a Central passava a mostrar o dia seguinte.
+function hojeBrasilia(): string {
+  return agoraEmBrasilia().data;
 }
-
-// Correção do fluxo de Checklist (RF-CHK-06/RN-CHK-03): o checklist agora é portão da
-// APROVAÇÃO, não mais do início de uso — "pendente" aqui é uma reserva ainda "pendente"
-// (aguardando decisão) cuja plataforma resolve para algum ChecklistTemplate ativo e cujo
-// checklist não está finalizado. É exatamente o que bloqueia POST /aprovar (ver
-// routes/reservas.ts, buscarEstadoChecklist), não mais um número decorativo.
-// "Exige checklist" agora é a configuração explícita da plataforma (exige_checklist +
-// checklist_template_id ativo), não mais o template herdado da categoria — mesma regra de
-// resolverTemplateEfetivo em checklist.service.ts.
-const WHERE_CHECKLIST_PENDENTE = `
-  WHERE r.status = 'pendente'
-    AND EXISTS (
-      SELECT 1 FROM ChecklistTemplate tpl
-      WHERE tpl.id = p.checklist_template_id AND tpl.ativo = 1 AND p.exige_checklist = 1
-    )
-    AND NOT EXISTS (
-      SELECT 1 FROM ChecklistPreenchido cp WHERE cp.reserva_id = r.id AND cp.finalizado_em IS NOT NULL
-    )`;
-
-// O contador exibido ao lado de "Checklists NR-18/35" no menu precisa significar "o que
-// exige minha atenção hoje". Contando o histórico inteiro, ele virava um número grande e
-// estático (reservas antigas nunca preenchidas) que ninguém conseguia zerar — deixava de
-// ser um sinal de ação. Recorte: reservas de hoje em diante, que é o que ainda dá para
-// executar.
-const WHERE_CHECKLIST_PENDENTE_ATUAL = `${WHERE_CHECKLIST_PENDENTE}
-    AND r.data >= CAST(GETDATE() AS DATE)`;
+/* Não conformidades registradas nos últimos 30 dias.
+ *
+ * Substitui os contadores de aprovação e de checklist pendente, que mediam etapas que o
+ * fluxo não tem mais. É deliberadamente "registradas", não "abertas": uma não conformidade
+ * é um registro na timeline da reserva, sem estado de abertura/fechamento — contar
+ * "abertas" seria inventar um conceito que os dados não sustentam.
+ */
+const SQL_NAO_CONFORMIDADES_RECENTES = `
+  SELECT COUNT(*) AS total
+  FROM Comentario c
+  JOIN Reserva r ON r.id = c.reserva_id
+  WHERE c.tipo = 'nao_conformidade'
+    AND c.criado_em >= DATEADD(DAY, -30, SYSUTCDATETIME())`;
 
 export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
   // GET /dashboard/kpis (SDD §10/§11): KPIs agregados, escopo por perfil.
@@ -97,36 +65,52 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
        FROM PlataformaComStatus`
     );
 
-    const reservasHojeRequest = pool.request();
-    const whereHojeSetor = aplicarEscopoSetor(reservasHojeRequest, perfil, setorId, "r");
-    const reservasHojePromise = reservasHojeRequest.query<{ total: number }>(
-      `SELECT COUNT(*) AS total FROM Reserva r
-       WHERE r.data = CAST(GETDATE() AS DATE)
-         AND r.status IN ('pendente', 'agendada', 'em_uso', 'concluida')${whereHojeSetor}`
+    const hoje = hojeBrasilia();
+    // Só reservas CONFIRMADAS contam como agenda: solicitação pendente não é operação.
+    // GLOBAL para todos os perfis: é a ocupação das plataformas ("o que acontece hoje?"),
+    // não "o que meu setor reservou" — mesmo critério da Agenda em curso.
+    const reservasHojePromise = pool
+      .request()
+      .input("hoje", sql.Date, hoje)
+      .query<{ total: number }>(
+        `SELECT COUNT(*) AS total FROM Reserva r
+         WHERE r.data = @hoje
+           AND r.status IN ('agendada', 'em_uso', 'concluida')`
+      );
+
+    const proximos7Promise = pool
+      .request()
+      .input("hoje", sql.Date, hoje)
+      .query<{ total: number }>(
+        `SELECT COUNT(*) AS total FROM Reserva r
+         WHERE r.data > @hoje AND r.data <= DATEADD(DAY, 7, @hoje)
+           AND r.status = 'agendada'`
+      );
+
+    // Solicitações aguardando decisão — só para quem decide. Admin e Gestor são aprovadores
+    // GLOBAIS, então ambos veem todas. Colaborador recebe null: não há ação a tomar.
+    const pendentesPromise =
+      perfil === "colaborador"
+        ? Promise.resolve(null)
+        : pool.request().query<{ total: number; urgentes: number }>(
+            `SELECT COUNT(*) AS total,
+                    SUM(CASE WHEN r.prioridade = 'urgente' THEN 1 ELSE 0 END) AS urgentes
+             FROM Reserva r WHERE r.status = 'pendente'`
+          );
+
+    const naoConformidadesRequest = pool.request();
+    const whereNcSetor = aplicarEscopoSetor(naoConformidadesRequest, perfil, setorId, "r");
+    const naoConformidadesPromise = naoConformidadesRequest.query<{ total: number }>(
+      `${SQL_NAO_CONFORMIDADES_RECENTES}${whereNcSetor}`
     );
 
-    const proximos7Request = pool.request();
-    const whereProximosSetor = aplicarEscopoSetor(proximos7Request, perfil, setorId, "r");
-    const proximos7Promise = proximos7Request.query<{ total: number }>(
-      `SELECT COUNT(*) AS total FROM Reserva r
-       WHERE r.data > CAST(GETDATE() AS DATE) AND r.data <= DATEADD(DAY, 7, CAST(GETDATE() AS DATE))
-         AND r.status IN ('pendente', 'agendada')${whereProximosSetor}`
-    );
-
-    const checklistRequest = pool.request();
-    const whereChecklistSetor = aplicarEscopoSetor(checklistRequest, perfil, setorId, "r");
-    const checklistPromise = checklistRequest.query<{ total: number }>(
-      `SELECT COUNT(*) AS total FROM Reserva r JOIN Plataforma p ON p.id = r.plataforma_id
-       ${WHERE_CHECKLIST_PENDENTE_ATUAL}${whereChecklistSetor}`
-    );
-
-    const [plataformasResult, pendenciasAprovacao, reservasHojeResult, proximos7Result, checklistResult] =
+    const [plataformasResult, reservasHojeResult, proximos7Result, naoConformidadesResult, pendentesResult] =
       await Promise.all([
         plataformasPromise,
-        contarPendenciasAprovacao(pool, perfil, setorId),
         reservasHojePromise,
         proximos7Promise,
-        checklistPromise,
+        naoConformidadesPromise,
+        pendentesPromise,
       ]);
 
     const row = plataformasResult.recordset[0];
@@ -137,55 +121,70 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
       manutencao: row.manutencao ?? 0,
       reservasHoje: reservasHojeResult.recordset[0]?.total ?? 0,
       reservasProximos7Dias: proximos7Result.recordset[0]?.total ?? 0,
-      pendenciasAprovacao,
-      checklistsPendentes: checklistResult.recordset[0]?.total ?? 0,
+      naoConformidadesRecentes: naoConformidadesResult.recordset[0]?.total ?? 0,
+      pendentesAprovacao: pendentesResult ? (pendentesResult.recordset[0]?.total ?? 0) : null,
+      pendentesUrgentes: pendentesResult ? (pendentesResult.recordset[0]?.urgentes ?? 0) : null,
     });
   });
 
   // GET /dashboard/agenda: painéis "Hoje"/"Próximas" (SDD §10), escopo por perfil.
   app.get("/api/v1/dashboard/agenda", { preHandler: autenticar }, async (request, reply) => {
     const pool = await getPool();
-    const perfil = request.usuario!.perfil as Perfil;
-    const setorId = request.usuario!.setorId;
 
-    const hojeRequest = pool.request();
-    const whereHojeSetor = aplicarEscopoSetor(hojeRequest, perfil, setorId, "r");
-    const hojePromise = hojeRequest.query<ReservaRow>(
-      `SELECT ${SELECT_RESERVA} ${FROM_RESERVA}
-       WHERE r.data = CAST(GETDATE() AS DATE)
-         AND r.status IN ('pendente', 'agendada', 'em_uso', 'concluida')${whereHojeSetor}
-       ORDER BY r.hora_inicio ASC`
-    );
+    const hoje = hojeBrasilia();
+    // Agenda em curso = OPERAÇÃO GLOBAL das plataformas, para qualquer perfil: todos precisam
+    // saber se um recurso está ocupado, independentemente do setor. (Antes passava por
+    // aplicarEscopoSetor e Gestor/Colaborador só viam o próprio setor.) Mesma projeção de
+    // GET /reservas, que já é global. Pendentes ficam fora para não parecerem confirmadas.
+    const hojePromise = pool
+      .request()
+      .input("hoje", sql.Date, hoje)
+      .query<ReservaRow>(
+        `SELECT ${SELECT_RESERVA} ${FROM_RESERVA}
+         WHERE r.data = @hoje
+           AND r.status IN ('agendada', 'em_uso', 'concluida')
+         ORDER BY r.hora_inicio ASC`
+      );
 
-    const proximasRequest = pool.request();
-    const whereProximasSetor = aplicarEscopoSetor(proximasRequest, perfil, setorId, "r");
-    const proximasPromise = proximasRequest.query<ReservaRow>(
-      `SELECT TOP 8 ${SELECT_RESERVA} ${FROM_RESERVA}
-       WHERE r.data > CAST(GETDATE() AS DATE) AND r.data <= DATEADD(DAY, 7, CAST(GETDATE() AS DATE))
-         AND r.status IN ('pendente', 'agendada')${whereProximasSetor}
-       ORDER BY r.data ASC, r.hora_inicio ASC`
-    );
+    // "Minhas próximas reservas" é PESSOAL: filtra pelo solicitante no servidor (antes era o
+    // top 8 do setor filtrado depois no navegador, e reservas do próprio usuário podiam ficar
+    // de fora do top 8).
+    const proximasPromise = pool
+      .request()
+      .input("hoje", sql.Date, hoje)
+      .input("solicitante_id", sql.UniqueIdentifier, request.usuario!.sub)
+      .query<ReservaRow>(
+        `SELECT TOP 8 ${SELECT_RESERVA} ${FROM_RESERVA}
+         WHERE r.solicitante_id = @solicitante_id
+           AND r.data > @hoje AND r.data <= DATEADD(DAY, 7, @hoje)
+           AND r.status = 'agendada'
+         ORDER BY r.data ASC, r.hora_inicio ASC`
+      );
 
-    const [hojeResult, proximasResult] = await Promise.all([hojePromise, proximasPromise]);
+    // Solicitações do próprio usuário ainda sem decisão: acompanhadas no painel "Minhas
+    // próximas reservas", nunca na timeline operacional.
+    const minhasPendentesPromise = pool
+      .request()
+      .input("hoje", sql.Date, hoje)
+      .input("solicitante_id", sql.UniqueIdentifier, request.usuario!.sub)
+      .query<ReservaRow>(
+        `SELECT TOP 8 ${SELECT_RESERVA} ${FROM_RESERVA}
+         WHERE r.solicitante_id = @solicitante_id AND r.status = 'pendente' AND r.data >= @hoje
+         ORDER BY r.data ASC, r.hora_inicio ASC`
+      );
+
+    const [hojeResult, proximasResult, minhasPendentesResult] = await Promise.all([
+      hojePromise,
+      proximasPromise,
+      minhasPendentesPromise,
+    ]);
     return reply.status(200).send({
       hoje: hojeResult.recordset.map(mapReserva),
       proximas: proximasResult.recordset.map(mapReserva),
+      minhasPendentes: minhasPendentesResult.recordset.map(mapReserva),
     });
   });
 
-  // GET /dashboard/checklists-pendentes: atalho para checklist pendente (SDD §10).
-  app.get("/api/v1/dashboard/checklists-pendentes", { preHandler: autenticar }, async (request, reply) => {
-    const pool = await getPool();
-    const perfil = request.usuario!.perfil as Perfil;
-    const setorId = request.usuario!.setorId;
-
-    const dbRequest = pool.request();
-    const whereSetor = aplicarEscopoSetor(dbRequest, perfil, setorId, "r");
-    const result = await dbRequest.query<ReservaRow>(
-      `SELECT TOP 6 ${SELECT_RESERVA} ${FROM_RESERVA}
-       ${WHERE_CHECKLIST_PENDENTE}${whereSetor}
-       ORDER BY r.data ASC, r.hora_inicio ASC`
-    );
-    return reply.status(200).send(result.recordset.map(mapReserva));
-  });
+  /* GET /dashboard/checklists-pendentes foi REMOVIDA: o checklist deixou de ser etapa da
+     reserva, então "reservas com checklist pendente" não é mais um conceito do domínio. */
 }

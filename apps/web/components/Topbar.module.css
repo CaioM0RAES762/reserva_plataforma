@@ -3,7 +3,7 @@
   display: flex;
   flex-direction: column;
   min-height: 100vh;
-  transition: margin-left 180ms ease;
+  transition: margin-left 200ms cubic-bezier(0.2, 0, 0, 1);
 }
 
 @media (min-width: 901px) {
@@ -27,12 +27,15 @@
   }
 }
 
+/* Botão que abre o drawer da sidebar (estado React em SidebarState). Só existe <=900px; no
+   desktop quem controla a sidebar é o .collapseBtn. */
 .hamburger {
   display: none;
   align-items: center;
   justify-content: center;
   width: 34px;
   height: 34px;
+  padding: 0;
   border-radius: var(--ind-radius-sm);
   border: 1px solid var(--hairline);
   background: var(--paper-elev);
@@ -45,9 +48,9 @@
 @media (max-width: 900px) {
   .hamburger {
     display: flex;
-  }
-  .search {
-    display: none;
+    /* Alvo de toque de 44px (34px era pequeno demais para o polegar). */
+    width: 44px;
+    height: 44px;
   }
 }
 
@@ -108,39 +111,6 @@
 .breadcrumbSep { color: var(--hairline); }
 .breadcrumbCurrent { color: var(--ink); font-weight: 600; }
 
-.search {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 24rem;
-  max-width: 100%;
-  padding: 6px 10px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--ind-radius-sm);
-  background: var(--paper-elev);
-  transition: border-color 0.15s;
-}
-.search:focus-within { border-color: var(--ink-muted); }
-.searchIcon { color: var(--ink-muted); flex-shrink: 0; }
-.searchInput {
-  flex: 1;
-  min-width: 0;
-  border: none;
-  outline: none;
-  background: transparent;
-  font-size: 0.8rem;
-  color: var(--ink);
-}
-.searchInput::placeholder { color: var(--ink-muted); }
-.kbd {
-  font-family: var(--font-mono);
-  font-size: 0.62rem;
-  color: var(--ink-muted);
-  border: 1px solid var(--hairline);
-  border-radius: var(--ind-radius-sm);
-  padding: 1px 5px;
-  flex-shrink: 0;
-}
 
 .actions { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
 
@@ -159,36 +129,9 @@
   color: var(--ink-muted);
   white-space: nowrap;
 }
-.clockIcon { color: var(--signal); animation: pulse-dot 2s ease-in-out infinite; }
-@keyframes pulse-dot {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
-}
+.clockIcon { color: var(--signal); }
 
-.accountLink {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--text-secondary);
-  font-weight: 500;
-  color: var(--ink-soft);
-  padding: 6px 10px;
-  border-radius: var(--ind-radius-sm);
-  transition: background 0.15s;
-}
-.accountLink:hover { background: color-mix(in oklch, var(--ink) 5%, transparent); color: var(--ink); }
 
-.logoutBtn {
-  background: transparent;
-  border: 1px solid var(--hairline);
-  color: var(--ink-soft);
-  border-radius: var(--ind-radius-sm);
-  padding: 6px 12px;
-  font-size: var(--text-secondary);
-  font-weight: 500;
-  transition: all 0.15s;
-}
-.logoutBtn:hover { border-color: var(--hazard); color: var(--hazard); }
 
 .content { flex: 1; padding: 28px 24px; }
 
@@ -205,6 +148,24 @@
 @media (max-width: 900px) {
   .collapseBtn {
     display: none;
+  }
+
+  /* O breadcrumb é um contêiner flex, e text-overflow não age sobre itens de um flex
+     container — as reticências precisam estar no próprio item que carrega o texto longo
+     (.breadcrumbCurrent). Sem isso o título era apenas cortado a seco. O prefixo e o
+     separador não encolhem; só a tela atual cede espaço. Fica em <=900px (e não só no
+     celular) porque o hambúrguer de 44px já tira espaço do header a partir dali. */
+  .breadcrumb {
+    min-width: 0;
+    overflow: hidden;
+  }
+  .breadcrumb > span:not(.breadcrumbCurrent) {
+    flex-shrink: 0;
+  }
+  .breadcrumbCurrent {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 }
 
@@ -225,8 +186,6 @@
   }
   .breadcrumb {
     font-size: var(--text-meta);
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
 }
 

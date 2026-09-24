@@ -25,6 +25,7 @@ export default async function ReservasPage() {
       perfil={usuario.perfil}
       setorId={usuario.setorId}
       usuarioId={usuario.id}
+      telefonePerfil={usuario.telefone}
     />
   );
 }

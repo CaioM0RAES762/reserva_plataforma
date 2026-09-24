@@ -216,3 +216,21 @@ export async function gerarUrlAcessoOuNulo(
     return null;
   }
 }
+
+// Diagnóstico de conectividade best-effort no boot (mesmo padrão de testarConexaoEmail em
+// email.service.ts) — nunca bloqueia o boot, só troca um ECONNREFUSED silencioso no meio de um
+// upload de usuário por um aviso claro no log assim que a API sobe. O caso real que motivou
+// isto: em dev, a API aponta para o emulador Azurite (127.0.0.1:10000) e ninguém percebia que
+// ele não estava rodando até o primeiro comentário com imagem falhar.
+export async function testarConexaoStorage(): Promise<{ ok: true } | { ok: false; detalhe: string }> {
+  if (!process.env.AZURE_STORAGE_CONNECTION_STRING) {
+    return { ok: false, detalhe: "AZURE_STORAGE_CONNECTION_STRING não configurada." };
+  }
+  try {
+    await getContainerClient();
+    return { ok: true };
+  } catch (erro) {
+    const detalhe = erro instanceof Error ? erro.message : String(erro);
+    return { ok: false, detalhe };
+  }
+}

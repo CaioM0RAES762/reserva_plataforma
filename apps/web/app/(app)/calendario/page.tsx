@@ -20,10 +20,12 @@ export default async function CalendarioPage() {
 
   return (
     <CalendarioClient
+      usuarioId={usuario.id}
       perfil={usuario.perfil}
       setorId={usuario.setorId}
       solicitanteNome={usuario.nome}
       setorNome={usuario.setorNome}
+      telefonePerfil={usuario.telefone}
     />
   );
 }

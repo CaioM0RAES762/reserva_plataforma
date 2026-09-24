@@ -1,4 +1,4 @@
-import { combinarDataHoraBrasilia, validarAntecedenciaMinima } from "@plataformares/shared";
+import { combinarDataHoraBrasilia, prioridadeEhUrgente, validarAntecedenciaMinima } from "@plataformares/shared";
 
 export interface ReservaExistente {
   id: string;
@@ -64,26 +64,24 @@ export interface IntervaloDataHora {
   dataFim: Date;
 }
 
-// Combina data (YYYY-MM-DD) + hora (HH:mm) em um instante único, em UTC, para poder
-// comparar contra o intervalo DATETIME2 de um BloqueioAgenda. Não representa fuso
-// horário real — apenas um eixo de tempo comum e consistente para a comparação.
-export function combinarDataHora(data: string, hora: string): Date {
-  const [ano, mes, dia] = data.split("-").map(Number);
-  const [h, m] = hora.split(":").map(Number);
-  return new Date(Date.UTC(ano, mes - 1, dia, h, m));
-}
-
 function intervalosSeSobrepoe(aInicio: number, aFim: number, bInicio: number, bFim: number): boolean {
   return !(aFim <= bInicio || aInicio >= bFim);
 }
 
+// BUG CORRIGIDO: o instante da reserva precisa ser uma conversão de fuso REAL
+// (combinarDataHoraBrasilia), porque o outro lado da comparação — BloqueioAgenda.data_inicio/
+// data_fim, vindo do banco — já é um instante real. Antes, este lado usava combinarDataHora
+// (rotula a hora de Brasília como se já fosse UTC, sem converter), criando um desvio de 3h
+// que deixava bloqueios de horário específico não pegarem reservas que colidiam de verdade
+// (só bloqueios de dia inteiro "acidentalmente" continuavam funcionando). Mesma classe de
+// bug já corrigida em validarJanelaReserva (ver comentário abaixo).
 export function encontrarBloqueioConflitante(
   bloqueios: BloqueioAtivo[],
   plataformaId: string,
   horario: { data: string; horaInicio: string; horaFim: string }
 ): BloqueioAtivo | null {
-  const inicioReserva = combinarDataHora(horario.data, horario.horaInicio).getTime();
-  const fimReserva = combinarDataHora(horario.data, horario.horaFim).getTime();
+  const inicioReserva = combinarDataHoraBrasilia(horario.data, horario.horaInicio).getTime();
+  const fimReserva = combinarDataHoraBrasilia(horario.data, horario.horaFim).getTime();
 
   const conflito = bloqueios.find((bloqueio) => {
     if (bloqueio.plataformaId !== null && bloqueio.plataformaId !== plataformaId) {
@@ -111,8 +109,8 @@ export function reservasDentroDoIntervalo<T extends ReservaComData>(
   const fimBloqueio = intervalo.dataFim.getTime();
 
   return reservas.filter((reserva) => {
-    const inicioReserva = combinarDataHora(reserva.data, reserva.horaInicio).getTime();
-    const fimReserva = combinarDataHora(reserva.data, reserva.horaFim).getTime();
+    const inicioReserva = combinarDataHoraBrasilia(reserva.data, reserva.horaInicio).getTime();
+    const fimReserva = combinarDataHoraBrasilia(reserva.data, reserva.horaFim).getTime();
     return intervalosSeSobrepoe(inicioReserva, fimReserva, inicioBloqueio, fimBloqueio);
   });
 }
@@ -152,7 +150,7 @@ export function validarJanelaReserva(
   }
 
   // RN-RES-06: fora do horário de expediente exige prioridade urgente.
-  if (dados.prioridade !== "urgente") {
+  if (!prioridadeEhUrgente(dados.prioridade)) {
     const foraDoExpediente =
       horaParaMinutos(dados.horaInicio) < horaParaMinutos(regras.horarioExpedienteInicio) ||
       horaParaMinutos(dados.horaFim) > horaParaMinutos(regras.horarioExpedienteFim);
@@ -164,17 +162,23 @@ export function validarJanelaReserva(
     }
   }
 
-  // RN-RES-03: antecedência mínima para solicitar a reserva.
-  //
-  // BUG CORRIGIDO: `combinarDataHora` (acima, usada pelo resto deste arquivo) rotula a
-  // data+hora de Brasília como se já fosse UTC via Date.UTC(...) — correto quando o OUTRO
-  // lado da comparação foi construído do mesmo jeito (bloqueio de agenda), mas errado
-  // aqui, onde o outro lado é `agora`, um instante real. Comparar um valor "rotulado
-  // errado" contra um instante real introduzia um desvio de 3h (offset de Brasília),
-  // fazendo a regra de "2 horas" exigir na prática 5 horas. `combinarDataHoraBrasilia`
-  // faz a conversão de fuso de verdade, então o resultado pode ser comparado direto
-  // contra `agora`.
+  // RN-RES-03: antecedência mínima para solicitar a reserva. `combinarDataHoraBrasilia`
+  // faz a conversão de fuso real (Brasília → UTC), necessária porque o outro lado da
+  // comparação é `agora`, um instante real (`new Date()`) — mesma conversão usada em todo
+  // este arquivo agora para comparar contra BloqueioAgenda (ver encontrarBloqueioConflitante/
+  // reservasDentroDoIntervalo), que também guarda instantes reais.
   const inicioReserva = combinarDataHoraBrasilia(dados.data, dados.horaInicio);
+
+  // Urgência dispensa SÓ a antecedência mínima — nunca permite um início que já passou.
+  // Todas as demais regras (duração, conflito, bloqueio, plataforma inativa, capacidade)
+  // continuam valendo para ela; e urgência não é aprovação: colaborador segue PENDENTE.
+  if (prioridadeEhUrgente(dados.prioridade)) {
+    if (inicioReserva.getTime() < agora.getTime() - TOLERANCIA_INICIO_URGENTE_MS) {
+      return { ok: false, erro: "O horário de início desta reserva urgente já passou." };
+    }
+    return { ok: true };
+  }
+
   const antecedencia = validarAntecedenciaMinima(inicioReserva, agora, regras.antecedenciaMinimaHoras * 60);
   if (!antecedencia.ok) {
     return antecedencia;
@@ -182,3 +186,7 @@ export function validarJanelaReserva(
 
   return { ok: true };
 }
+
+// O formulário oferece inícios em passos de 30 min: uma urgência pedida às 16:31 para o
+// slot das 16:30 ainda é "agora", não passado.
+const TOLERANCIA_INICIO_URGENTE_MS = 30 * 60_000;

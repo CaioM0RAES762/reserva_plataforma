@@ -242,6 +242,198 @@ describe("Bloqueios de Agenda (S9) — RN-RES-11: reserva dentro de bloqueio ati
   });
 });
 
+// Regressão do bug de fuso horário (ver conflito.service.ts/bloqueios.ts): todos os
+// cenários acima usam bloqueio de DIA INTEIRO (T00:00–T23:59), que "acidentalmente" ainda
+// pegava a reserva mesmo com o desvio de ~3h entre os dois lados da comparação — só um
+// bloqueio de HORÁRIO ESPECÍFICO expõe o bug de verdade. Estes cenários cobrem exatamente
+// o gap de cobertura que deixou o bug em produção, incluindo os casos do PARTE 38 do
+// pedido (sobreposição parcial nas duas pontas, sobreposição total, limite exato).
+describe("Bloqueios de Agenda — bloqueio de horário específico (não dia inteiro)", () => {
+  const DATA_PARCIAL = "2026-09-03";
+  let bloqueioEspecificoId: string;
+  let bloqueioGlobalId: string;
+
+  it("Admin cria um bloqueio de 08:00 às 12:00 só para a plataforma de teste", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/bloqueios",
+      headers: { cookie: cookieAdmin },
+      payload: {
+        plataformaId,
+        dataInicio: `${DATA_PARCIAL}T08:00`,
+        dataFim: `${DATA_PARCIAL}T12:00`,
+        motivo: "Manutenção preventiva trimestral",
+      },
+    });
+    expect(response.statusCode).toBe(201);
+    bloqueioEspecificoId = response.json().id;
+  });
+
+  it("reserva 09:00–10:00 (dentro do bloqueio específico) é rejeitada (409)", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/reservas",
+      headers: { cookie: cookieColaborador },
+      payload: {
+        plataformaId,
+        data: DATA_PARCIAL,
+        horaInicio: "09:00",
+        horaFim: "10:00",
+        quantidadePessoas: 1,
+        motivo: "Não deveria ser criada — dentro do bloqueio de horário específico",
+      },
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json().tipo).toBe("bloqueio_plataforma");
+  });
+
+  it("reserva 09:00–11:00 (sobreposição parcial, começa antes e termina dentro) é rejeitada (409)", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/reservas",
+      headers: { cookie: cookieColaborador },
+      payload: {
+        plataformaId,
+        data: DATA_PARCIAL,
+        horaInicio: "09:00",
+        horaFim: "11:00",
+        quantidadePessoas: 1,
+        motivo: "Não deveria ser criada — sobreposição parcial",
+      },
+    });
+    expect(response.statusCode).toBe(409);
+  });
+
+  it("reserva 09:00–13:00 (sobreposição total, cobre o bloqueio inteiro) é rejeitada (409)", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/reservas",
+      headers: { cookie: cookieColaborador },
+      payload: {
+        plataformaId,
+        data: DATA_PARCIAL,
+        horaInicio: "09:00",
+        horaFim: "13:00",
+        quantidadePessoas: 1,
+        motivo: "Não deveria ser criada — sobreposição total",
+      },
+    });
+    expect(response.statusCode).toBe(409);
+  });
+
+  it("reserva 12:00–13:00 (toca exatamente o fim do bloqueio, sem sobrepor) é aceita (201)", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/reservas",
+      headers: { cookie: cookieColaborador },
+      payload: {
+        plataformaId,
+        data: DATA_PARCIAL,
+        horaInicio: "12:00",
+        horaFim: "13:00",
+        quantidadePessoas: 1,
+        motivo: "Deve ser aceita — adjacência exata não é conflito",
+      },
+    });
+    expect(response.statusCode).toBe(201);
+    await app.inject({
+      method: "POST",
+      url: `/api/v1/reservas/${response.json().id}/aprovar`,
+      headers: { cookie: cookieAdmin },
+    });
+  });
+
+  it("reserva 14:00–15:00 (fora do bloqueio) em outro horário do mesmo dia é aceita (201)", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/reservas",
+      headers: { cookie: cookieColaborador },
+      payload: {
+        plataformaId,
+        data: DATA_PARCIAL,
+        horaInicio: "14:00",
+        horaFim: "15:00",
+        quantidadePessoas: 1,
+        motivo: "Deve ser aceita — fora do horário bloqueado",
+      },
+    });
+    expect(response.statusCode).toBe(201);
+    await app.inject({
+      method: "POST",
+      url: `/api/v1/reservas/${response.json().id}/aprovar`,
+      headers: { cookie: cookieAdmin },
+    });
+  });
+
+  it("Admin remove o bloqueio específico futuro (204)", async () => {
+    const response = await app.inject({
+      method: "DELETE",
+      url: `/api/v1/bloqueios/${bloqueioEspecificoId}`,
+      headers: { cookie: cookieAdmin },
+    });
+    expect(response.statusCode).toBe(204);
+  });
+
+  it("Admin cria um bloqueio GLOBAL de 10:00 às 16:00 (sem plataformaId)", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/bloqueios",
+      headers: { cookie: cookieAdmin },
+      payload: {
+        dataInicio: `${DATA_PARCIAL}T10:00`,
+        dataFim: `${DATA_PARCIAL}T16:00`,
+        motivo: "Manutenção geral — todas as plataformas",
+      },
+    });
+    expect(response.statusCode).toBe(201);
+    expect(response.json().plataformaId).toBeNull();
+    bloqueioGlobalId = response.json().id;
+  });
+
+  it("bloqueio global rejeita reserva em QUALQUER plataforma dentro do período (409)", async () => {
+    const respostaA = await app.inject({
+      method: "POST",
+      url: "/api/v1/reservas",
+      headers: { cookie: cookieColaborador },
+      payload: {
+        plataformaId,
+        data: DATA_PARCIAL,
+        horaInicio: "13:00",
+        horaFim: "14:00",
+        quantidadePessoas: 1,
+        motivo: "Não deveria ser criada — bloqueio global",
+      },
+    });
+    expect(respostaA.statusCode).toBe(409);
+    expect(respostaA.json().tipo).toBe("bloqueio_global");
+
+    const respostaB = await app.inject({
+      method: "POST",
+      url: "/api/v1/reservas",
+      headers: { cookie: cookieColaborador },
+      payload: {
+        plataformaId: plataformaRecorrenciaId,
+        data: DATA_PARCIAL,
+        horaInicio: "13:00",
+        horaFim: "14:00",
+        quantidadePessoas: 1,
+        motivo: "Não deveria ser criada — bloqueio global também atinge esta plataforma",
+      },
+    });
+    expect(respostaB.statusCode).toBe(409);
+    expect(respostaB.json().tipo).toBe("bloqueio_global");
+  });
+
+  it("Admin remove o bloqueio global futuro (204)", async () => {
+    const response = await app.inject({
+      method: "DELETE",
+      url: `/api/v1/bloqueios/${bloqueioGlobalId}`,
+      headers: { cookie: cookieAdmin },
+    });
+    expect(response.statusCode).toBe(204);
+  });
+});
+
 describe("Bloqueios de Agenda (S9) — RN-BLK-01: confirmação dupla sobre reserva já agendada", () => {
   const DATA_RESERVA_EXISTENTE = "2026-09-15";
   let reservaAgendadaId: string;

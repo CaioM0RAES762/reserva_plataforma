@@ -71,7 +71,7 @@ export function SetoresClient() {
       <div className={styles.header}>
         <div>
           <h1>Setores</h1>
-          <p>Gerencie os setores da empresa (RF-SET-01/02)</p>
+          <p>Setores da empresa</p>
         </div>
         <button
           className={styles.btnPrimary}
@@ -137,7 +137,7 @@ export function SetoresClient() {
                       >
                         Editar
                       </button>
-                      <button className={styles.btnIconDanger} onClick={() => handleToggleStatus(s)}>
+                      <button type="button" className={styles.btnIcon} onClick={() => handleToggleStatus(s)}>
                         {s.ativo ? "Desativar" : "Ativar"}
                       </button>
                     </div>

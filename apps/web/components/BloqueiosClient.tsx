@@ -146,7 +146,7 @@ export function BloqueiosClient() {
       <div className={styles.header}>
         <div>
           <h1>Bloqueios de Agenda</h1>
-          <p>Manutenção preventiva, feriados e paradas programadas</p>
+          <p>Manutenção preventiva, feriados e paradas</p>
         </div>
         <button className={styles.btnPrimary} onClick={abrirModal}>
           Novo Bloqueio

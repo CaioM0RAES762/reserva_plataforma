@@ -4,12 +4,12 @@ import { closePool } from "./db/pool.js";
 import { encerrarBrowserRelatorios } from "./services/relatorioExport.service.js";
 import {
   agendarAutomacaoRepetitiva,
-  agendarEscalonamentoRepetitivo,
   iniciarAutomacaoWorker,
   iniciarEmailWorker,
-  iniciarEscalonamentoWorker,
+  removerJobsLegadosDeEscalonamento,
 } from "./services/queue.js";
 import { logConfiguracaoEmail, testarConexaoEmail, validarConfiguracaoEmailNoBoot } from "./services/email.service.js";
+import { testarConexaoStorage } from "./services/storage.service.js";
 
 async function main() {
   // Falha alto e claro ANTES de abrir a porta: se EMAIL_PROVIDER foi declarado
@@ -23,11 +23,14 @@ async function main() {
   const port = Number(process.env.API_PORT ?? 3333);
 
   iniciarEmailWorker();
-  iniciarEscalonamentoWorker();
-  await agendarEscalonamentoRepetitivo();
 
-  // Início/finalização automática de reservas no horário agendado — roda no servidor, não
-  // depende de nenhum navegador aberto.
+  // Ambientes que rodavam a versão anterior têm o job repetitivo de escalonação de SLA
+  // gravado no Redis. Sem worker, ele ficaria acumulando execuções pendentes para sempre.
+  await removerJobsLegadosDeEscalonamento();
+
+  // Início/finalização automática de reservas no horário agendado. Com o fim do fluxo de
+  // aprovação este worker passou a ser o motor do ciclo de vida da reserva — roda no
+  // servidor, não depende de nenhum navegador aberto.
   iniciarAutomacaoWorker();
   await agendarAutomacaoRepetitiva();
 
@@ -46,6 +49,23 @@ async function main() {
         app.log.info({ provider: resultado.provider }, "[EMAIL CONFIG] conexão com o provedor verificada com sucesso");
       } else {
         app.log.warn({ provider: resultado.provider, detalhe: resultado.detalhe }, "[EMAIL CONFIG] falha ao verificar conexão com o provedor no boot");
+      }
+    })
+    .catch(() => undefined);
+
+  // Mesmo diagnóstico best-effort, para o Blob Storage (upload de anexos/comentários/
+  // checklist). Em dev, o alvo é o emulador Azurite local (127.0.0.1:10000) — se ele não
+  // estiver rodando, é aqui que isso aparece, em vez de só no primeiro upload de um usuário.
+  testarConexaoStorage()
+    .then((resultado) => {
+      if (resultado.ok) {
+        app.log.info("[STORAGE CONFIG] conexão com o Blob Storage verificada com sucesso");
+      } else {
+        app.log.warn(
+          { detalhe: resultado.detalhe },
+          "[STORAGE CONFIG] Blob Storage inacessível no boot — uploads de imagem vão falhar até isso ser corrigido " +
+            "(em dev: confira se o Azurite está rodando, `npx azurite-blob --location apps/api/.azurite`)"
+        );
       }
     })
     .catch(() => undefined);

@@ -1,5 +1,5 @@
 import { getPool, sql } from "../db/pool.js";
-import type { ChaveConfiguracao } from "@plataformares/shared";
+import type { ChaveConfiguracao, ModoAprovacaoReservas, RegrasAgendaPublicas } from "@plataformares/shared";
 
 interface ConfiguracaoRow {
   chave: string;
@@ -56,6 +56,13 @@ export async function obterSlaAprovacaoUrgenteHoras(): Promise<number> {
   return obterNumero("sla_aprovacao_urgente_horas", 2);
 }
 
+// Migration 0023 — política de aprovação. Qualquer valor ausente/desconhecido cai em
+// 'manual': na dúvida, a reserva espera decisão humana em vez de ser confirmada sozinha.
+export async function obterModoAprovacaoReservas(): Promise<ModoAprovacaoReservas> {
+  const valor = await obterTexto("modo_aprovacao_reservas", "manual");
+  return valor === "automatica" ? "automatica" : "manual";
+}
+
 export interface RegrasReservaConfiguraveis {
   antecedenciaMinimaHoras: number;
   duracaoMaximaHoras: number;
@@ -83,6 +90,41 @@ export async function obterRegrasReservaConfiguraveis(): Promise<RegrasReservaCo
     maxPendentesPorSetor,
     horarioExpedienteInicio,
     horarioExpedienteFim,
+  };
+}
+
+// Projeção pública das regras de agenda (GET /configuracoes/regras-reserva e o campo `regras`
+// de GET /disponibilidade). Sai da MESMA função/cache que a validação de POST /reservas usa:
+// o que o Calendário desenha e o que a criação de reserva aceita não podem divergir nem por
+// um instante — duas leituras independentes da configuração é como isso acontece.
+export async function obterRegrasAgendaPublicas(): Promise<RegrasAgendaPublicas> {
+  const regras = await obterRegrasReservaConfiguraveis();
+  return {
+    horarioExpedienteInicio: regras.horarioExpedienteInicio,
+    horarioExpedienteFim: regras.horarioExpedienteFim,
+    duracaoMaximaHoras: regras.duracaoMaximaHoras,
+    antecedenciaMinimaHoras: regras.antecedenciaMinimaHoras,
+  };
+}
+
+// Leitura direta (fora do cache) dos dois horários de expediente, dentro da transação do PUT:
+// serve para validar "fim > início" quando o Admin envia só um dos dois — o outro vale o que
+// já está gravado. UPDLOCK segura as duas linhas até o commit, então dois PUTs concorrentes
+// (um mexendo no início, outro no fim) não conseguem juntos deixar o expediente invertido.
+export async function lerHorariosExpedienteGravados(
+  transaction: sql.Transaction
+): Promise<{ inicio: string; fim: string }> {
+  const result = await transaction
+    .request()
+    .query<{ chave: string; valor: string }>(
+      `SELECT chave, valor FROM ConfiguracaoSistema WITH (UPDLOCK, ROWLOCK)
+       WHERE chave IN ('horario_expediente_inicio', 'horario_expediente_fim')`
+    );
+  const porChave = new Map(result.recordset.map((linha) => [linha.chave, linha.valor]));
+  // Mesmos padrões de obterRegrasReservaConfiguraveis para chave ausente.
+  return {
+    inicio: porChave.get("horario_expediente_inicio") ?? "06:00",
+    fim: porChave.get("horario_expediente_fim") ?? "22:00",
   };
 }
 

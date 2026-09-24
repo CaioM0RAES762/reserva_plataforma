@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { DOMINIO_EMAIL_PERMITIDO } from "../enums.js";
+import { MENSAGEM_TELEFONE_INVALIDO, TELEFONE_TAMANHO_MAXIMO, telefoneValido } from "../telefone.js";
 
 export const emailMetalsiderSchema = z
   .string()
@@ -10,11 +11,10 @@ export const emailMetalsiderSchema = z
     message: `E-mail deve ser do domínio ${DOMINIO_EMAIL_PERMITIDO}`,
   });
 
-// RN-AUTH-01: minimo 8 caracteres, maiuscula, minuscula e numero
+// RN-AUTH-01: minimo 8 caracteres, minuscula e numero
 export const senhaSchema = z
   .string()
   .min(8, "A senha deve ter no mínimo 8 caracteres")
-  .regex(/[A-Z]/, "A senha deve conter ao menos uma letra maiúscula")
   .regex(/[a-z]/, "A senha deve conter ao menos uma letra minúscula")
   .regex(/[0-9]/, "A senha deve conter ao menos um número");
 
@@ -55,6 +55,9 @@ export type AtivarContaReenviarInput = z.infer<typeof ativarContaReenviarSchema>
 export const cadastrarContaSchema = z.object({
   nome: z.string().trim().min(2, "Nome deve ter ao menos 2 caracteres").max(120),
   email: emailMetalsiderSchema,
+  // Obrigatório (RF-USR): mesmo padrão de validação de Reserva.telefoneContato — permite
+  // preencher automaticamente o contato da reserva a partir do perfil do usuário.
+  telefone: z.string().trim().max(TELEFONE_TAMANHO_MAXIMO).refine(telefoneValido, MENSAGEM_TELEFONE_INVALIDO),
   setorId: z.string().uuid("Selecione um setor"),
 });
 export type CadastrarContaInput = z.infer<typeof cadastrarContaSchema>;
@@ -66,8 +69,15 @@ export const recuperarSenhaConfirmarSchema = z.object({
 });
 export type RecuperarSenhaConfirmarInput = z.infer<typeof recuperarSenhaConfirmarSchema>;
 
-export const trocarSenhaSchema = z.object({
-  senhaAtual: z.string().min(1),
+export const trocarSenhaPayloadSchema = z.object({
+  senhaAtual: z.string().min(1, "Senha atual obrigatória"),
+  novaSenha: z.string().min(1, "Nova senha obrigatória"),
+});
+
+// Schema completo para consumidores que validam a troca de uma vez. A rota usa primeiro
+// `trocarSenhaPayloadSchema` para poder autenticar a senha atual e priorizar a mensagem de
+// igualdade; em seguida aplica `senhaSchema`, a mesma fonte de verdade de complexidade.
+export const trocarSenhaSchema = trocarSenhaPayloadSchema.extend({
   novaSenha: senhaSchema,
 });
 export type TrocarSenhaInput = z.infer<typeof trocarSenhaSchema>;

@@ -98,6 +98,45 @@ describe("Auditoria (S12 — RF-AUD-01/02)", () => {
     expect(response.statusCode).toBe(200);
     const registros = response.json();
     expect(registros.some((r: { entidadeId: string }) => r.entidadeId === plataformaId)).toBe(true);
+
+    // Projeção de recurso: sem ela, a tela só teria o UUID para identificar a plataforma
+    // e voltaria a exibir um identificador técnico como informação principal.
+    const registro = registros.find((r: { entidadeId: string }) => r.entidadeId === plataformaId);
+    expect(registro.recursoNome).toBeTruthy();
+    expect(registro.recursoCodigo).toBeTruthy();
+    expect(registro).toHaveProperty("usuarioPerfil");
+  });
+
+  it("filtro por categoria agrupa os eventos de Frota sem exigir o código da ação", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/v1/auditoria?categoria=Frota`,
+      headers: { cookie: cookieAdmin },
+    });
+    expect(response.statusCode).toBe(200);
+    const registros = response.json() as Array<{ acao: string }>;
+    expect(registros.length).toBeGreaterThan(0);
+    // Toda linha devolvida pertence de fato à categoria pedida.
+    const acoesDeFrota = new Set([
+      "criar_plataforma",
+      "editar_plataforma",
+      "alterar_status_plataforma",
+      "criar_bloqueio",
+      "remover_bloqueio",
+    ]);
+    for (const registro of registros) {
+      expect(acoesDeFrota.has(registro.acao)).toBe(true);
+    }
+  });
+
+  it("categoria inexistente é ignorada em vez de zerar a listagem", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/v1/auditoria?categoria=NaoExiste`,
+      headers: { cookie: cookieAdmin },
+    });
+    expect(response.statusCode).toBe(200);
+    expect((response.json() as unknown[]).length).toBeGreaterThan(0);
   });
 
   it("GATE S12 — GET /auditoria/export retorna CSV UTF-8 com BOM e cabeçalho esperado", async () => {
@@ -118,7 +157,16 @@ describe("Auditoria (S12 — RF-AUD-01/02)", () => {
     expect(corpo.charCodeAt(0)).toBe(0xfeff); // BOM UTF-8
     const semBom = corpo.slice(1);
     const linhas = semBom.split("\r\n");
-    expect(linhas[0]).toBe("Data/Hora;Usuário;Ação;Entidade;ID da Entidade;Detalhes");
+    // O CSV passou a levar as colunas humanas primeiro (mesma nomenclatura da tela, via
+    // @plataformares/shared) e a preservar as técnicas ao final — nada foi perdido: o
+    // código interno da ação, a entidade, o UUID e o payload continuam exportados.
+    expect(linhas[0]).toBe(
+      "Data/Hora;Responsável;Perfil;Evento;Categoria;Recurso;Identificação do recurso;Alteração;" +
+        "Código interno do evento;Tipo técnico;ID técnico;Payload"
+    );
+    // O evento aparece com o nome que o administrador lê na tela...
+    expect(linhas.some((linha) => linha.includes("Plataforma cadastrada"))).toBe(true);
+    // ...e o código interno continua presente, para rastreabilidade técnica.
     expect(linhas.some((linha) => linha.includes("criar_plataforma"))).toBe(true);
   });
 });

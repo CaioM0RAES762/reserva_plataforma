@@ -1,0 +1,424 @@
+/* Timeline de comentários da reserva.
+ *
+ * Mesma linguagem do resto do produto: hairline, papel elevado, raio pequeno, ember como
+ * único acento. A não conformidade se distingue por um selo e um friso lateral — nunca
+ * pintando o comentário inteiro de vermelho, que transformaria a leitura da timeline num
+ * alarme constante.
+ */
+
+.secao {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--hairline);
+}
+
+.tituloSecao {
+  margin-bottom: 14px;
+  font-size: var(--text-eyebrow);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow);
+  color: var(--ink-muted);
+}
+
+.vazio {
+  padding: 14px 0;
+  font-size: var(--text-secondary);
+  color: var(--ink-muted);
+}
+
+.erro {
+  margin-bottom: 12px;
+  padding: 9px 12px;
+  border: 1px solid color-mix(in oklch, var(--hazard) 35%, var(--hairline));
+  border-radius: var(--ind-radius-sm);
+  background: var(--safety-soft);
+  color: var(--hazard);
+  font-size: var(--text-meta);
+}
+
+/* ---------- Timeline ---------- */
+
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 18px;
+  list-style: none;
+  padding: 0;
+}
+
+.entrada {
+  padding-left: 2px;
+}
+
+/* Friso lateral em vez de fundo saturado: sinaliza a exceção sem tirar a legibilidade do
+   texto, que é justamente o conteúdo mais importante de uma não conformidade. */
+.entradaNaoConformidade {
+  padding: 10px 12px;
+  border: 1px solid var(--hairline);
+  border-left: 3px solid var(--hazard);
+  border-radius: var(--ind-radius-sm);
+  background: color-mix(in oklch, var(--hazard) 4%, transparent);
+}
+
+.entradaEmEdicao {
+  outline: 1px dashed var(--ink-muted);
+  outline-offset: 4px;
+  border-radius: var(--ind-radius-sm);
+}
+
+.selo {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 7px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklch, var(--hazard) 30%, transparent);
+  background: color-mix(in oklch, var(--hazard) 11%, transparent);
+  color: var(--hazard);
+  font-size: var(--text-micro);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+}
+
+.cabecalho {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--safety) 16%, transparent);
+  color: color-mix(in oklch, var(--safety) 72%, var(--ink));
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  font-weight: 600;
+}
+
+.autor {
+  font-size: var(--text-secondary);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.carimbo {
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  color: var(--ink-muted);
+}
+
+.rotuloHistorico {
+  padding: 1px 7px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  font-size: var(--text-micro);
+  color: var(--ink-muted);
+}
+
+.rotuloEditado {
+  font-size: var(--text-micro);
+  font-style: italic;
+  color: var(--ink-muted);
+}
+
+/* ---------- Menu "..." de ações (editar/excluir) ---------- */
+
+.menuComentario {
+  position: relative;
+  margin-left: auto;
+}
+
+.menuGatilho {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: var(--ind-radius-sm);
+  background: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.menuGatilho:hover { background: color-mix(in oklch, var(--ink) 6%, transparent); color: var(--ink); }
+
+.menuLista {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 140px;
+  padding: 4px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-sm);
+  background: var(--paper-elev);
+  box-shadow: 0 4px 16px color-mix(in oklch, var(--ink) 14%, transparent);
+}
+
+.menuItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border: none;
+  border-radius: var(--ind-radius-sm);
+  background: transparent;
+  color: var(--ink-soft);
+  font-family: inherit;
+  font-size: var(--text-meta);
+  text-align: left;
+  cursor: pointer;
+}
+.menuItem:hover { background: color-mix(in oklch, var(--ink) 6%, transparent); color: var(--ink); }
+
+.menuItemPerigo { color: var(--hazard); }
+.menuItemPerigo:hover { background: color-mix(in oklch, var(--hazard) 10%, transparent); color: var(--hazard); }
+
+.mensagem {
+  margin: 6px 0 0 34px;
+  font-size: var(--text-secondary);
+  line-height: 1.5;
+  color: var(--ink-soft);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.miniaturas {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 9px 0 0 34px;
+}
+
+.miniatura {
+  width: 84px;
+  height: 84px;
+  padding: 0;
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-sm);
+  background: none;
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.miniatura:hover { border-color: var(--ink-muted); }
+.miniatura img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* ---------- Composer ---------- */
+
+.composer {
+  padding: 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-sm);
+  background: color-mix(in oklch, var(--ink) 2%, transparent);
+  transition: border-color 0.15s;
+}
+/* Enquanto "não conformidade" está marcado, o composer inteiro muda de tom: o usuário
+   precisa perceber que o que ele escrever ali vira um registro formal. */
+.composerNaoConformidade {
+  border-color: color-mix(in oklch, var(--hazard) 35%, transparent);
+  background: color-mix(in oklch, var(--hazard) 4%, transparent);
+}
+
+.avisoEdicao {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: var(--text-meta);
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.linkCancelar {
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: var(--ink-muted);
+  font-family: inherit;
+  font-size: var(--text-meta);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.linkCancelar:hover { color: var(--ink); }
+
+.campoTexto {
+  width: 100%;
+  min-width: 0;
+  padding: 9px 11px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-sm);
+  background: var(--paper-elev);
+  font-family: inherit;
+  font-size: var(--text-secondary);
+  color: var(--ink);
+  resize: vertical;
+}
+.campoTexto:focus { outline: none; border-color: var(--ink-muted); }
+
+.erroCampo {
+  margin-top: 6px;
+  font-size: var(--text-meta);
+  color: var(--hazard);
+}
+
+.previews {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.preview {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-sm);
+  overflow: hidden;
+}
+.preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* Remover a imagem ANTES de enviar — sem isto, um arquivo escolhido por engano só sairia
+   recarregando a tela. */
+.removerPreview {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: var(--ind-radius-sm);
+  background: color-mix(in oklch, var(--ink) 72%, transparent);
+  color: var(--paper);
+  cursor: pointer;
+}
+.removerPreview:hover { background: var(--hazard); }
+
+.acoes {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.btnGhost {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--control-h-compact);
+  padding: 0 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-sm);
+  background: transparent;
+  color: var(--ink-soft);
+  font-family: inherit;
+  font-size: var(--text-meta);
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.btnGhost:hover:not(:disabled) { border-color: var(--ink-muted); color: var(--ink); }
+.btnGhost:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.marcarNc {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--text-meta);
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.marcarNc input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--hazard);
+  cursor: pointer;
+}
+
+.btnEnviar {
+  margin-left: auto;
+  min-height: var(--control-h-compact);
+  padding: 0 18px;
+  border: 1px solid var(--ink);
+  border-radius: var(--ind-radius-sm);
+  background: var(--ink);
+  color: var(--paper);
+  font-family: inherit;
+  font-size: var(--text-meta);
+  font-weight: 500;
+  cursor: pointer;
+}
+.btnEnviar:hover:not(:disabled) { background: var(--ink-soft); }
+.btnEnviar:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ---------- Lightbox ---------- */
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: color-mix(in oklch, var(--ink) 78%, transparent);
+}
+.lightbox img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: var(--ind-radius-sm);
+}
+
+.fecharLightbox {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid color-mix(in oklch, var(--paper) 30%, transparent);
+  border-radius: var(--ind-radius-sm);
+  background: transparent;
+  color: var(--paper);
+  cursor: pointer;
+}
+.fecharLightbox:hover { background: color-mix(in oklch, var(--paper) 15%, transparent); }
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 640px) {
+  .mensagem, .miniaturas { margin-left: 0; }
+  .btnEnviar { margin-left: 0; width: 100%; }
+}

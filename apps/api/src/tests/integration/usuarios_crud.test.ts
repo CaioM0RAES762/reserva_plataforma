@@ -2,13 +2,19 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "../../app.js";
 import { getPool, sql, closePool } from "../../db/pool.js";
-import { hashPassword } from "../../utils/password.js";
+import { hashPassword, verifyPassword, SENHA_INICIAL_PADRAO } from "../../utils/password.js";
 import { definirProviderEmailParaTeste } from "../../services/email.service.js";
 import { criarProviderMockSempreAceita } from "../helpers/emailProviderMock.js";
 
 // S12 — RF-USR-01..04: CRUD completo de usuários (a promoção/rebaixamento de perfil,
 // RF-USR-05, já é coberta por testes de S7 em aprovacao_dupla.test.ts e não é repetida
 // aqui). Complementa configuracoes.test.ts/setores.test.ts no Gate de Aceite de S12.
+//
+// Revisão (fluxo de senha inicial): a criação pelo Admin deixou de enviar código de
+// ativação por e-mail — a conta nasce com senha inicial fixa (SENHA_INICIAL_PADRAO,
+// hasheada), ativo=1, email_verificado=1 e senha_provisoria=1 (força troca no primeiro
+// login, ver PATCH /conta/senha). O autocadastro público (POST /auth/cadastrar) não muda:
+// continua usando placeholder aleatório + OTP, coberto em otp_email_flow.test.ts.
 
 const EMAIL_NOVO_USUARIO = "teste.s12.usuario.crud@metalsider.com.br";
 const EMAIL_EDITADO = "teste.s12.usuario.crud.editado@metalsider.com.br";
@@ -130,7 +136,7 @@ afterAll(async () => {
 });
 
 describe("CRUD de Usuários (S12 — RF-USR-01..04)", () => {
-  it("Admin cria usuário colaborador (201) e um código de ativação é gerado", async () => {
+  it("Admin cria usuário colaborador (201) com senha inicial fixa, pronto para logar", async () => {
     const response = await app.inject({
       method: "POST",
       url: "/api/v1/usuarios",
@@ -138,6 +144,7 @@ describe("CRUD de Usuários (S12 — RF-USR-01..04)", () => {
       payload: {
         nome: "Colaborador CRUD S12",
         email: EMAIL_NOVO_USUARIO,
+        telefone: "31999990000",
         perfil: "colaborador",
         setorId: setorTiId,
       },
@@ -145,18 +152,38 @@ describe("CRUD de Usuários (S12 — RF-USR-01..04)", () => {
     expect(response.statusCode).toBe(201);
     const body = response.json();
     expect(body.email).toBe(EMAIL_NOVO_USUARIO);
+    expect(body.telefone).toBe("31999990000");
     expect(body.ativo).toBe(true);
-    expect(body.emailVerificado).toBe(false);
+    // Admin já vouching pelo e-mail — a conta nasce verificada, sem passar por OTP.
+    expect(body.emailVerificado).toBe(true);
+    expect(body.senhaProvisoria).toBe(true);
     novoUsuarioId = body.id;
 
+    // Nenhum código de ativação é gerado — a senha inicial substitui o fluxo de OTP
+    // para contas criadas pelo Admin (o autocadastro público continua usando OTP).
     const pool = await getPool();
     const codigos = await pool
       .request()
       .input("id", sql.UniqueIdentifier, novoUsuarioId)
-      .query<{ total: number }>(
-        "SELECT COUNT(*) AS total FROM CodigoVerificacao WHERE usuario_id = @id AND tipo = 'ativacao_conta'"
-      );
-    expect(codigos.recordset[0].total).toBe(1);
+      .query<{ total: number }>("SELECT COUNT(*) AS total FROM CodigoVerificacao WHERE usuario_id = @id");
+    expect(codigos.recordset[0].total).toBe(0);
+
+    // A senha gravada é a inicial padrão, hasheada — nunca texto puro (a resposta da API
+    // também não devolve o hash nem a senha em nenhum campo, conferido implicitamente
+    // pelo shape de `body` acima).
+    const linha = await pool
+      .request()
+      .input("id", sql.UniqueIdentifier, novoUsuarioId)
+      .query<{ senha_hash: string }>("SELECT senha_hash FROM Usuario WHERE id = @id");
+    expect(await verifyPassword(SENHA_INICIAL_PADRAO, linha.recordset[0].senha_hash)).toBe(true);
+
+    // Login imediato com a senha inicial funciona (sem precisar ativar por e-mail).
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/login",
+      payload: { email: EMAIL_NOVO_USUARIO, senha: SENHA_INICIAL_PADRAO },
+    });
+    expect(login.statusCode).toBe(200);
   });
 
   it("Admin não consegue criar segundo usuário com o mesmo e-mail (409)", async () => {
@@ -164,7 +191,13 @@ describe("CRUD de Usuários (S12 — RF-USR-01..04)", () => {
       method: "POST",
       url: "/api/v1/usuarios",
       headers: { cookie: cookieAdmin },
-      payload: { nome: "Duplicata", email: EMAIL_NOVO_USUARIO, perfil: "colaborador", setorId: setorTiId },
+      payload: {
+        nome: "Duplicata",
+        email: EMAIL_NOVO_USUARIO,
+        telefone: "31999990000",
+        perfil: "colaborador",
+        setorId: setorTiId,
+      },
     });
     expect(response.statusCode).toBe(409);
   });
@@ -190,14 +223,17 @@ describe("CRUD de Usuários (S12 — RF-USR-01..04)", () => {
     expect(response.json().email).toBe(EMAIL_EDITADO);
   });
 
-  it("Admin reenvia código (usuário ainda não ativado -> tipo ativacao_conta)", async () => {
+  it("Admin reenvia código (usuário já nasce verificado -> tipo reset_senha)", async () => {
+    // Diferente do autocadastro: usuário criado pelo Admin já nasce com email_verificado=1
+    // (senha inicial substitui a ativação por OTP), então "reenviar código" aqui é sempre
+    // um reset de senha administrativo, nunca ativação.
     const response = await app.inject({
       method: "POST",
       url: `/api/v1/usuarios/${novoUsuarioId}/reenviar-codigo`,
       headers: { cookie: cookieAdmin },
     });
     expect(response.statusCode).toBe(200);
-    expect(response.json().tipo).toBe("ativacao_conta");
+    expect(response.json().tipo).toBe("reset_senha");
   });
 
   it("Admin desativa o usuário (soft delete — RF-USR-03)", async () => {

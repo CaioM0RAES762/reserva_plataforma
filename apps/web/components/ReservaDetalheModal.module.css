@@ -161,14 +161,78 @@
   margin-bottom: 10px;
 }
 
-.sectionTitle {
-  font-size: var(--text-eyebrow);
+
+/* ---------- Decisão de aprovação (migration 0022) ----------
+   Painel no corpo do modal, sem card pesado: borda fina, rótulos em versalete e dados em
+   lista de definição. As ações ficam no rodapé, como as demais do modal. */
+.avisoPendente {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--hairline);
+  border-left: 3px solid var(--safety);
+  border-radius: var(--ind-radius-sm);
+  background: var(--safety-soft);
+  font-size: var(--text-meta);
+  color: var(--ink);
+}
+.decisao {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--hairline);
+  border-left: 3px solid var(--hazard);
+  border-radius: var(--ind-radius-md);
+  background: var(--paper-elev);
+}
+.decisaoTitulo {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: var(--text-panel-title);
+  color: var(--ink);
+}
+.decisaoTexto { margin: 0; font-size: var(--text-secondary); line-height: 1.45; color: var(--ink-soft); }
+.decisaoBloco { display: flex; flex-direction: column; gap: 6px; }
+.decisaoRotulo {
+  font-size: var(--text-micro);
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: var(--tracking-eyebrow);
+  letter-spacing: var(--tracking-label);
   color: var(--ink-muted);
-  margin: 20px 0 10px;
-  padding-top: 16px;
-  border-top: 1px solid var(--hairline);
 }
-.sectionTitle:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+.decisaoLinha {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 6px 16px;
+  margin: 0;
+  padding: 8px 0;
+  border-top: 1px solid color-mix(in oklch, var(--hairline) 60%, transparent);
+}
+.decisaoLinha > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.decisaoLinha dt { font-size: var(--text-micro); color: var(--ink-muted); }
+.decisaoLinha dd { margin: 0; font-size: var(--text-meta); color: var(--ink); overflow-wrap: anywhere; }
+.decisaoEmUso {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--ind-radius-sm);
+  background: color-mix(in oklch, var(--hazard) 8%, transparent);
+  font-size: var(--text-meta);
+  font-weight: 500;
+  color: var(--ink);
+  cursor: pointer;
+}
+.decisaoEmUso input { margin-top: 2px; accent-color: var(--hazard); }
+.decisaoNota { margin: 0; font-size: var(--text-micro); color: var(--ink-muted); }
+.decisaoTextarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-sm);
+  background: var(--paper-elev);
+  font-size: var(--text-secondary);
+  resize: vertical;
+}

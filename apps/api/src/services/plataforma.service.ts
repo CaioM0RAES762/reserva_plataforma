@@ -109,7 +109,8 @@ export function sqlEventoAtivoPlataforma(aliasPlataforma = "p"): string {
           3 AS prioridade
         FROM Reserva r
         WHERE r.plataforma_id = ${aliasPlataforma}.id
-          AND r.status IN ('agendada', 'pendente')
+          -- Só reserva confirmada: pendente ainda não reservou a plataforma.
+          AND r.status = 'agendada'
           AND (r.data > CONVERT(date, GETDATE())
                OR (r.data = CONVERT(date, GETDATE()) AND r.hora_inicio > CONVERT(time, GETDATE())))
         ORDER BY r.data ASC, r.hora_inicio ASC

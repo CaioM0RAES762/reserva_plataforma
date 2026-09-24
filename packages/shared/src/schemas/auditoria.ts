@@ -18,6 +18,11 @@ export const auditoriaQuerySchema = z.object({
   usuarioId: z.string().uuid().optional(),
   acao: z.string().trim().min(1).optional(),
   entidade: z.string().trim().min(1).optional(),
+  // Agrupamentos de apresentação (ver auditoria/categorias.ts). Chegam como texto livre
+  // e são validados contra o catálogo antes de virarem WHERE — a rota ignora valor
+  // desconhecido em vez de montar um IN() vazio que zeraria a listagem.
+  categoria: z.string().trim().min(1).optional(),
+  relevancia: z.enum(["informativa", "normal", "importante"]).optional(),
   dateFrom: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, "Data inicial inválida.")

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AlertCircle, Check } from "lucide-react";
+import { apenasDigitosTelefone, MENSAGEM_TELEFONE_INVALIDO, telefoneValido } from "@plataformares/shared";
 import styles from "../../../components/auth/AuthForm.module.css";
 import { AuthStepper } from "../../../components/auth/AuthStepper";
 import { CodeField, PasswordField, SelectField, TextField } from "../../../components/auth/AuthFields";
@@ -33,6 +34,8 @@ export default function AtivarContaPage() {
   const [nome, setNome] = useState("");
   const [setorId, setSetorId] = useState("");
   const [email, setEmail] = useState("");
+  const [telefone, setTelefone] = useState("");
+  const [telefoneTocado, setTelefoneTocado] = useState(false);
   const [codigo, setCodigo] = useState("");
   const [senha, setSenha] = useState("");
   const [confirmarSenha, setConfirmarSenha] = useState("");
@@ -132,7 +135,14 @@ export default function AtivarContaPage() {
   async function cadastrar(): Promise<void> {
     await apiFetch("/api/v1/auth/cadastrar", {
       method: "POST",
-      body: JSON.stringify({ nome: nome.trim(), email: email.trim(), setorId }),
+      // Normalizado (só dígitos) — a máscara "(31) 99999-9999" é só apresentação; o
+      // dado persistido não carrega formatação, que pode variar por como cada pessoa digita.
+      body: JSON.stringify({
+        nome: nome.trim(),
+        email: email.trim(),
+        telefone: apenasDigitosTelefone(telefone),
+        setorId,
+      }),
     });
   }
 
@@ -203,6 +213,13 @@ export default function AtivarContaPage() {
       setCarregando(false);
     }
   }
+
+  const erroTelefone = !telefone.trim()
+    ? "Informe um telefone."
+    : !telefoneValido(telefone)
+      ? MENSAGEM_TELEFONE_INVALIDO
+      : null;
+  const erroTelefoneExibido = telefoneTocado ? erroTelefone : null;
 
   if (etapa === 2) {
     return (
@@ -292,11 +309,24 @@ export default function AtivarContaPage() {
               onChange={setEmail}
             />
 
+            <TextField
+              id="telefone"
+              label="Número de celular / contato"
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              placeholder="(31) 99999-9999"
+              value={telefone}
+              onChange={setTelefone}
+              erro={erroTelefoneExibido}
+            />
+
             <div className={styles.actions}>
               <button
                 className={styles.submit}
                 type="submit"
-                disabled={carregando || !nome.trim() || !setorId || !email.trim()}
+                onClick={() => setTelefoneTocado(true)}
+                disabled={carregando || !nome.trim() || !setorId || !email.trim() || !!erroTelefone}
               >
                 {carregando && <span className={styles.spinner} aria-hidden="true" />}
                 {carregando ? "Enviando código..." : "Enviar código"}

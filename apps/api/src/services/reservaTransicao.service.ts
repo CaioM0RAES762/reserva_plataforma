@@ -1,7 +1,81 @@
-import type { StatusReserva } from "@plataformares/shared";
+import { calcularMinutosDeUso, OFFSET_BRASILIA_MINUTOS, type StatusReserva } from "@plataformares/shared";
 import { getPool, sql } from "../db/pool.js";
-import { resolverTemplateEfetivo } from "./checklist.service.js";
 import { publicarEventoGlobal } from "./eventos.service.js";
+
+/* Hora civil de Brasília (HH:mm) — o mesmo referencial de Reserva.hora_inicio/hora_fim.
+   hora_inicio_real/hora_fim_real eram gravadas com GETDATE(), que depende do fuso do
+   servidor de banco (UTC no Azure SQL): misturá-las com o horário agendado, como o
+   horímetro precisa fazer, daria desvios de 3h. */
+export function horaAtualBrasilia(agora: Date = new Date()): string {
+  return new Date(agora.getTime() + OFFSET_BRASILIA_MINUTOS * 60_000).toISOString().slice(11, 16);
+}
+
+/**
+ * Contabiliza no horímetro da plataforma o uso real de uma reserva — exatamente uma vez.
+ *
+ * Deve rodar DENTRO da transação que encerrou o uso (conclusão, cancelamento em uso,
+ * substituição em uso), depois de `hora_fim_real` gravada. A idempotência está no WHERE:
+ * `uso_contabilizado_minutos IS NULL` só casa na primeira execução — retry, job repetido,
+ * clique duplo ou chamada concorrente encontram a coluna já preenchida e não somam nada.
+ * A linha já está com lock exclusivo (o UPDATE de status veio antes na mesma transação),
+ * então não há janela entre ler os horários e marcar a reserva.
+ */
+export async function contabilizarUsoReserva(
+  transaction: sql.Transaction,
+  reservaId: string
+): Promise<number | null> {
+  const leitura = await transaction
+    .request()
+    .input("id", sql.UniqueIdentifier, reservaId)
+    .query<{
+      plataforma_id: string;
+      hora_inicio: string;
+      hora_fim: string;
+      hora_inicio_real: string | null;
+      hora_fim_real: string | null;
+      inicio_automatico: boolean;
+      uso_contabilizado_minutos: number | null;
+    }>(
+      `SELECT plataforma_id, CONVERT(varchar(5), hora_inicio, 108) AS hora_inicio,
+              CONVERT(varchar(5), hora_fim, 108) AS hora_fim,
+              CONVERT(varchar(5), hora_inicio_real, 108) AS hora_inicio_real,
+              CONVERT(varchar(5), hora_fim_real, 108) AS hora_fim_real,
+              inicio_automatico, uso_contabilizado_minutos
+       FROM Reserva WHERE id = @id`
+    );
+  const reserva = leitura.recordset[0];
+  if (!reserva || reserva.uso_contabilizado_minutos !== null) return null;
+
+  const minutos = calcularMinutosDeUso({
+    horaInicio: reserva.hora_inicio,
+    horaFim: reserva.hora_fim,
+    horaInicioReal: reserva.hora_inicio_real,
+    horaFimReal: reserva.hora_fim_real,
+    inicioAutomatico: Boolean(reserva.inicio_automatico),
+  });
+
+  const marcacao = await transaction
+    .request()
+    .input("id", sql.UniqueIdentifier, reservaId)
+    .input("minutos", sql.Int, minutos)
+    .query(
+      `UPDATE Reserva SET uso_contabilizado_minutos = @minutos
+       WHERE id = @id AND uso_contabilizado_minutos IS NULL`
+    );
+  if (marcacao.rowsAffected[0] !== 1) return null;
+
+  if (minutos > 0) {
+    await transaction
+      .request()
+      .input("plataforma_id", sql.UniqueIdentifier, reserva.plataforma_id)
+      .input("minutos", sql.Int, minutos)
+      .query(
+        `UPDATE Plataforma SET horimetro_uso_minutos = horimetro_uso_minutos + @minutos
+         WHERE id = @plataforma_id`
+      );
+  }
+  return minutos;
+}
 
 // Início e conclusão de uso passaram a ter DOIS gatilhos — o clique do usuário
 // (PATCH /reservas/:id/status) e o worker de automação — e a regra de negócio precisa ser
@@ -9,37 +83,13 @@ import { publicarEventoGlobal } from "./eventos.service.js";
 // as mesmas funções, ninguém reimplementa "pode iniciar?" por conta própria.
 export type OrigemTransicao = "manual" | "automatica";
 
-export interface EstadoChecklistReserva {
-  exigido: boolean;
-  finalizado: boolean;
-  todosConformes: boolean | null;
-}
-
-// Usado pelo gate de aprovação (POST /aprovar, a barreira principal), pelo gate de início de
-// uso (defesa redundante) e pela validação do início automático — os três precisam da mesma
-// leitura, e ela depende da configuração da plataforma, não da categoria.
-export async function buscarEstadoChecklist(
-  plataformaId: string,
-  reservaId: string
-): Promise<EstadoChecklistReserva> {
-  const { templateId } = await resolverTemplateEfetivo(plataformaId);
-  if (!templateId) {
-    return { exigido: false, finalizado: true, todosConformes: null };
-  }
-  const pool = await getPool();
-  const result = await pool
-    .request()
-    .input("reserva_id", sql.UniqueIdentifier, reservaId)
-    .query<{ finalizado_em: Date | null; todos_conformes: boolean }>(
-      "SELECT finalizado_em, todos_conformes FROM ChecklistPreenchido WHERE reserva_id = @reserva_id"
-    );
-  const linha = result.recordset[0];
-  return {
-    exigido: true,
-    finalizado: Boolean(linha?.finalizado_em),
-    todosConformes: linha?.finalizado_em ? linha.todos_conformes : null,
-  };
-}
+/* O gate de checklist foi REMOVIDO daqui (migration 0018): o checklist deixou de fazer
+ * parte do fluxo de reserva, então nem o clique nem o relógio consultam mais o estado de
+ * um checklist para decidir se a reserva pode começar. As execuções NR-18/35 já realizadas
+ * continuam intactas no banco.
+ *
+ * As regras que PERMANECEM valendo para iniciar o uso são as do equipamento em si — ver
+ * `iniciarUsoReserva`: plataforma inativa ou em manutenção continua bloqueando. */
 
 export type ResultadoTransicao =
   | { aplicada: true; novoStatus: StatusReserva }
@@ -55,6 +105,10 @@ interface ParametrosTransicao {
   // NULL quando a origem é automática — LogAuditoria.usuario_id é nullable exatamente para
   // registrar ações que não partiram de uma pessoa.
   usuarioId: string | null;
+  /* Só para `concluirReserva`: normalmente uma conclusão parte de 'em_uso', mas o
+     sincronizador também encerra reservas cuja janela inteira passou sem uso (servidor
+     fora do ar durante o período), e essas partem de 'agendada'. */
+  statusDeEsperado?: StatusReserva;
 }
 
 // Idempotência e proteção contra corrida vêm do mesmo mecanismo: um UPDATE condicional que
@@ -71,8 +125,18 @@ async function aplicarTransicao(
     statusPara: StatusReserva;
     campoHoraReal: "hora_inicio_real" | "hora_fim_real";
     acaoAuditoria: string;
+    contabilizarUso?: boolean;
   }
 ): Promise<ResultadoTransicao> {
+  // Horário real gravado (base do horímetro):
+  //  - fim automático = o horário final AGENDADO (o job pode rodar minutos depois, ou só
+  //    quando o servidor volta; o uso terminou no horário marcado);
+  //  - início automático e transições manuais = o instante real, no relógio de Brasília. O
+  //    job roda a cada minuto, então o início automático cai no próprio minuto agendado; se
+  //    ele só puder começar depois (servidor fora do ar, reserva urgente que assumiu o
+  //    horário após uma substituição), conta a partir de quando começou de fato.
+  const usarHorarioAgendado = params.origem === "automatica" && params.campoHoraReal === "hora_fim_real";
+  let usoContabilizado: number | null = null;
   const pool = await getPool();
   const transaction = pool.transaction();
   await transaction.begin();
@@ -82,10 +146,12 @@ async function aplicarTransicao(
       .input("id", sql.UniqueIdentifier, params.reservaId)
       .input("status_de", sql.VarChar, params.statusDe)
       .input("status_para", sql.VarChar, params.statusPara)
+      .input("usar_agendado", sql.Bit, usarHorarioAgendado)
+      .input("hora_real", sql.VarChar, horaAtualBrasilia())
       .query<{ id: string }>(
         `UPDATE Reserva
          SET status = @status_para,
-             ${params.campoHoraReal} = CAST(GETDATE() AS TIME),
+             ${params.campoHoraReal} = CASE WHEN @usar_agendado = 1 THEN hora_fim ELSE CAST(@hora_real AS TIME) END,
              atualizado_em = SYSUTCDATETIME()
          OUTPUT INSERTED.id
          WHERE id = @id AND status = @status_de`
@@ -104,7 +170,15 @@ async function aplicarTransicao(
     await transaction
       .request()
       .input("usuario_id", sql.UniqueIdentifier, params.usuarioId)
-      .input("acao", sql.VarChar, params.acaoAuditoria)
+      // Automático e manual gravam ações DIFERENTES: numa auditoria, "isso foi o sistema ou
+      // alguém?" é exatamente o tipo de pergunta que se faz, e o nome do evento é o lugar
+      // mais direto de responder (a coluna Responsável mostra "Sistema", mas não distingue
+      // um encerramento por horário de uma intervenção manual feita por um job).
+      .input(
+        "acao",
+        sql.VarChar,
+        params.origem === "automatica" ? `${params.acaoAuditoria}_automatico` : params.acaoAuditoria
+      )
       .input("entidade_id", sql.UniqueIdentifier, params.reservaId)
       .input(
         "detalhes",
@@ -120,10 +194,20 @@ async function aplicarTransicao(
          VALUES (@usuario_id, @acao, 'Reserva', @entidade_id, @detalhes)`
       );
 
+    // Horímetro: na MESMA transação da conclusão — ou a reserva conclui e contabiliza, ou
+    // nenhum dos dois acontece.
+    if (params.contabilizarUso) {
+      usoContabilizado = await contabilizarUsoReserva(transaction, params.reservaId);
+    }
+
     await transaction.commit();
   } catch (err) {
     await transaction.rollback().catch(() => undefined);
     throw err;
+  }
+
+  if (usoContabilizado !== null && usoContabilizado > 0) {
+    publicarEventoGlobal("plataforma.horimetro_atualizado", { reservaId: params.reservaId, minutos: usoContabilizado });
   }
 
   // Fora da transação e só no caminho em que a transição realmente aconteceu: Calendário,
@@ -142,34 +226,15 @@ export interface ContextoReservaTransicao {
   plataformaStatus: string;
 }
 
-// RN-RES-12: uma plataforma que exige checklist só entra em uso com ele finalizado e sem
-// não conformidade impeditiva. Vale igual para o clique e para o job — o início automático
-// não é um atalho para furar regra de segurança.
 export async function iniciarUsoReserva(
   params: ParametrosTransicao & { contexto: ContextoReservaTransicao }
 ): Promise<ResultadoTransicao> {
-  // RN-PLAT-01/04: uma plataforma que entrou em manutenção/inativa depois da aprovação não
-  // pode ser colocada em uso — nem manualmente, nem pelo relógio.
+  // RN-PLAT-01/04: uma plataforma que entrou em manutenção/inativa depois de a reserva ser
+  // agendada não pode ser colocada em uso — nem manualmente, nem pelo relógio.
   if (params.contexto.plataformaStatus === "inativa" || params.contexto.plataformaStatus === "manutencao") {
     return {
       aplicada: false,
       motivo: `Plataforma está em "${params.contexto.plataformaStatus}" e não pode iniciar uso.`,
-    };
-  }
-
-  const checklist = await buscarEstadoChecklist(params.contexto.plataformaId, params.reservaId);
-  if (checklist.exigido && !checklist.finalizado) {
-    return {
-      aplicada: false,
-      motivo:
-        "Esta plataforma exige checklist de segurança antes do início de uso (NR-18/NR-35) e ele ainda não foi concluído.",
-    };
-  }
-  if (checklist.exigido && !checklist.todosConformes) {
-    return {
-      aplicada: false,
-      motivo:
-        "O checklist de segurança desta reserva tem item não conforme impeditivo — início de uso bloqueado até revisão da plataforma (RN-CHK-02).",
     };
   }
 
@@ -185,9 +250,10 @@ export async function iniciarUsoReserva(
 export async function concluirReserva(params: ParametrosTransicao): Promise<ResultadoTransicao> {
   return aplicarTransicao({
     ...params,
-    statusDe: "em_uso",
+    statusDe: params.statusDeEsperado ?? "em_uso",
     statusPara: "concluida",
     campoHoraReal: "hora_fim_real",
     acaoAuditoria: "concluir_reserva",
+    contabilizarUso: true,
   });
 }

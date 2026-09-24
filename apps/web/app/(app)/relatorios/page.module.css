@@ -13,53 +13,54 @@
   letter-spacing: -0.015em;
   color: var(--ink);
 }
-.header p { font-size: var(--text-body-lg); color: var(--ink-soft); margin-top: 6px; }
+.header p { font-size: var(--text-secondary); color: var(--ink-muted); margin-top: 6px; }
 
-.periodBar {
+
+/* ---------- Atalhos de período (PARTE 10) ---------- */
+.presetChips { display: flex; gap: 6px; flex-wrap: wrap; }
+.presetChip {
+  min-height: var(--control-h-compact);
+  padding: 0 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink-soft);
+  font-family: inherit;
+  font-size: var(--text-micro);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.presetChip:hover { border-color: var(--ink-muted); color: var(--ink); }
+.presetChipAtivo { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+.presetChipAtivo:hover { background: var(--ink-soft); color: var(--paper); }
+
+/* ---------- Abas de seção (PARTE 29) ---------- */
+.tabs {
   display: flex;
-  align-items: flex-end;
-  gap: 12px;
+  gap: 4px;
   flex-wrap: wrap;
   margin-bottom: 20px;
-  padding: 14px 18px;
-  background: var(--paper-elev);
-  border: 1px solid var(--hairline);
-  border-radius: var(--ind-radius-md);
+  border-bottom: 1px solid var(--hairline);
 }
-.periodField { display: flex; flex-direction: column; gap: 6px; }
-.periodField label {
-  font-size: var(--text-eyebrow);
-  font-weight: 600;
+.tab {
+  padding: 10px 16px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
   color: var(--ink-muted);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-eyebrow);
-}
-.periodField input {
-  min-height: var(--control-h-compact);
-  padding: 0 11px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--ind-radius-sm);
-  background: var(--paper);
-  font-size: var(--text-secondary);
-  color: var(--ink);
-}
-.periodField input:focus { outline: none; border-color: var(--ink-muted); }
-
-.btnPrimary {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: var(--ink);
-  color: var(--paper);
-  border: 1px solid var(--ink);
-  border-radius: var(--ind-radius-sm);
-  padding: 0 16px;
+  font-family: inherit;
   font-size: var(--text-secondary);
   font-weight: 500;
-  height: var(--control-h-compact);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
 }
-.btnPrimary:hover { background: var(--ink-soft); }
-.btnPrimary:disabled { opacity: 0.5; cursor: not-allowed; }
+.tab:hover { color: var(--ink); }
+.tabAtiva { color: var(--ink); border-bottom-color: var(--ink); font-weight: 600; }
+
 
 .error {
   background: var(--safety-soft);
@@ -138,6 +139,9 @@
 .btnExport:hover { border-color: var(--ink-muted); color: var(--ink); }
 .btnExport:disabled { opacity: 0.5; cursor: not-allowed; }
 
+.miniTableWrap { overflow-x: auto; }
+.miniTableMotivo { max-width: 34ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 .miniTable { width: 100%; border-collapse: collapse; font-size: var(--text-secondary); margin-top: 10px; }
 .miniTable th {
   text-align: left;
@@ -164,8 +168,54 @@
 .empty { padding: 24px; text-align: center; color: var(--ink-muted); font-size: var(--text-secondary); }
 .loading { padding: 24px; text-align: center; color: var(--ink-muted); font-size: var(--text-secondary); }
 
-.legendRow { display: flex; gap: 14px; flex-wrap: wrap; padding: 0 18px 12px; font-size: var(--text-meta); color: var(--ink-muted); }
-.legendDot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; vertical-align: -1px; }
+
+.kpiSub {
+  display: block;
+  font-size: var(--text-meta);
+  color: var(--ink-muted);
+  margin-top: 4px;
+}
+
+/* ---------- Ranking em lista (plataformas mais demandadas, itens críticos) ---------- */
+.rankingLista { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
+.rankingItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--hairline);
+  font-size: var(--text-secondary);
+}
+.rankingItem:last-child { border-bottom: none; }
+.rankingPosicao {
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+  color: var(--ink-muted);
+  width: 18px;
+  flex-shrink: 0;
+  text-align: right;
+}
+.rankingNome { flex: 1; min-width: 0; color: var(--ink); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rankingValor {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-secondary);
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+/* ---------- Tooltip customizado dos gráficos (PARTE 30) ---------- */
+.tooltipCard {
+  background: var(--paper);
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-sm);
+  padding: 8px 12px;
+  font-size: var(--text-meta);
+  box-shadow: 0 2px 8px color-mix(in oklch, var(--ink) 12%, transparent);
+}
+.tooltipTitulo { font-weight: 600; color: var(--ink); margin-bottom: 4px; }
+.tooltipLinha { display: flex; justify-content: space-between; gap: 12px; color: var(--ink-soft); }
+.tooltipLinha strong { color: var(--ink); font-variant-numeric: tabular-nums; }
 
 @media (max-width: 900px) {
   .panelGrid { grid-template-columns: 1fr; }

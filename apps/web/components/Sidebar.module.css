@@ -11,7 +11,7 @@
   z-index: 100;
   font-family: var(--font-sans);
   overflow-x: hidden;
-  transition: width 180ms ease;
+  transition: width 200ms cubic-bezier(0.2, 0, 0, 1);
 }
 
 /* Link "pular para o conteúdo": invisível até receber foco pelo teclado, quando aparece
@@ -32,61 +32,33 @@
   left: 0;
 }
 
-/* S14 (RNF-04, 360-900px): sidebar off-canvas, sem JS — o checkbox/backdrop e o botão ☰
-   (label[for="sidebar-toggle"] no Topbar) fazem toda a alternância via CSS puro. */
-.sidebarToggleInput {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.sidebarBackdrop {
+/* Overlay e botão "Fechar" do drawer mobile: só existem visualmente <=900px (bloco
+   "Drawer off-canvas" no fim do arquivo). No desktop a sidebar é a coluna fixa e nenhum dos
+   dois faz sentido. O estado abre/fecha vem do React (SidebarState), não de CSS — o
+   antigo checkbox `#sidebar-toggle:checked ~ .sidebar` nunca casou, porque CSS Modules
+   também renomeia seletores de id (ver SidebarState.tsx). */
+.backdrop {
   display: none;
 }
 
-@media (max-width: 900px) {
-  /* O drawer mobile é sempre a largura cheia, mesmo que o usuário tenha recolhido a
-     sidebar no desktop — recolher e off-canvas são dois comportamentos independentes
-     (RNF-04); a preferência de desktop nunca deve virar uma coluna de 72px no celular. */
-  .sidebar,
-  .sidebar.collapsed {
-    width: var(--sidebar-width-expanded);
-    transform: translateX(-100%);
-    transition: transform 0.2s ease;
-  }
-
-  #sidebar-toggle:checked ~ .sidebar {
-    transform: translateX(0);
-  }
-
-  .sidebarBackdrop {
-    display: block;
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.4);
-    z-index: 99;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.2s ease;
-  }
-
-  #sidebar-toggle:checked ~ .sidebarBackdrop {
-    opacity: 1;
-    pointer-events: auto;
-  }
+.closeBtn {
+  display: none;
 }
 
 .brand {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 26px 20px 22px;
+  /* padding-left 15px: o centro do "PR" (32px) cai no mesmo eixo dos ícones do menu
+     (12px da nav + 10px do item + 9px do ícone). */
+  padding: 18px 16px 17px 15px;
   border-bottom: 1px solid var(--ind-sidebar-border);
+  transition: padding 200ms cubic-bezier(0.2, 0, 0, 1);
 }
 
 .brandIcon {
-  width: 40px;
-  height: 40px;
+  width: 32px;
+  height: 32px;
   background: var(--ind-sidebar-primary);
   color: var(--ink);
   border-radius: var(--ind-radius-sm);
@@ -95,8 +67,9 @@
   justify-content: center;
   flex-shrink: 0;
   font-family: var(--font-mono);
-  font-size: 0.8rem;
+  font-size: 0.73rem;
   font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .brandText {
@@ -111,7 +84,8 @@
 .brandName {
   font-family: var(--font-display);
   font-weight: 500;
-  font-size: 1.33rem;
+  font-size: 1.2rem;
+  line-height: 1.15;
   letter-spacing: -0.01em;
   color: #fff;
   white-space: nowrap;
@@ -121,23 +95,33 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: var(--tracking-eyebrow);
-  color: rgba(255, 255, 255, 0.42);
-  margin-top: 4px;
+  font-size: var(--text-micro);
+  color: rgba(255, 255, 255, 0.4);
+  margin-top: 3px;
   white-space: nowrap;
 }
 
-.nav { flex: 1; padding: 18px 14px; overflow-y: auto; overflow-x: hidden; }
-.navGroup { margin-bottom: 14px; }
+.nav {
+  flex: 1;
+  padding: 12px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ind-sidebar-border) transparent;
+}
+.navGroup { padding: 4px 0 8px; }
+/* Grupos separados por um filete discreto em vez de só espaço em branco. */
+.navGroup + .navGroup { border-top: 1px solid var(--ind-sidebar-border); padding-top: 8px; }
 .navLabel {
   display: block;
-  font-size: var(--text-eyebrow);
+  font-size: var(--text-micro);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: var(--tracking-eyebrow);
-  color: rgba(255, 255, 255, 0.34);
-  padding: 0 12px;
-  margin-bottom: 10px;
-  margin-top: 14px;
+  color: rgba(255, 255, 255, 0.36);
+  padding: 0 10px;
+  margin-bottom: 6px;
+  margin-top: 8px;
   white-space: nowrap;
   overflow: hidden;
   opacity: 1;
@@ -150,15 +134,18 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 11px 12px;
-  border-radius: var(--ind-radius-sm);
+  min-height: 36px;
+  padding: 8px 10px;
+  border-radius: var(--ind-radius-md);
   font-size: var(--text-secondary);
   font-weight: 500;
   color: var(--ind-sidebar-foreground);
-  transition: background 0.15s, color 0.15s, justify-content 0s, padding 180ms ease;
-  margin-bottom: 3px;
+  transition: background 0.15s, color 0.15s, justify-content 0s, padding 200ms cubic-bezier(0.2, 0, 0, 1);
+  margin-bottom: 2px;
 }
-.navItem:hover { background: rgba(255, 255, 255, 0.06); color: #fff; }
+.navItem svg { opacity: 0.78; transition: opacity 0.15s, color 0.15s; }
+.navItem:hover { background: rgba(255, 255, 255, 0.05); color: #fff; }
+.navItem:hover svg { opacity: 1; }
 .navItem:focus-visible {
   outline: 2px solid rgba(255, 255, 255, 0.65);
   outline-offset: -2px;
@@ -174,20 +161,24 @@
   transition: opacity 120ms ease, max-width 160ms ease 60ms;
 }
 
+/* Ativo: fundo um degrau acima, ícone no accent e filete curto à esquerda — funciona
+   igual na coluna recolhida, onde só o ícone aparece. */
 .navItem.active {
   background: var(--ind-sidebar-accent);
   color: #fff;
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ind-sidebar-border) 70%, transparent);
 }
+.navItem.active svg { opacity: 1; color: var(--ind-sidebar-primary); }
 .navItem.active::after {
   content: "";
   position: absolute;
-  right: 0;
+  left: 0;
   top: 50%;
   transform: translateY(-50%);
   width: 2px;
   height: 16px;
   background: var(--ind-sidebar-primary);
-  border-radius: 1px;
+  border-radius: 0 1px 1px 0;
 }
 
 .navBadge {
@@ -204,42 +195,30 @@
 }
 .navItem.active .navBadge { color: #fff; background: rgba(255, 255, 255, 0.14); }
 
-.navItemDisabled {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 11px 12px;
-  border-radius: var(--ind-radius-sm);
-  font-size: var(--text-secondary);
+/* Tooltip da coluna recolhida (Sidebar.tsx). Fica fora do <aside> e usa position:fixed —
+   o overflow da sidebar cortaria qualquer coisa ancorada dentro dela. */
+.dica {
+  position: fixed;
+  z-index: 150;
+  transform: translateY(-50%);
+  padding: 5px 9px;
+  border-radius: var(--ind-radius-md);
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-sans);
+  font-size: var(--text-meta);
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.3);
-  margin-bottom: 3px;
-  cursor: default;
-  transition: padding 180ms ease;
-}
-.navItemDisabled svg { flex-shrink: 0; }
-.navSoonTag {
-  margin-left: auto;
-  font-size: var(--text-micro);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  background: rgba(255, 255, 255, 0.08);
-  padding: 2px 7px;
-  border-radius: 10px;
   white-space: nowrap;
-  overflow: hidden;
-  opacity: 1;
-  max-width: 80px;
-  transition: opacity 100ms ease, max-width 160ms ease 60ms;
+  pointer-events: none;
+  box-shadow: var(--shadow-md);
 }
 
 .footer {
   display: flex;
   align-items: center;
-  padding: 14px 12px;
+  padding: 10px 12px;
   border-top: 1px solid var(--ind-sidebar-border);
-  transition: padding 180ms ease;
+  transition: padding 200ms cubic-bezier(0.2, 0, 0, 1);
 }
 
 /* ============================================================
@@ -277,22 +256,23 @@
     transition: opacity 100ms ease, max-height 160ms ease, margin 160ms ease;
   }
 
-  .sidebar.collapsed .navItem,
-  .sidebar.collapsed .navItemDisabled {
+  .sidebar.collapsed .navItem {
     justify-content: center;
     padding-left: 0;
     padding-right: 0;
   }
-  .sidebar.collapsed .navItemLabel,
-  .sidebar.collapsed .navSoonTag {
+  .sidebar.collapsed .navGroup + .navGroup { padding-top: 12px; }
+  /* Recolhida, a sidebar mostra só o ícone — nunca um rótulo abreviado ou sigla, que
+     seria adivinhação. O contexto vem do tooltip nativo (o `title` de cada NavLink). */
+  .sidebar.collapsed .navItemLabel {
     opacity: 0;
     max-width: 0;
     pointer-events: none;
     transition: opacity 100ms ease, max-width 160ms ease;
   }
-  /* O contador de pendências vira um selo compacto sobre o ícone em vez de
-     desaparecer — "0 aprovações pendentes" continua um indicador realmente
-     necessário mesmo sem rótulo de texto ao lado. */
+  /* O contador de pendências vira um selo compacto sobre o ícone em vez de sumir: é
+     exatamente o tipo de exceção que precisa continuar visível com o menu fechado.
+     (Só é renderizado quando > 0 — ver Sidebar.tsx.) */
   .sidebar.collapsed .navBadge {
     position: absolute;
     top: 4px;
@@ -308,6 +288,168 @@
   }
 
   .sidebar.collapsed .footer {
-    padding: 14px 8px;
+    padding: 10px 8px;
+  }
+}
+
+/* ============================================================
+   Drawer off-canvas — mobile/tablet (<=900px).
+
+   FICA NO FIM DO ARQUIVO de propósito: os overrides de .brand/.nav/.navItem/.footer têm a
+   mesma especificidade das regras base declaradas acima, então só vencem por virem depois
+   (mesma lição do bloco de recolher, que quebrava por ordem de cascata). O bloco
+   min-width:901px acima não é tocado — desktop segue exatamente como estava.
+
+   Abrir/fechar é o atributo data-mobile-open (React, SidebarState) no <aside> e no overlay.
+   Fechado, o drawer fica visibility:hidden: sai da ordem de tabulação e da árvore de
+   acessibilidade (não basta translateX(-100%), que só o tira da tela). O atraso de 0.2s na
+   visibilidade deixa a animação de saída terminar antes de esconder.
+   ============================================================ */
+@media (max-width: 900px) {
+  /* O drawer mobile é sempre a largura cheia, mesmo que o usuário tenha recolhido a
+     sidebar no desktop — recolher e off-canvas são dois comportamentos independentes
+     (RNF-04); a preferência de desktop nunca deve virar uma coluna de 72px no celular.
+     min(..., 86vw) garante uma faixa de overlay tocável em telas estreitas.
+     height: 100vh é o fallback de quem não conhece dvh; 100dvh acompanha a barra de
+     endereço móvel, que encolhe/expande a área visível — com 100vh o rodapé (usuário e
+     Sair) ficava abaixo da dobra. Com height definido, o bottom:0 herdado é ignorado. */
+  .sidebar,
+  .sidebar.collapsed {
+    width: min(var(--sidebar-width-expanded), 86vw);
+    height: 100vh;
+    height: 100dvh;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-left: env(safe-area-inset-left, 0px);
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition: transform 0.2s ease, visibility 0s linear 0.2s;
+  }
+
+  /* (0,3,0) no caso recolhido: precisa vencer .sidebar.collapsed (0,2,0) acima sem
+     depender da ordem. */
+  .sidebar[data-mobile-open="true"],
+  .sidebar.collapsed[data-mobile-open="true"] {
+    transform: translateX(0);
+    visibility: visible;
+    transition: transform 0.2s ease, visibility 0s;
+  }
+
+  /* Atrás do drawer (100) e acima do Topbar (50) e do conteúdo; abaixo dos modais (200). */
+  .backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 99;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    appearance: none;
+    background: color-mix(in oklch, var(--ink) 50%, transparent);
+    /* cursor:pointer e touch-action: sem eles o iOS não entrega o toque num elemento que
+       o navegador considera "não clicável", e o gesto de arrastar sobre o overlay
+       rolaria a página travada atrás dele. */
+    cursor: pointer;
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s ease, visibility 0s linear 0.2s;
+  }
+  .backdrop[data-mobile-open="true"] {
+    opacity: 1;
+    visibility: visible;
+    transition: opacity 0.2s ease, visibility 0s;
+  }
+
+  /* Marca + botão fechar na mesma linha. O botão tem 44px de alvo mas borda transparente,
+     então o "X" fica visualmente a ~16px da borda (simétrico ao padding esquerdo) mesmo com
+     apenas 4px de padding direito — e é esse espaço que sobra para o texto da marca. O
+     texto ocupa o que restar (o teto de 220px do desktop o espremeria). O subtítulo, em
+     tipografia um degrau menor, cabe numa linha; se a fonte renderizar mais larga, quebra
+     em duas em vez de ser cortado (a versão anterior cortava "OPERAÇÕES" em ~14px). */
+  .brand {
+    gap: 8px;
+    padding: 18px 4px 18px 16px;
+  }
+  .brandText {
+    flex: 1;
+    max-width: none;
+  }
+  .brandSub {
+    font-size: var(--text-micro);
+    letter-spacing: 0.06em;
+    line-height: 1.25;
+    white-space: normal;
+  }
+
+  .closeBtn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    margin-left: auto;
+    flex-shrink: 0;
+    border: 1px solid transparent;
+    border-radius: var(--ind-radius-sm);
+    background: transparent;
+    color: var(--ind-sidebar-foreground);
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+  .closeBtn:hover {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: var(--ind-sidebar-border);
+    color: #fff;
+  }
+  /* O foco global é var(--ink), invisível sobre a sidebar escura — mesmo contorno claro
+     dos itens de navegação. */
+  .closeBtn:focus-visible {
+    outline: 2px solid rgba(255, 255, 255, 0.65);
+    outline-offset: -2px;
+  }
+
+  /* A lista rola sozinha (o <aside> tem altura fixa): brand e rodapé nunca são empurrados
+     para fora. min-height:0 é o que permite o item flex encolher abaixo do conteúdo;
+     overscroll-behavior evita que o fim da lista role a página (travada) atrás do drawer. */
+  .nav {
+    min-height: 0;
+    padding: 12px;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Alvo de toque mínimo de 44px (o padding do desktop rende ~39px). */
+  .navItem {
+    min-height: 44px;
+  }
+
+  /* Rodapé (usuário/Sair) sempre visível: não encolhe e reserva a área segura inferior
+     (barra de gestos do iPhone) para o gatilho não ficar sob ela. */
+  .footer {
+    flex-shrink: 0;
+    padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* Celular deitado: a altura útil é ~300-400px; a marca não pode consumir um quarto dela. */
+@media (max-width: 900px) and (max-height: 480px) {
+  .brand {
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+}
+
+/* Sem animação para quem pede menos movimento. Precisa listar todos os seletores de
+   estado, senão as regras de transição acima (mais específicas) continuariam valendo — e
+   o atraso de 0.2s da visibilidade não é zerado pela regra global de globals.css. */
+@media (max-width: 900px) and (prefers-reduced-motion: reduce) {
+  .sidebar,
+  .sidebar.collapsed,
+  .sidebar[data-mobile-open="true"],
+  .sidebar.collapsed[data-mobile-open="true"],
+  .backdrop,
+  .backdrop[data-mobile-open="true"],
+  .closeBtn {
+    transition: none;
   }
 }

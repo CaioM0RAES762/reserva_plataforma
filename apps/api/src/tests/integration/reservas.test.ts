@@ -253,15 +253,35 @@ describe("Reservas (S3) — criação, conflito e escopo por setor", () => {
     expect(response.statusCode).toBe(201);
   });
 
-  it("Colaborador de outro setor (Manutenção) não vê a reserva A na listagem (escopo por setor)", async () => {
+  it("Colaborador de outro setor (Manutenção) vê a reserva A na listagem, com o motivo visível — reserva é informação operacional compartilhada", async () => {
     const response = await app.inject({
       method: "GET",
       url: "/api/v1/reservas",
       headers: { cookie: cookieColaboradorManutencao },
     });
     expect(response.statusCode).toBe(200);
-    const body = response.json() as Array<{ id: string }>;
-    expect(body.some((r) => r.id === reservaAId)).toBe(false);
+    const body = response.json() as Array<{ id: string; motivo: string; solicitanteId: string }>;
+    const reservaA = body.find((r) => r.id === reservaAId);
+    expect(reservaA).toBeDefined();
+    expect(reservaA?.motivo).toBe("Manutenção preventiva do equipamento");
+    expect(reservaA?.solicitanteId).toBeTruthy();
+  });
+
+  it("Colaborador de outro setor (Manutenção) LÊ e também pode COMENTAR na reserva A — conteúdo operacional compartilhado", async () => {
+    const leitura = await app.inject({
+      method: "GET",
+      url: `/api/v1/reservas/${reservaAId}/comentarios`,
+      headers: { cookie: cookieColaboradorManutencao },
+    });
+    expect(leitura.statusCode).toBe(200);
+
+    const escrita = await app.inject({
+      method: "POST",
+      url: `/api/v1/reservas/${reservaAId}/comentarios`,
+      headers: { cookie: cookieColaboradorManutencao },
+      payload: { mensagem: "Comentário de colaborador de outro setor", tipo: "comentario", imagens: [] },
+    });
+    expect(escrita.statusCode).toBe(201);
   });
 
   it("Admin vê a reserva A mesmo sem pertencer ao setor TI", async () => {
@@ -364,22 +384,31 @@ describe("Reservas — quantidade de pessoas x capacidade da plataforma", () => 
     await pool
       .request()
       .query(`DELETE FROM Plataforma WHERE codigo IN ('${CODIGO_PLATAFORMA_CAPACIDADE}', '${CODIGO_PLATAFORMA_CAPACIDADE}-2')`);
+    // Bug de domínio corrigido: capacidade (kg, carga) e capacidade_operadores (pessoas)
+    // são propositalmente DIFERENTES aqui — 500 kg x 4 pessoas, o mesmo exemplo do
+    // problema relatado — para provar que QUANTIDADE DE PESSOAS nunca é validada contra o
+    // campo de kg.
     const comCapacidade = await pool
       .request()
       .input("codigo", sql.VarChar, CODIGO_PLATAFORMA_CAPACIDADE)
       .input("nome", sql.NVarChar, "Plataforma com Capacidade Definida")
-      .input("capacidade", sql.Int, 4)
+      .input("capacidade", sql.Int, 500)
+      .input("capacidade_operadores", sql.Int, 4)
       .query<{ id: string }>(
-        `INSERT INTO Plataforma (codigo, nome, capacidade) OUTPUT INSERTED.id VALUES (@codigo, @nome, @capacidade)`
+        `INSERT INTO Plataforma (codigo, nome, capacidade, capacidade_operadores)
+         OUTPUT INSERTED.id VALUES (@codigo, @nome, @capacidade, @capacidade_operadores)`
       );
     plataformaComCapacidadeId = comCapacidade.recordset[0].id;
 
+    // Capacidade de CARGA (kg) cadastrada, mas capacidade de PESSOAS não — a reserva não
+    // pode inventar um teto de pessoas a partir do valor de kg.
     const semCapacidade = await pool
       .request()
       .input("codigo", sql.VarChar, `${CODIGO_PLATAFORMA_CAPACIDADE}-2`)
-      .input("nome", sql.NVarChar, "Plataforma sem Capacidade Cadastrada")
+      .input("nome", sql.NVarChar, "Plataforma sem Capacidade de Pessoas Cadastrada")
+      .input("capacidade", sql.Int, 300)
       .query<{ id: string }>(
-        `INSERT INTO Plataforma (codigo, nome) OUTPUT INSERTED.id VALUES (@codigo, @nome)`
+        `INSERT INTO Plataforma (codigo, nome, capacidade) OUTPUT INSERTED.id VALUES (@codigo, @nome, @capacidade)`
       );
     plataformaSemCapacidadeId = semCapacidade.recordset[0].id;
   });
@@ -414,7 +443,10 @@ describe("Reservas — quantidade de pessoas x capacidade da plataforma", () => 
       },
     });
     expect(response.statusCode).toBe(409);
-    expect(response.json().erro).toMatch(/no máximo 4/i);
+    // A mensagem cita a capacidade de PESSOAS (4, capacidade_operadores) — nunca a
+    // capacidade de carga em kg (500, capacidade) cadastrada na mesma plataforma.
+    expect(response.json().erro).toMatch(/capacidade máxima para 4 pessoa/i);
+    expect(response.json().erro).not.toMatch(/500/);
   });
 
   it("aceita quantidade de pessoas exatamente igual à capacidade cadastrada", async () => {
@@ -457,7 +489,7 @@ describe("Reservas — quantidade de pessoas x capacidade da plataforma", () => 
     expect(response.statusCode).toBe(409);
   });
 
-  it("plataforma sem capacidade cadastrada não bloqueia a reserva por um teto inventado", async () => {
+  it("plataforma com capacidade de kg mas sem capacidade de pessoas não bloqueia por um teto inventado a partir do kg", async () => {
     const response = await app.inject({
       method: "POST",
       url: "/api/v1/reservas",

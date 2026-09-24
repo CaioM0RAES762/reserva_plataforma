@@ -129,7 +129,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     if (!parsed.success) {
       return reply.status(422).send({ erro: "Dados inválidos.", detalhes: parsed.error.flatten() });
     }
-    const { nome, email, setorId } = parsed.data;
+    const { nome, email, telefone, setorId } = parsed.data;
     const RESPOSTA_GENERICA = {
       mensagem: "Se o cadastro puder ser concluído, um código de verificação foi enviado.",
     };
@@ -188,12 +188,13 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
           .request()
           .input("nome", sql.NVarChar, nome)
           .input("email", sql.NVarChar, email)
+          .input("telefone", sql.NVarChar, telefone)
           .input("senha_hash", sql.VarChar, senhaPlaceholder)
           .input("setor_id", sql.UniqueIdentifier, setorId)
           .query<{ id: string }>(
-            `INSERT INTO Usuario (nome, email, senha_hash, perfil, setor_id, ativo, email_verificado)
+            `INSERT INTO Usuario (nome, email, telefone, senha_hash, perfil, setor_id, ativo, email_verificado)
              OUTPUT INSERTED.id
-             VALUES (@nome, @email, @senha_hash, 'colaborador', @setor_id, 1, 0)`
+             VALUES (@nome, @email, @telefone, @senha_hash, 'colaborador', @setor_id, 1, 0)`
           );
         usuarioId = insercao.recordset[0].id;
 

@@ -1,6 +1,11 @@
+import { PHASE_DEVELOPMENT_SERVER } from "next/constants";
 import type { NextConfig } from "next";
 
-const nextConfig: NextConfig = {
+const criarNextConfig = (phase: string): NextConfig => ({
+  // `next dev` e `next build` não podem compartilhar a mesma pasta de saída.
+  // Sessões paralelas de desenvolvimento continuam bloqueadas pela checagem da porta
+  // em package.json, enquanto um build pode rodar sem sobrescrever chunks do servidor.
+  distDir: phase === PHASE_DEVELOPMENT_SERVER ? ".next-dev" : ".next",
   reactStrictMode: true,
   // @plataformares/shared não tem passo de build próprio — expõe .ts fonte direto (ver
   // package.json do pacote: "main"/"types" apontam para src/index.ts). Sem isto, o
@@ -58,6 +63,6 @@ const nextConfig: NextConfig = {
       },
     ];
   },
-};
+});
 
-export default nextConfig;
+export default criarNextConfig;

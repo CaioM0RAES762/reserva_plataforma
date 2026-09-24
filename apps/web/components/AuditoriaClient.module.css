@@ -1,0 +1,265 @@
+/* Listagem de auditoria — linha do tempo administrativa.
+ *
+ * A geometria de tabela (bordas, hover, cabeçalho) continua vindo de Admin.module.css:
+ * aqui só existe o que é específico do ritmo desta tela. Nada de paleta nova — os tons
+ * de evento reutilizam --signal / --safety / --hazard, os mesmos já usados nos badges
+ * de status do resto do produto.
+ */
+
+/* Larguras: data e responsável são âncoras de leitura e ficam fixas, para que as três
+   colunas de conteúdo dividam o resto sem "pular" de largura a cada página carregada.
+   `table-layout: fixed` é o que garante isso — sem ele, uma célula de alteração longa
+   redistribuiria a tabela inteira. */
+.tabela { table-layout: fixed; }
+.tabela th:nth-child(1) { width: 108px; }
+.tabela th:nth-child(2) { width: 200px; }
+.tabela th:nth-child(3) { width: 24%; }
+.tabela th:nth-child(4) { width: 24%; }
+
+.linha { cursor: pointer; }
+.linha:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
+  background: color-mix(in oklch, var(--ink) 5%, transparent);
+}
+
+/* Atividade informativa (rascunho de checklist, reenvio de código) some um degrau: existe
+   em volume alto e não pode competir com aprovações e desativações. Continua legível e
+   continua auditada — só não disputa a varredura. */
+.linhaInformativa td { color: var(--ink-muted); }
+.linhaInformativa .eventoTitulo { font-weight: 500; color: var(--ink-soft); }
+
+/* ---------- Data/hora ---------- */
+.celulaData { white-space: nowrap; }
+.dataDia {
+  display: block;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-secondary);
+  font-weight: 500;
+  color: var(--ink);
+}
+.dataHora {
+  display: block;
+  margin-top: 1px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-micro);
+  color: var(--ink-muted);
+}
+
+/* ---------- Responsável ---------- */
+.celulaResponsavel { min-width: 0; }
+.responsavelNome {
+  display: block;
+  font-size: var(--text-secondary);
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.responsavelPerfil {
+  display: block;
+  margin-top: 1px;
+  font-size: var(--text-micro);
+  color: var(--ink-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- Evento ---------- */
+.celulaEvento { min-width: 0; }
+.eventoTitulo {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font-size: var(--text-secondary);
+  font-weight: 600;
+  color: var(--ink);
+}
+.eventoIcone { color: var(--ink-muted); flex-shrink: 0; }
+.eventoCategoria {
+  display: block;
+  /* Alinhado ao texto do título, saltando o ponto de tom e o ícone. */
+  margin: 2px 0 0 28px;
+  font-size: var(--text-micro);
+  color: var(--ink-muted);
+}
+
+/* Indicador de tom: 6px de cor por linha, e só. A linha inteira nunca é pintada — o que
+   deve saltar é a exceção, não o fato de existir um evento. */
+.tom {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.tom_neutro { background: color-mix(in oklch, var(--ink) 25%, transparent); }
+.tom_sucesso { background: var(--signal); }
+.tom_atencao { background: var(--safety); }
+.tom_critico { background: var(--hazard); }
+
+/* ---------- Recurso ---------- */
+.celulaRecurso { min-width: 0; }
+.recursoNome {
+  display: block;
+  font-size: var(--text-secondary);
+  font-weight: 500;
+  color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recursoDetalhe {
+  display: block;
+  margin-top: 1px;
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  color: var(--ink-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- Alteração ---------- */
+.celulaAlteracao { min-width: 0; }
+.transicao {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font-size: var(--text-meta);
+}
+.transicaoDe {
+  color: var(--ink-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.transicaoSeta { color: var(--ink-muted); flex-shrink: 0; }
+/* O estado que passou a valer é o dado; o anterior é contexto. */
+.transicaoPara {
+  color: var(--ink);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.alteracaoResumo {
+  display: block;
+  font-size: var(--text-meta);
+  color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.semAlteracao { color: var(--ink-muted); }
+
+/* ---------- Filtros ---------- */
+.seletor {
+  min-height: var(--control-h);
+  max-width: 100%;
+  padding: 0 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-sm);
+  background: var(--paper-elev);
+  font-family: inherit;
+  font-size: var(--text-secondary);
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.seletor:focus { outline: none; border-color: var(--ink-muted); }
+
+/* ---------- Vazio / esqueleto ---------- */
+.vazio {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 48px 24px;
+  text-align: center;
+}
+.vazioTitulo {
+  font-family: var(--font-display);
+  font-size: var(--text-panel-title);
+  font-weight: 500;
+  color: var(--ink);
+}
+.vazioTexto { font-size: var(--text-secondary); color: var(--ink-muted); }
+.vazioAcao {
+  min-height: var(--control-h-compact);
+  padding: 0 16px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-sm);
+  background: transparent;
+  color: var(--ink-soft);
+  font-family: inherit;
+  font-size: var(--text-secondary);
+  font-weight: 500;
+  cursor: pointer;
+}
+.vazioAcao:hover { border-color: var(--ink-muted); color: var(--ink); }
+
+/* Esqueleto com a altura real de uma linha de duas faixas: a tabela não colapsa nem
+   salta entre um filtro e outro. */
+.linhaEsqueleto td { height: 56px; }
+.esqueletoBarra {
+  display: block;
+  width: 70%;
+  height: 10px;
+  border-radius: 3px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklch, var(--ink) 7%, transparent) 25%,
+    color-mix(in oklch, var(--ink) 12%, transparent) 37%,
+    color-mix(in oklch, var(--ink) 7%, transparent) 63%
+  );
+  background-size: 400% 100%;
+  animation: auditoriaPulso 1.4s ease infinite;
+}
+@keyframes auditoriaPulso {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .esqueletoBarra { animation: none; }
+}
+
+/* ---------- Mobile: a tabela vira lista de eventos ----------
+   Cinco colunas não cabem em 360px sem virar rolagem horizontal. Em vez disso, cada
+   registro passa a ocupar um bloco próprio, com os mesmos dados em ordem de leitura.
+   Os cabeçalhos somem porque cada valor já se explica na vertical. */
+@media (max-width: 720px) {
+  .tabela,
+  .tabela tbody,
+  .tabela tr,
+  .tabela td {
+    display: block;
+    width: auto;
+  }
+  .tabela { table-layout: auto; }
+  .tabela thead { display: none; }
+
+  .tabela tbody tr {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .tabela tbody tr:last-child { border-bottom: none; }
+  .tabela td {
+    padding: 0;
+    border: none;
+  }
+  .tabela td + td { margin-top: 6px; }
+
+  /* Data e hora voltam para a mesma linha, como carimbo do bloco. */
+  .celulaData { display: flex; align-items: baseline; gap: 6px; }
+  .dataDia, .dataHora { display: inline; }
+
+  .eventoTitulo { font-size: var(--text-body); }
+  .eventoCategoria { margin-left: 0; }
+  .linhaEsqueleto td { height: auto; }
+  .linhaEsqueleto .esqueletoBarra { width: 100%; }
+}

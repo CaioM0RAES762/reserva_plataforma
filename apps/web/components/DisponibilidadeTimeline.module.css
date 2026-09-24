@@ -1,0 +1,821 @@
+/* ==========================================================================
+   Disponibilidade das plataformas — timeline reutilizável (DisponibilidadeTimeline)
+
+   Duas apresentações do mesmo dado, escolhidas em JS (matchMedia 900px), não escondidas
+   por CSS: linhas com trilha horizontal em telas largas e cartões por plataforma no
+   celular. Cor NUNCA é o único sinal — cada estado tem também padrão/borda próprios, ícone
+   e texto (legenda, title e aria-label). Sem gradiente decorativo: as únicas "listras" são
+   hachuras funcionais (bloqueio) e o pontilhado de "indisponível".
+   ========================================================================== */
+
+.secao {
+  --disp-hora-min: 40px;     /* largura mínima de uma hora na trilha (abaixo disso rola) */
+  --disp-coluna: 208px;      /* coluna fixa: código + nome + status */
+  --disp-altura-trilha: 58px;
+
+  min-width: 0;
+  max-width: 100%;
+  margin-bottom: 28px;
+}
+
+/* ---------- Identidade visual de cada estado (bloco, chip, swatch da legenda) ---------- */
+
+.tipoLivre {
+  background: color-mix(in oklab, var(--signal) 13%, var(--paper-elev));
+  border: 1px solid color-mix(in oklab, var(--signal) 55%, transparent);
+  color: color-mix(in oklab, var(--signal) 55%, var(--ink));
+}
+.tipoReservada {
+  background: color-mix(in oklab, var(--safety) 22%, var(--paper-elev));
+  border: 1px solid color-mix(in oklab, var(--safety) 70%, transparent);
+  color: color-mix(in oklab, var(--safety) 50%, var(--ink));
+}
+.tipoEmUso {
+  background: color-mix(in oklab, var(--chart-3) 26%, var(--paper-elev));
+  border: 1px solid var(--chart-3);
+  color: color-mix(in oklab, var(--chart-3) 70%, var(--ink));
+}
+/* Pendente de aprovação: amarelo com borda TRACEJADA — a diferença para "Reservada" não
+   depende de matiz. Não ocupa horário (fica acima do trecho livre, que continua clicável). */
+.tipoPendente {
+  background: color-mix(in oklab, var(--caution) 24%, var(--paper-elev));
+  border: 1px dashed color-mix(in oklab, var(--caution) 80%, var(--ink));
+  color: color-mix(in oklab, var(--caution) 45%, var(--ink));
+}
+/* Histórico do dia: esmaecido, sem competir com o que ainda pode acontecer. */
+.tipoConcluida {
+  background: color-mix(in oklab, var(--ink) 6%, var(--paper-elev));
+  border: 1px solid var(--hairline);
+  color: var(--ink-muted);
+  opacity: 0.7;
+}
+/* Bloqueio da plataforma: hachura diagonal (\) — global usa a outra diagonal (/) e borda dupla. */
+.tipoBloqueio {
+  background-color: color-mix(in oklab, var(--hazard) 7%, var(--paper-elev));
+  background-image: repeating-linear-gradient(
+    135deg,
+    color-mix(in oklab, var(--hazard) 26%, transparent) 0 2px,
+    transparent 2px 7px
+  );
+  border: 1px solid var(--hazard);
+  color: var(--hazard);
+}
+.tipoBloqueioGlobal {
+  background-color: color-mix(in oklab, var(--hazard) 10%, var(--paper-elev));
+  background-image: repeating-linear-gradient(
+    45deg,
+    color-mix(in oklab, var(--hazard) 30%, transparent) 0 3px,
+    transparent 3px 7px
+  );
+  border: 2px solid var(--hazard);
+  color: var(--hazard);
+}
+/* Plataforma fora de operação: cinza pontilhado. */
+.tipoIndisponivel {
+  background-color: color-mix(in oklab, var(--ink) 7%, var(--paper-elev));
+  background-image: radial-gradient(circle, color-mix(in oklab, var(--ink) 32%, transparent) 1px, transparent 1.4px);
+  background-size: 7px 7px;
+  border: 1px dotted var(--ink-muted);
+  color: var(--ink-soft);
+}
+/* Horário que já passou / dentro da antecedência mínima: sombra fina, sem borda. */
+.tipoPassado {
+  background-color: color-mix(in oklab, var(--ink) 4%, transparent);
+  background-image: repeating-linear-gradient(
+    135deg,
+    color-mix(in oklab, var(--ink) 9%, transparent) 0 1px,
+    transparent 1px 6px
+  );
+  border: 1px solid transparent;
+}
+
+/* ---------- Cabeçalho ---------- */
+
+.cabecalho {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px 20px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.cabecalhoTexto { min-width: 0; }
+
+.titulo {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: var(--text-panel-title);
+  letter-spacing: -0.012em;
+  line-height: 1.2;
+  color: var(--ink);
+}
+
+/* O título vira o controle de recolher: botão sem moldura, com a seta girando. */
+.tituloBotao {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 4px 0;
+  margin: -4px 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--ind-radius-sm);
+}
+.tituloBotao:hover { color: var(--ink-soft); }
+.tituloBotao:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.tituloSeta { flex-shrink: 0; color: var(--ink-muted); transition: transform 0.15s; }
+.tituloBotao[aria-expanded="false"] .tituloSeta { transform: rotate(-90deg); }
+
+.resumo {
+  margin-top: 4px;
+  font-size: var(--text-secondary);
+  color: var(--ink-muted);
+  line-height: 1.4;
+}
+
+.navegacao {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.btnNav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: var(--control-h-compact);
+  padding: 0 14px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: var(--paper-elev);
+  color: var(--ink-soft);
+  font-family: inherit;
+  font-size: var(--text-secondary);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.btnNav:hover:not(:disabled) { border-color: var(--ink-muted); color: var(--ink); }
+.btnNav:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.btnNav:disabled { opacity: 0.5; cursor: not-allowed; }
+.btnNavIcone { width: var(--control-h-compact); padding: 0; }
+.btnNavAtivo,
+.btnNavAtivo:hover:not(:disabled) {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+
+.campoData {
+  min-height: var(--control-h-compact);
+  padding: 0 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-sm);
+  background: var(--paper-elev);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: var(--text-secondary);
+}
+.campoData:focus { outline: none; border-color: var(--ink-muted); }
+.campoData:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+.corpo { min-width: 0; }
+
+/* ---------- Legenda ---------- */
+
+.legenda {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-meta);
+  color: var(--ink-soft);
+}
+.legendaItem { display: inline-flex; align-items: center; gap: 6px; }
+.swatch {
+  display: inline-block;
+  width: 22px;
+  height: 14px;
+  flex-shrink: 0;
+  border-radius: var(--ind-radius-sm);
+  box-sizing: border-box;
+}
+/* "Sua reserva": friso escuro na lateral, o mesmo usado no bloco. */
+.swatchPropria {
+  background: color-mix(in oklab, var(--safety) 22%, var(--paper-elev));
+  border: 1px solid color-mix(in oklab, var(--safety) 70%, transparent);
+  box-shadow: inset 3px 0 0 var(--ink);
+}
+
+/* ---------- Chips de status da plataforma ---------- */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  align-self: flex-start;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--ind-radius-sm);
+  font-size: var(--text-micro);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  white-space: nowrap;
+}
+.chip::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: currentColor;
+}
+.chipDisponivel { color: var(--signal); background: color-mix(in oklab, var(--signal) 14%, transparent); border-color: color-mix(in oklab, var(--signal) 35%, transparent); }
+.chipEmUso { color: var(--chart-3); background: color-mix(in oklab, var(--chart-3) 14%, transparent); border-color: color-mix(in oklab, var(--chart-3) 35%, transparent); }
+.chipManutencao { color: var(--safety); background: var(--safety-soft); border-color: color-mix(in oklab, var(--safety) 40%, transparent); }
+.chipInativa { color: var(--ink-muted); background: color-mix(in oklab, var(--ink) 6%, transparent); border-color: var(--hairline); }
+
+.codigo {
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+  font-weight: 600;
+  color: var(--ink-muted);
+  letter-spacing: 0.02em;
+}
+.nomePlataforma {
+  min-width: 0;
+  font-size: var(--text-secondary);
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--ink);
+}
+
+/* ==========================================================================
+   Desktop / tablet largo: quadro com trilha horizontal
+   ========================================================================== */
+
+.rolagem {
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: var(--paper-elev);
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-md);
+}
+.rolagem:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+/* min-width = coluna fixa + N horas × largura mínima: abaixo disso a trilha rola dentro do
+   quadro (a coluna de plataformas fica presa à esquerda), nunca a página. */
+.quadro {
+  min-width: calc(var(--disp-coluna) + var(--horas) * var(--disp-hora-min));
+}
+
+.linhaCabecalho,
+.linha {
+  display: grid;
+  grid-template-columns: var(--disp-coluna) minmax(0, 1fr);
+}
+
+.linhaCabecalho {
+  border-bottom: 1px solid var(--hairline);
+  background: color-mix(in oklab, var(--ink) 2.5%, var(--paper-elev));
+}
+.linhas { margin: 0; padding: 0; list-style: none; }
+.linha { border-bottom: 1px solid var(--hairline); }
+.linha:last-child { border-bottom: none; }
+
+/* Coluna presa à esquerda enquanto a trilha rola. Fundo opaco para o conteúdo que passa por
+   baixo não vazar; z-index acima de blocos, linha do agora e rótulo de hover. */
+.colunaPlataforma {
+  position: sticky;
+  left: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 3px;
+  min-width: 0;
+  padding: 10px 14px;
+  background: var(--paper-elev);
+  border-right: 1px solid var(--hairline);
+}
+.colunaPlataforma .nomePlataforma {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  max-width: 100%;
+}
+.colunaCabecalho {
+  justify-content: flex-end;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  background: color-mix(in oklab, var(--ink) 2.5%, var(--paper-elev));
+  font-size: var(--text-eyebrow);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--ink-muted);
+}
+
+/* Escala de horas: uma célula por hora, alinhada às linhas de grade das trilhas. */
+.escalaHoras {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(var(--horas), minmax(0, 1fr));
+  min-height: 40px;
+}
+.hora {
+  padding: 4px 0 0 6px;
+  border-left: 1px solid var(--hairline);
+  font-family: var(--font-mono);
+  font-size: var(--text-eyebrow);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-muted);
+  line-height: 1.2;
+}
+.hora:first-child { border-left-color: transparent; }
+
+/* A trilha estica até a altura da linha (que a coluna da esquerda pode alongar) e a ação
+   "Próximo horário livre" fica embaixo dela. */
+.areaTrilha {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.trilha {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: var(--disp-altura-trilha);
+  /* Linhas verticais de hora: o próprio fundo, desenhado uma vez por trilha. */
+  background-image: linear-gradient(to right, var(--hairline) 1px, transparent 1px);
+  background-size: calc(100% / var(--horas)) 100%;
+}
+
+.bloco,
+.livre {
+  position: absolute;
+  top: 9px;
+  bottom: 9px;
+  z-index: 1;
+  min-width: 3px;
+  box-sizing: border-box;
+  border-radius: var(--ind-radius-md);
+  font-size: var(--text-micro);
+  font-weight: 600;
+  line-height: 1;
+}
+.bloco {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 6px;
+  /* clip (com hidden de reserva) recorta sem virar contêiner de rolagem — é o que deixa o
+     .rotuloFixo grudar na borda visível da trilha em vez de na do bloco. */
+  overflow: hidden;
+  overflow: clip;
+  white-space: nowrap;
+}
+.bloco svg { flex-shrink: 0; }
+.blocoTexto {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Texto sobre hachura/pontilhado ganha um fundo próprio para continuar legível. */
+.tipoBloqueio .blocoTexto,
+.tipoBloqueioGlobal .blocoTexto,
+.tipoIndisponivel .blocoTexto {
+  padding: 3px 5px;
+  border-radius: var(--ind-radius-sm);
+  background: var(--paper-elev);
+}
+.blocoTotal { left: 0; right: 0; width: auto; padding: 0 12px; }
+/* Conteúdo do bloco preso logo depois da coluna de plataformas quando a trilha está rolada:
+   um bloco largo (ou o dia todo) que começou fora da vista continua legível. */
+.rotuloFixo {
+  position: sticky;
+  left: calc(var(--disp-coluna) + 8px);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+/* "Sua reserva": friso escuro na lateral, não só a cor. */
+.propria { box-shadow: inset 3px 0 0 var(--ink); }
+/* Pendente sobre reserva confirmada (ex.: urgente aguardando decisão de substituição): em vez
+   de cobrir o bloco confirmado, vira uma faixa tracejada na base da trilha — as duas coisas
+   ficam visíveis ao mesmo tempo, e o texto completo está no title/aria-label. */
+.pendenteSobreposta {
+  top: auto;
+  bottom: 2px;
+  height: 9px;
+  z-index: 3;
+  padding: 0;
+}
+
+/* Concluída que cobre um trecho livre fica só como pano de fundo do clique. */
+.semPonteiro { pointer-events: none; z-index: 2; }
+
+/* Trecho livre = botão. Overflow visível: o rótulo do horário de hover fica FORA do bloco. */
+.livre {
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+div.livre { cursor: default; }
+button.livre:hover {
+  z-index: 4;
+  border-color: var(--signal);
+  background: color-mix(in oklab, var(--signal) 24%, var(--paper-elev));
+}
+.livre:focus-visible { z-index: 4; outline: 2px solid var(--ink); outline-offset: 2px; }
+.livreTexto {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Guia de hover: linha + horário de início onde o clique cairia (posição encaixada em 30min).
+   `data-inicio` é escrito direto no DOM pelo handler de ponteiro; sem ele, nada aparece. */
+.livre[data-inicio]::before {
+  content: "";
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  left: var(--guia, 0);
+  width: 2px;
+  background: var(--ink);
+  transform: translateX(-1px);
+  pointer-events: none;
+}
+.livre[data-inicio]::after {
+  content: attr(data-inicio);
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: var(--guia, 0);
+  padding: 2px 6px;
+  border-radius: var(--ind-radius-sm);
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  font-variant-numeric: tabular-nums;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.naoReservavel {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 0;
+  border-radius: 0;
+  pointer-events: none;
+}
+
+/* Linha do "agora": traço laranja contínuo entre as linhas + etiqueta no cabeçalho. */
+.agora {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 3;
+  width: 2px;
+  background: var(--safety);
+  transform: translateX(-1px);
+  pointer-events: none;
+}
+.agoraRotulo {
+  position: absolute;
+  bottom: 3px;
+  padding: 1px 6px;
+  border-radius: var(--ind-radius-sm);
+  background: var(--safety);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+/* ---------- Ação "Próximo horário livre" (linha totalmente ocupada) ---------- */
+
+.acaoProximo {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 0 14px 12px;
+}
+.acaoProximoTexto {
+  font-size: var(--text-meta);
+  color: var(--ink-soft);
+}
+.acaoProximoTexto strong { color: var(--ink); font-weight: 600; }
+
+.btnAcao {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--control-h-compact);
+  padding: 0 14px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-sm);
+  background: var(--paper-elev);
+  color: var(--ink-soft);
+  font-family: inherit;
+  font-size: var(--text-secondary);
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.btnAcao:hover { border-color: var(--ink-muted); color: var(--ink); }
+.btnAcao:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.btnAcaoPrimaria { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+.btnAcaoPrimaria:hover { background: var(--ink-soft); border-color: var(--ink-soft); color: var(--paper); }
+
+/* ==========================================================================
+   Mobile: um cartão por plataforma
+   ========================================================================== */
+
+.cartoes {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cartao {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px;
+  background: var(--paper-elev);
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-md);
+}
+
+.cartaoTopo {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.cartaoIdentidade {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* Mini barra: o dia inteiro do expediente em ~16px de altura, proporcional. */
+.miniBarra {
+  position: relative;
+  height: 16px;
+  overflow: hidden;
+  border-radius: var(--ind-radius-sm);
+  background: color-mix(in oklab, var(--ink) 5%, transparent);
+  background-image: linear-gradient(to right, var(--hairline) 1px, transparent 1px);
+  background-size: calc(100% / 6) 100%;
+}
+.miniSegmento {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  box-sizing: border-box;
+  border-radius: 0;
+  border-width: 0;
+  min-width: 2px;
+}
+.miniEscala {
+  display: flex;
+  justify-content: space-between;
+  margin-top: -6px;
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.chipsLivres {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.chipLivre {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--control-h);
+  padding: 0 16px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: var(--text-secondary);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+span.chipLivre { cursor: default; }
+button.chipLivre:hover,
+button.chipLivre:active {
+  border-color: var(--signal);
+  background: color-mix(in oklab, var(--signal) 24%, var(--paper-elev));
+}
+button.chipLivre:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+.semLivre {
+  margin: 0;
+  font-size: var(--text-secondary);
+  color: var(--ink-muted);
+}
+.avisoIndisponivel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: var(--text-secondary);
+  color: var(--ink-soft);
+}
+
+.ocupadosLista {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ocupadoItem {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  font-size: var(--text-meta);
+  color: var(--ink-soft);
+  line-height: 1.35;
+}
+.ocupadoItemPassado { color: var(--ink-muted); }
+.ocupadoIcone { flex-shrink: 0; align-self: center; color: var(--ink-muted); }
+.ocupadoHora {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.ocupadoItemPassado .ocupadoHora { color: var(--ink-muted); }
+.ocupadoDetalhe { min-width: 0; overflow-wrap: anywhere; }
+
+.concluidos summary {
+  cursor: pointer;
+  padding: 4px 0;
+  font-size: var(--text-meta);
+  color: var(--ink-muted);
+}
+.concluidos summary:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.concluidos[open] summary { margin-bottom: 4px; }
+
+/* No cartão a ação não tem a folga lateral da linha do quadro. */
+.cartao .acaoProximo { padding: 0; }
+
+/* ==========================================================================
+   Estados: carregando / erro / vazio
+   ========================================================================== */
+
+.aviso {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  padding: 12px 14px;
+  background: var(--safety-soft);
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-sm);
+  color: var(--hazard);
+  font-size: var(--text-secondary);
+}
+.aviso p { margin: 0; }
+
+.vazio {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 12px;
+  padding: 22px 20px;
+  text-align: center;
+  background: var(--paper-elev);
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-md);
+}
+.vazioTitulo {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-body-lg);
+  font-weight: 500;
+  color: var(--ink);
+}
+.vazioDica {
+  margin: 0;
+  font-size: var(--text-meta);
+  color: var(--ink-muted);
+}
+.vazioAcoes { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+
+.esqueleto {
+  display: flex;
+  flex-direction: column;
+  background: var(--paper-elev);
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-md);
+}
+.esqueletoLinha {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 14px;
+  border-bottom: 1px solid var(--hairline);
+}
+.esqueletoLinha:last-child { border-bottom: none; }
+.esqueletoTrilha { display: block; flex: 1; min-width: 0; }
+.esqueletoBarra {
+  display: block;
+  max-width: 100%;
+  height: 12px;
+  border-radius: 3px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--ink) 7%, transparent) 25%,
+    color-mix(in oklab, var(--ink) 12%, transparent) 37%,
+    color-mix(in oklab, var(--ink) 7%, transparent) 63%
+  );
+  background-size: 400% 100%;
+  animation: disponibilidadePulso 1.4s ease infinite;
+}
+@keyframes disponibilidadePulso {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .esqueletoBarra { animation: none; }
+  .tituloSeta { transition: none; }
+}
+
+.somenteLeitor {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ==========================================================================
+   Ajustes de cabeçalho no celular (o layout de cartões é decidido em JS)
+   ========================================================================== */
+
+@media (max-width: 899px) {
+  .cabecalho { align-items: stretch; }
+  .navegacao { width: 100%; }
+  /* Alvos de toque de 44px no lugar dos 34px compactos do desktop. */
+  .btnNav { min-height: var(--control-h); }
+  .btnNavIcone { width: var(--control-h); }
+  .btnAcao { min-height: var(--control-h); }
+  /* O campo de data ocupa a linha seguinte inteira em vez de espremer os botões. */
+  .campoData {
+    flex: 1 1 100%;
+    min-width: 0;
+    min-height: var(--control-h);
+  }
+}

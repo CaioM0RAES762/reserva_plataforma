@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { CATEGORIAS_PLATAFORMA, RISCOS_PLATAFORMA, STATUS_PLATAFORMA } from "../enums.js";
+import { MENSAGEM_TELEFONE_INVALIDO, TELEFONE_TAMANHO_MAXIMO, telefoneValido } from "../telefone.js";
 
 // Mesmo formato de S11 (Anexo/checklist) — data URL base64, mime real verificado no
 // backend por magic bytes (SDD §12), nunca confiando no prefixo declarado aqui.
@@ -16,6 +17,10 @@ export const plataformaPublicaSchema = z.object({
   codigo: z.string(),
   nome: z.string(),
   localizacao: z.string().nullable(),
+  /* Contato acionado quando algo dá errado COM O EQUIPAMENTO durante o uso. Vive na
+     plataforma (não na reserva) porque é uma característica do ativo: a mesma linha de
+     emergência vale para toda reserva que o utilize. */
+  telefoneEmergencia: z.string().nullable(),
   capacidade: z.number().int().nullable(),
   status: z.enum(STATUS_PLATAFORMA),
   categoria: z.enum(CATEGORIAS_PLATAFORMA),
@@ -27,23 +32,24 @@ export const plataformaPublicaSchema = z.object({
   tipoEquipamento: z.string().nullable(),
   alturaMaximaM: z.number().nullable(),
   capacidadeOperadores: z.number().int().nullable(),
-  // Atualizado manualmente pelo Admin — não há sensor/telemetria nesta versão.
+  /* Horímetro (migration 0022). `horimetroHoras` é o BASELINE cadastrado/corrigido pelo
+     Admin; `horimetroUsoMinutos` é o uso real acumulado pelas reservas concluídas desde
+     então; `horimetroAtualHoras` = baseline + uso (null quando não há baseline nem uso). */
   horimetroHoras: z.number().int().nullable(),
+  horimetroUsoMinutos: z.number().int(),
+  horimetroAtualHoras: z.number().nullable(),
   // % de horas reservadas nos últimos 30 dias — calculado em tempo de leitura a partir
   // de Reserva, nunca persistido.
   utilizacao30d: z.number().int().nullable(),
   // Ocorrência aberta / reserva em uso / próxima reserva, o que for mais relevante agora.
   evento: eventoAtivoPlataformaSchema.nullable(),
   // NR-18/NR-35 — derivados de categoria/altura máxima, não é um campo cadastrado à parte.
+  // Continuam expostos: são informação de segurança do equipamento, independente de
+  // existir ou não checklist no fluxo de reserva.
   normas: z.array(z.string()),
-  // Configuração de segurança: "esta plataforma exige checklist antes da aprovação" é uma
-  // decisão EXPLÍCITA do cadastro do equipamento, nunca inferida da categoria/nome/código.
-  exigeChecklist: z.boolean(),
-  checklistTemplateId: z.string().uuid().nullable(),
-  checklistTemplateNome: z.string().nullable(),
-  checklistTotalQuestoes: z.number().int().nonnegative().nullable(),
   // Só pré-preenchem o formulário de nova reserva — a decisão que o job de automação lê é
-  // sempre a gravada na própria reserva.
+  // sempre a gravada na própria reserva. Ambos nascem `true` desde a migration 0018:
+  // iniciar/concluir por horário é o comportamento padrão do produto.
   inicioAutomaticoPadrao: z.boolean(),
   fimAutomaticoPadrao: z.boolean(),
   criadoEm: z.string(),
@@ -55,6 +61,14 @@ export const criarPlataformaSchema = z.object({
   codigo: z.string().trim().min(2, "Código deve ter no mínimo 2 caracteres").max(30),
   nome: z.string().trim().min(2, "Nome deve ter no mínimo 2 caracteres").max(120),
   localizacao: z.string().trim().max(160).optional(),
+  /* Opcional no cadastro (nem todo ativo tem uma linha própria), mas validado quando
+     informado — um telefone de emergência errado é pior que nenhum. */
+  telefoneEmergencia: z
+    .string()
+    .trim()
+    .max(TELEFONE_TAMANHO_MAXIMO)
+    .refine((valor) => valor === "" || telefoneValido(valor), MENSAGEM_TELEFONE_INVALIDO)
+    .optional(),
   capacidade: z.number().int().positive().optional(),
   categoria: z.enum(CATEGORIAS_PLATAFORMA).default("outro"),
   // RN: risco tem default por categoria (SDD §2.4) — quando omitido, o backend aplica
@@ -70,17 +84,10 @@ export const criarPlataformaSchema = z.object({
   imagemBase64: z.string().regex(DATA_URL_REGEX, "Formato inválido — esperado data URL base64.").optional(),
   // Só relevante na edição: remove a imagem atual quando nenhuma nova é enviada.
   removerImagem: z.boolean().optional(),
-  // Seção "Segurança" do cadastro. `exigeChecklist: true` sem `checklistTemplateId` é
-  // rejeitado no refine abaixo — "exige checklist mas não diz qual" produziria uma
-  // plataforma impossível de aprovar, já que não haveria questões para responder.
-  exigeChecklist: z.boolean().default(false),
-  checklistTemplateId: z.string().uuid().nullable().optional(),
-  // Seção "Automação" do cadastro — padrões herdados por novas reservas desta plataforma.
-  inicioAutomaticoPadrao: z.boolean().default(false),
-  fimAutomaticoPadrao: z.boolean().default(false),
-}).refine((dados) => !dados.exigeChecklist || Boolean(dados.checklistTemplateId), {
-  message: "Selecione o template de checklist exigido por esta plataforma.",
-  path: ["checklistTemplateId"],
+  /* Padrões de automação herdados por novas reservas desta plataforma. Default `true`:
+     iniciar e concluir por horário é o comportamento normal do fluxo, não um opt-in. */
+  inicioAutomaticoPadrao: z.boolean().default(true),
+  fimAutomaticoPadrao: z.boolean().default(true),
 });
 export type CriarPlataformaInput = z.infer<typeof criarPlataformaSchema>;
 
@@ -97,6 +104,5 @@ export type AtualizarStatusPlataformaInput = z.infer<typeof atualizarStatusPlata
 export const dashboardKpisSchema = z.object({
   totalPlataformas: z.number().int().nonnegative(),
   disponiveis: z.number().int().nonnegative(),
-  pendenciasAprovacao: z.number().int().nonnegative(),
 });
 export type DashboardKpis = z.infer<typeof dashboardKpisSchema>;

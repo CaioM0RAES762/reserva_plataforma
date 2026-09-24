@@ -14,6 +14,9 @@
     "test:load": "node apps/e2e/load/run-load-test.mjs",
     "migrate:up": "pnpm --filter @plataformares/api migrate:up",
     "migrate:down": "pnpm --filter @plataformares/api migrate:down",
+    "migrate:status": "pnpm --filter @plataformares/api migrate:status",
+    "migrate:baseline": "pnpm --filter @plataformares/api migrate:baseline",
+    "db:migrate:status": "pnpm migrate:status",
     "seed": "pnpm --filter @plataformares/api seed"
   },
   "engines": {

@@ -8,7 +8,7 @@ import { useDebounce } from "../lib/useDebounce";
 import { useEventosSSE } from "../lib/useEventosSSE";
 import { StatusBadge } from "./StatusBadge";
 import { PlataformaModal, type PlataformaEditavel, type PlataformaFormValues } from "./PlataformaModal";
-import { ChecklistTemplatesModal } from "./ChecklistTemplatesModal";
+import { formatarHorimetro, formatarTelefone, telefoneParaLink } from "@plataformares/shared";
 
 interface EventoAtivoPlataforma {
   texto: string;
@@ -20,6 +20,7 @@ interface Plataforma {
   codigo: string;
   nome: string;
   localizacao: string | null;
+  telefoneEmergencia: string | null;
   capacidade: number | null;
   status: "disponivel" | "reservada" | "manutencao" | "inativa";
   categoria: string;
@@ -30,12 +31,13 @@ interface Plataforma {
   alturaMaximaM: number | null;
   capacidadeOperadores: number | null;
   horimetroHoras: number | null;
+  // Horímetro automático (migration 0022): baseline + uso real das reservas concluídas.
+  horimetroAtualHoras?: number | null;
+  horimetroUsoMinutos?: number;
   utilizacao30d: number | null;
   evento: EventoAtivoPlataforma | null;
   normas: string[];
-  exigeChecklist: boolean;
-  checklistTemplateId: string | null;
-  checklistTemplateNome: string | null;
+
   checklistTotalQuestoes: number | null;
   inicioAutomaticoPadrao: boolean;
   fimAutomaticoPadrao: boolean;
@@ -51,7 +53,7 @@ export function PlataformasClient({ isAdmin }: { isAdmin: boolean }) {
   const [editando, setEditando] = useState<PlataformaEditavel | null>(null);
   // Atalho "Editar template" do card: abre o editor de templates direto no template
   // vinculado, sem passar pelo formulário do equipamento.
-  const [templateEmEdicao, setTemplateEmEdicao] = useState<string | null>(null);
+
 
   // Só a busca por texto é adiada; trocar o filtro de status responde imediatamente.
   const buscaComAtraso = useDebounce(busca);
@@ -132,11 +134,14 @@ export function PlataformasClient({ isAdmin }: { isAdmin: boolean }) {
     <section>
       <div className={styles.header}>
         <div>
-          <h1>Plataformas</h1>
-          <p>Gerencie os equipamentos e espaços compartilhados</p>
+          {/* "Frota" — o mesmo nome que a sidebar e o breadcrumb já usam. A página se
+              chamava "Plataformas" e obrigava o usuário a traduzir mentalmente entre o
+              item de menu que clicou e o título que abriu. */}
+          <h1>Frota</h1>
+          <p>Equipamentos e espaços compartilhados</p>
         </div>
         {isAdmin && (
-          <div style={{ display: "flex", gap: 8 }}>
+          <div className={styles.headerAcoes}>
             <Link href="/plataformas/bloqueios" className={styles.btnGhost}>
               Bloqueios de Agenda
             </Link>
@@ -182,27 +187,34 @@ export function PlataformasClient({ isAdmin }: { isAdmin: boolean }) {
       )}
 
       {carregando && plataformas.length === 0 ? (
-        <div className={styles.empty}>Carregando plataformas...</div>
+        <div className={styles.empty}>Carregando...</div>
       ) : plataformas.length === 0 ? (
         <div className={styles.empty}>
-          {busca || statusFiltro
-            ? "Nenhuma plataforma corresponde aos filtros aplicados."
-            : isAdmin
-              ? "Nenhuma plataforma cadastrada. Use “Nova Plataforma” para cadastrar a primeira."
-              : "Nenhuma plataforma cadastrada."}
+          {busca || statusFiltro ? "Nenhuma plataforma encontrada." : "Nenhuma plataforma cadastrada."}
         </div>
       ) : (
         <div className={styles.grid}>
           {plataformas.map((p) => {
-            const subtitulo = [p.tipoEquipamento, p.alturaMaximaM ? `${p.alturaMaximaM} m` : null]
-              .filter(Boolean)
-              .join(" · ");
-            const operadoresValor = [
-              p.capacidadeOperadores ? `${p.capacidadeOperadores}` : null,
+            // Ficha técnica resumida: o que ajuda a ESCOLHER um equipamento numa lista
+            // (tipo, alcance, capacidade). Antes a altura aparecia duas vezes — no
+            // subtítulo e de novo na grade de metadados logo abaixo.
+            const ficha = [
+              p.tipoEquipamento,
+              p.alturaMaximaM ? `${p.alturaMaximaM} m` : null,
+              p.capacidadeOperadores ? `${p.capacidadeOperadores} pessoas` : null,
               p.capacidade ? `${p.capacidade} kg` : null,
             ]
               .filter(Boolean)
               .join(" · ");
+
+            // Detalhes que não participam da escolha e só interessam quando o usuário já
+            // está olhando aquele equipamento em particular.
+            const horimetroAtual = p.horimetroAtualHoras ?? p.horimetroHoras;
+            const temDetalhes =
+              horimetroAtual !== null ||
+              p.utilizacao30d !== null ||
+              Boolean(p.observacoes) ||
+              Boolean(p.telefoneEmergencia);
 
             return (
               <div className={styles.card} key={p.id}>
@@ -242,80 +254,85 @@ export function PlataformasClient({ isAdmin }: { isAdmin: boolean }) {
                   )}
                 </div>
 
+                {/* Hierarquia do card, do topo: nome (protagonista) → "código · local"
+                    (como identificar/onde achar) → ficha resumida em uma linha. Antes
+                    vinham código, nome, subtítulo e uma grade de quatro pares
+                    rótulo/valor — dez fragmentos de texto antes de qualquer ação. */}
                 <div className={styles.cardBody}>
-                  <span className={styles.cardEyebrow}>{p.codigo}</span>
-                  <h3 className={styles.cardTitle}>{p.nome}</h3>
-                  {subtitulo && <span className={styles.cardSubtitle}>{subtitulo}</span>}
+                  <h3 className={styles.cardTitle} title={p.nome}>
+                    {p.nome}
+                  </h3>
+                  <span className={styles.cardIdent}>
+                    {p.codigo}
+                    {p.localizacao ? ` · ${p.localizacao}` : ""}
+                  </span>
+                  {ficha && <span className={styles.cardFicha}>{ficha}</span>}
 
-                  <div className={styles.cardMeta}>
-                    <div className={styles.cardMetaItem}>
-                      <span className={styles.cardMetaLabel}>Localização</span>
-                      <span className={styles.cardMetaValue}>{p.localizacao ?? "—"}</span>
-                    </div>
-                    <div className={styles.cardMetaItem}>
-                      <span className={styles.cardMetaLabel}>Operadores</span>
-                      <span className={styles.cardMetaValue}>{operadoresValor || "—"}</span>
-                    </div>
-                    <div className={styles.cardMetaItem}>
-                      <span className={styles.cardMetaLabel}>Altura máx.</span>
-                      <span className={styles.cardMetaValue}>{p.alturaMaximaM ? `${p.alturaMaximaM} m` : "—"}</span>
-                    </div>
-                    <div className={styles.cardMetaItem}>
-                      <span className={styles.cardMetaLabel}>Horímetro</span>
-                      <span className={styles.cardMetaValue}>
-                        {p.horimetroHoras !== null ? `${p.horimetroHoras.toLocaleString("pt-BR")} h` : "—"}
-                      </span>
-                    </div>
-                  </div>
+                  {/* Telefone de emergência: dado operacionalmente crítico, mas não é o
+                      que identifica o equipamento — fica em "Detalhes" (progressive
+                      disclosure) e aparece em destaque onde é realmente necessário, no
+                      detalhe da reserva. */}
 
-                  {p.utilizacao30d !== null && (
-                    <div className={styles.utilBlock}>
-                      <div className={styles.utilLabelRow}>
-                        <span className={styles.cardMetaLabel}>Utilização · 30D</span>
-                        <span className={styles.utilPercent}>{p.utilizacao30d}%</span>
-                      </div>
-                      <div className={styles.utilTrack}>
-                        <div className={styles.utilFill} style={{ width: `${Math.min(p.utilizacao30d, 100)}%` }} />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Configuração de segurança visível direto no card, com atalho para o
-                      mesmo editor de templates da área de Checklists — "esta plataforma
-                      exige checklist?" é a pergunta que explica o fluxo da reserva dela. */}
-                  {p.exigeChecklist && p.checklistTemplateNome && (
-                    <div className={styles.cardChecklist}>
-                      <span className={styles.cardMetaLabel}>Checklist de segurança</span>
-                      <span className={styles.cardChecklistNome}>{p.checklistTemplateNome}</span>
-                      <span className={styles.cardChecklistMeta}>
-                        {p.checklistTotalQuestoes ?? 0}{" "}
-                        {p.checklistTotalQuestoes === 1 ? "questão" : "questões"}
-                      </span>
-                      {isAdmin && (
-                        <button
-                          type="button"
-                          className={styles.cardChecklistAcao}
-                          onClick={() => setTemplateEmEdicao(p.checklistTemplateId)}
-                        >
-                          Editar template
-                        </button>
-                      )}
-                    </div>
-                  )}
-
-                  {p.evento ? (
+                  {/* Exceção operacional (bloqueio/manutenção ativa): é o motivo de o
+                      usuário não poder reservar agora, então nunca é escondida. */}
+                  {p.evento && (
                     <div className={styles.cardEvento}>
                       <span className={styles.cardEventoTexto}>{p.evento.texto}</span>
                       {p.evento.detalhe && <span className={styles.cardEventoDetalhe}>{p.evento.detalhe}</span>}
                     </div>
-                  ) : (
-                    p.observacoes && <p className={styles.cardNote}>{p.observacoes}</p>
+                  )}
+
+                  {/* <details> nativo: horímetro, utilização e observações continuam
+                      acessíveis (inclusive por teclado e leitor de tela) sem ocupar altura
+                      em todos os cards da grade o tempo todo. */}
+                  {temDetalhes && (
+                    <details className={styles.cardDetalhes}>
+                      <summary>Detalhes</summary>
+                      <div className={styles.cardDetalhesCorpo}>
+                        {horimetroAtual !== null && (
+                          <div
+                            className={styles.cardMetaItem}
+                            title="Atualizado automaticamente pelo uso real das reservas concluídas."
+                          >
+                            <span className={styles.cardMetaLabel}>Horímetro atual</span>
+                            <span className={styles.cardMetaValue}>{formatarHorimetro(horimetroAtual)}</span>
+                          </div>
+                        )}
+                        {p.utilizacao30d !== null && (
+                          <div className={styles.utilBlock}>
+                            <div className={styles.utilLabelRow}>
+                              <span className={styles.cardMetaLabel}>Utilização · 30D</span>
+                              <span className={styles.utilPercent}>{p.utilizacao30d}%</span>
+                            </div>
+                            <div className={styles.utilTrack}>
+                              <div
+                                className={styles.utilFill}
+                                style={{ width: `${Math.min(p.utilizacao30d, 100)}%` }}
+                              />
+                            </div>
+                          </div>
+                        )}
+                        {p.telefoneEmergencia && (
+                          <div className={styles.cardMetaItem}>
+                            <span className={styles.cardMetaLabel}>Emergência</span>
+                            <a
+                              className={styles.cardMetaValue}
+                              href={`tel:${telefoneParaLink(p.telefoneEmergencia)}`}
+                            >
+                              {formatarTelefone(p.telefoneEmergencia)}
+                            </a>
+                          </div>
+                        )}
+                        {p.observacoes && <p className={styles.cardNote}>{p.observacoes}</p>}
+                      </div>
+                    </details>
                   )}
                 </div>
 
                 {isAdmin && (
                   <div className={styles.cardFooter}>
                     <button
+                      type="button"
                       className={styles.btnIcon}
                       onClick={() => {
                         setEditando(p);
@@ -324,7 +341,10 @@ export function PlataformasClient({ isAdmin }: { isAdmin: boolean }) {
                     >
                       Editar
                     </button>
-                    <button className={styles.btnIconDanger} onClick={() => handleToggleStatus(p)}>
+                    {/* Ativar/desativar não é destrutivo e é reversível num clique — em
+                        vermelho, competia com o estado real do equipamento na mesma área
+                        do card. Vira ação secundária discreta. */}
+                    <button type="button" className={styles.btnIcon} onClick={() => handleToggleStatus(p)}>
                       {p.status === "inativa" ? "Ativar" : "Desativar"}
                     </button>
                   </div>
@@ -346,17 +366,6 @@ export function PlataformasClient({ isAdmin }: { isAdmin: boolean }) {
         />
       )}
 
-      {templateEmEdicao && (
-        <ChecklistTemplatesModal
-          templateIdInicial={templateEmEdicao}
-          onClose={() => {
-            setTemplateEmEdicao(null);
-            void carregar();
-          }}
-          // A contagem de questões aparece no card — precisa acompanhar a edição.
-          onAlterado={() => void carregar()}
-        />
-      )}
     </section>
   );
 }

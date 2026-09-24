@@ -1,0 +1,178 @@
+/* Drawer lateral do detalhe de não conformidade — mesma linguagem de AuditoriaDetalheDrawer
+   (papel elevado, hairline, raio pequeno, sem sombra pesada). */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in oklch, var(--ink) 45%, transparent);
+  z-index: 200;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.drawer {
+  width: min(460px, 100vw);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--paper-elev);
+  border-left: 1px solid var(--hairline);
+  overflow: hidden;
+  animation: entrarDrawer 180ms ease;
+}
+@keyframes entrarDrawer {
+  from { transform: translateX(16px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .drawer { animation: none; }
+}
+
+.cabecalho {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  padding: 22px 22px 18px;
+  border-bottom: 1px solid var(--hairline);
+}
+.cabecalhoTexto { min-width: 0; }
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-eyebrow);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow);
+  color: var(--hazard);
+}
+
+.titulo {
+  margin-top: 8px;
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: var(--text-section-title);
+  line-height: 1.2;
+  color: var(--ink);
+}
+.dataExtensa {
+  margin-top: 5px;
+  font-size: var(--text-meta);
+  color: var(--ink-muted);
+}
+
+.fechar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border: 1px solid transparent;
+  border-radius: var(--ind-radius-sm);
+  background: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.fechar:hover { background: color-mix(in oklch, var(--ink) 6%, transparent); color: var(--ink); }
+
+.corpo {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 20px 22px 28px;
+}
+
+.bloco { margin-bottom: 22px; }
+.blocoTitulo {
+  margin-bottom: 7px;
+  font-size: var(--text-eyebrow);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow);
+  color: var(--ink-muted);
+}
+.valorForte {
+  font-size: var(--text-body);
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.valorFraco {
+  margin-top: 4px;
+  font-size: var(--text-meta);
+  color: var(--ink-muted);
+  overflow-wrap: anywhere;
+}
+
+.descricaoCompleta {
+  font-size: var(--text-secondary);
+  line-height: 1.5;
+  color: var(--ink-soft);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.galeria {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.imagemLink {
+  display: block;
+  width: 92px;
+  height: 92px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-sm);
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+.imagemLink:hover { border-color: var(--ink-muted); }
+.imagemLink img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.selectStatus {
+  min-height: var(--control-h-compact);
+  padding: 0 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-sm);
+  background: var(--paper);
+  font-family: inherit;
+  font-size: var(--text-secondary);
+  color: var(--ink);
+}
+.selectStatus:focus { outline: none; border-color: var(--ink-muted); }
+.selectStatus:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.erro {
+  margin-top: 8px;
+  font-size: var(--text-meta);
+  color: var(--hazard);
+}
+
+.verReserva {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  min-height: var(--control-h);
+  padding: 0 16px;
+  border: 1px solid var(--ink);
+  border-radius: var(--ind-radius-sm);
+  background: var(--ink);
+  color: var(--paper);
+  font-size: var(--text-secondary);
+  font-weight: 500;
+  text-decoration: none;
+}
+.verReserva:hover { background: var(--ink-soft); }
+
+@media (max-width: 640px) {
+  .drawer { width: 100vw; border-left: none; }
+}
