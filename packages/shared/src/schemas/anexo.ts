@@ -19,7 +19,7 @@ export const anexoPublicoSchema = z.object({
   tamanhoBytes: z.number().int(),
   enviadoPorId: z.string().uuid(),
   enviadoPorNome: z.string(),
-  // SAS de leitura, curta duração (RNF-09) — gerado sob demanda, nunca persistido.
+  // URL de leitura assinada, curta duração (RNF-09) — gerada sob demanda, nunca persistida.
   url: z.string(),
   criadoEm: z.string(),
 });

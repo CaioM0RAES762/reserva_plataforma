@@ -10,6 +10,7 @@ import { CodeField, PasswordField, TextField } from "../../../components/auth/Au
 import { PasswordStrength, senhaAtendeRequisitos } from "../../../components/auth/PasswordStrength";
 import { useResendCooldown } from "../../../components/auth/useResendCooldown";
 import { mascararEmail } from "../../../components/auth/mascararEmail";
+import { DicaCaixaOutros } from "../../../components/auth/DicaCaixaOutros";
 import { apiFetch, mensagemDeErro } from "../../../lib/api";
 
 const ETAPAS = ["E-mail", "Novo acesso", "Concluído"];
@@ -171,6 +172,7 @@ export default function RecuperarSenhaPage() {
               <span className={styles.maskedEmail}>{mascararEmail(email)}</span>. Informe-o e crie sua
               nova senha de acesso.
             </p>
+            <DicaCaixaOutros />
           </div>
 
           <form className={styles.form} onSubmit={handleConfirmar} noValidate>

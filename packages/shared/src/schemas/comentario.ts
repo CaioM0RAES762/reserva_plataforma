@@ -68,7 +68,7 @@ export const imagemComentarioPublicaSchema = z.object({
   id: z.string().uuid(),
   nomeArquivo: z.string(),
   tipoMime: z.string(),
-  /** SAS de leitura, curta duração (RNF-09) — gerado sob demanda, nunca persistido. */
+  /** URL de leitura assinada, curta duração (RNF-09) — gerada sob demanda, nunca persistida. */
   url: z.string(),
 });
 export type ImagemComentarioPublica = z.infer<typeof imagemComentarioPublicaSchema>;

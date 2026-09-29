@@ -46,6 +46,14 @@ const criarNextConfig = (phase: string): NextConfig => ({
       },
     ];
   },
+  // Arquivos enviados (imagens de plataforma, anexos, fotos de comentário/checklist) vivem na
+  // pasta local da API. A API devolve URLs relativas e assinadas ("/api/v1/arquivos/...");
+  // aqui elas são encaminhadas para a API, então <img src> e links funcionam na mesma origem
+  // da página, sem nenhum componente precisar conhecer o endereço da API.
+  async rewrites() {
+    const apiUrl = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3335").replace(/\/+$/, "");
+    return [{ source: "/api/v1/arquivos/:caminho*", destination: `${apiUrl}/api/v1/arquivos/:caminho*` }];
+  },
   async headers() {
     return [
       {

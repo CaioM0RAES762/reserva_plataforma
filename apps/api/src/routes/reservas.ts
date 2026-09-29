@@ -243,24 +243,28 @@ export async function reservasRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(422).send({ erro: "Dados inválidos.", detalhes: parsed.error.flatten() });
     }
 
-    // RF-RES-01: setor/solicitante vêm da sessão para Gestor/Colaborador (nunca do body,
-    // por segurança). Admin é a exceção estrutural: RN-USR-01 diz que Admin não possui
-    // setor_id próprio, mas RF-RES-01 o lista entre quem pode solicitar reserva — por
-    // isso, exclusivamente para o perfil admin, o setor de destino vem do body.
+    // RF-RES-01: o solicitante vem SEMPRE da sessão. O setor solicitante é escolhido no
+    // formulário (o setor do usuário é só o valor padrão — ele pode reservar para outro
+    // setor); sem setor no corpo, vale o da sessão. Admin sem setor próprio (RN-USR-01)
+    // precisa escolher. Setor informado precisa existir e estar ativo.
     const solicitanteId = request.usuario!.sub;
-    let setorId = request.usuario!.setorId;
-    if (request.usuario!.perfil === "admin") {
-      if (!parsed.data.setorId) {
-        return reply
-          .status(422)
-          .send({ erro: "Selecione o setor para o qual a reserva está sendo solicitada." });
-      }
-      setorId = parsed.data.setorId;
-    }
+    const setorId = parsed.data.setorId ?? request.usuario!.setorId;
     if (!setorId) {
-      return reply
-        .status(422)
-        .send({ erro: "Sua conta não está vinculada a um setor. Não é possível solicitar reservas." });
+      return reply.status(422).send({
+        erro:
+          request.usuario!.perfil === "admin"
+            ? "Selecione o setor para o qual a reserva está sendo solicitada."
+            : "Sua conta não está vinculada a um setor. Não é possível solicitar reservas.",
+      });
+    }
+    if (parsed.data.setorId) {
+      const setorValido = await (await getPool())
+        .request()
+        .input("setor_id", sql.UniqueIdentifier, parsed.data.setorId)
+        .query("SELECT 1 AS ok FROM Setor WHERE id = @setor_id AND ativo = 1");
+      if (setorValido.recordset.length === 0) {
+        return reply.status(422).send({ erro: "Setor solicitante inválido ou inativo." });
+      }
     }
 
     const {

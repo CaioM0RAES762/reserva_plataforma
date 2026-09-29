@@ -23,7 +23,7 @@ import {
   type ItemTemplateChecklist,
 } from "../services/checklist.service.js";
 import { estadoFinal } from "../services/reservaEstado.service.js";
-import { armazenamentoService, gerarUrlAcessoOuNulo } from "../services/storage.service.js";
+import { armazenamentoService, urlDeLeitura } from "../services/storage.service.js";
 import { enfileirarEmail } from "../services/queue.js";
 import { templateChecklistNaoConforme } from "../services/email.service.js";
 
@@ -695,9 +695,9 @@ export async function checklistRoutes(app: FastifyInstance): Promise<void> {
     const dados = await buscarItensERespostas(templateId, id);
     const finalizado = Boolean(dados.finalizadoEm);
 
-    // S11 (RNF-09): foto_url guarda a CHAVE do blob no Azure Blob Storage, não uma URL
-    // pública — o SAS de leitura (curta duração) é gerado sob demanda a cada consulta,
-    // nunca persistido (evitaria um link "eterno" se vazado).
+    // S11 (RNF-09): foto_url guarda a CHAVE do arquivo no armazenamento local, não uma URL —
+    // a URL de leitura assinada (curta duração) é gerada a cada consulta, nunca persistida
+    // (evitaria um link "eterno" se vazado).
     const itens = finalizado
       ? await Promise.all(
           [...dados.respostasPorItem.entries()]
@@ -710,7 +710,7 @@ export async function checklistRoutes(app: FastifyInstance): Promise<void> {
               bloqueiaAprovacao: resposta.item_bloqueia_aprovacao ?? true,
               resultado: resposta.resultado,
               observacao: resposta.observacao,
-              fotoUrl: await gerarUrlAcessoOuNulo(resposta.foto_url),
+              fotoUrl: urlDeLeitura(resposta.foto_url),
             }))
         )
       : await Promise.all(
@@ -724,7 +724,7 @@ export async function checklistRoutes(app: FastifyInstance): Promise<void> {
               bloqueiaAprovacao: item.bloqueia_aprovacao,
               resultado: resposta?.resultado ?? null,
               observacao: resposta?.observacao ?? null,
-              fotoUrl: await gerarUrlAcessoOuNulo(resposta?.foto_url),
+              fotoUrl: urlDeLeitura(resposta?.foto_url),
             };
           })
         );

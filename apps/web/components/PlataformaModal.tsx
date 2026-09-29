@@ -1,10 +1,21 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
+import { ImagePlus, RefreshCw, Star, X } from "lucide-react";
 import styles from "../app/(app)/plataformas/page.module.css";
 import local from "./PlataformaModal.module.css";
-import { apiFetch } from "../lib/api";
+import { apiFetch, mensagemDeErro } from "../lib/api";
 import { useModalAcessivel } from "../lib/useModalAcessivel";
+import {
+  LIMITE_IMAGENS,
+  MENSAGEM_LIMITE_IMAGENS,
+  TIPOS_IMAGEM_ACEITOS,
+  moverParaPrincipal,
+  triarArquivos,
+} from "../lib/galeria";
+import { ImagemLightbox } from "./ImagemLightbox";
+import type { CategoriaEquipamento } from "./CategoriasEquipamentoSecao";
 import { MENSAGEM_TELEFONE_INVALIDO, telefoneValido } from "@plataformares/shared";
 
 export interface PlataformaFormValues {
@@ -14,9 +25,8 @@ export interface PlataformaFormValues {
   capacidade?: number;
   observacoes?: string;
   status?: "disponivel" | "manutencao" | "inativa";
-  imagemBase64?: string;
-  removerImagem?: boolean;
   tipoEquipamento?: string;
+  marca?: string;
   alturaMaximaM?: number;
   capacidadeOperadores?: number;
   horimetroHoras?: number;
@@ -35,8 +45,12 @@ export interface PlataformaEditavel {
   observacoes: string | null;
   status: string;
   categoria: string;
+  categoriaNome?: string | null;
+  marca?: string | null;
   risco: string;
   imagemUrl: string | null;
+  // Galeria (0–4), na ordem de exibição; a primeira é a principal.
+  imagens?: ImagemServidor[];
   tipoEquipamento: string | null;
   alturaMaximaM: number | null;
   capacidadeOperadores: number | null;
@@ -48,22 +62,49 @@ export interface PlataformaEditavel {
   fimAutomaticoPadrao: boolean;
 }
 
-const CATEGORIAS: Array<{ valor: string; rotulo: string }> = [
-  { valor: "elevatoria", rotulo: "Plataforma elevatória" },
-  { valor: "andaime", rotulo: "Andaime" },
-  { valor: "veiculo", rotulo: "Veículo" },
-  { valor: "sala", rotulo: "Sala / espaço compartilhado" },
-  { valor: "patio", rotulo: "Pátio" },
-  { valor: "outro", rotulo: "Outro" },
-];
+export interface ImagemServidor {
+  id: string;
+  url: string | null;
+  ordem: number;
+  principal: boolean;
+}
+
+/* Item da galeria no formulário. As mudanças ficam pendentes até "Salvar" (Cancelar
+   descarta tudo); ao salvar, cada imagem vira uma requisição própria — uma falha não
+   derruba as outras, e o item que já subiu guarda o `id` do servidor, então tentar de
+   novo não duplica arquivo. */
+interface ItemGaleria {
+  chave: string;
+  id: string | null;
+  url: string | null;
+  base64: string | null;
+  nomeArquivo: string | null;
+  erro: string | null;
+}
+
+interface PlataformaSalva {
+  id: string;
+  imagens: ImagemServidor[];
+}
+
+/* Opção de ATALHO no select de Categoria — nunca é um valor de categoria: o onChange a
+   intercepta e só navega para Configurações; o estado do formulário não muda. */
+const OPCAO_CADASTRAR_CATEGORIA = "__cadastrar_categoria__";
+export const LINK_CATEGORIAS_EQUIPAMENTO = "/administracao/configuracoes#categorias-equipamento";
 
 interface PlataformaModalProps {
   plataforma: PlataformaEditavel | null;
+  /** Só o Admin gerencia categorias — só ele vê o atalho "+ Cadastrar categoria". */
+  podeGerenciarCategorias?: boolean;
   onClose: () => void;
-  onSalvar: (valores: PlataformaFormValues) => Promise<void>;
+  /** Grava os campos (POST quando `idExistente` é null, PUT caso contrário) e devolve o id. */
+  onSalvar: (valores: PlataformaFormValues, idExistente: string | null) => Promise<string>;
+  /** Tudo salvo (campos e imagens): fecha e recarrega. */
+  onConcluido: () => void;
 }
 
-const TAMANHO_MAX_IMAGEM = 10 * 1024 * 1024;
+let sequenciaChave = 0;
+const novaChave = () => `img-${++sequenciaChave}`;
 
 function lerArquivoComoBase64(arquivo: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -74,7 +115,14 @@ function lerArquivoComoBase64(arquivo: File): Promise<string> {
   });
 }
 
-export function PlataformaModal({ plataforma, onClose, onSalvar }: PlataformaModalProps) {
+export function PlataformaModal({
+  plataforma,
+  podeGerenciarCategorias = false,
+  onClose,
+  onSalvar,
+  onConcluido,
+}: PlataformaModalProps) {
+  const router = useRouter();
   const { refDialogo, propsDialogo, idTitulo, aoClicarNoOverlay } = useModalAcessivel(onClose, "plataforma-modal");
   const [codigo, setCodigo] = useState(plataforma?.codigo ?? "");
   const [nome, setNome] = useState(plataforma?.nome ?? "");
@@ -97,18 +145,58 @@ export function PlataformaModal({ plataforma, onClose, onSalvar }: PlataformaMod
   const [status, setStatus] = useState(
     plataforma && plataforma.status !== "reservada" ? plataforma.status : "disponivel"
   );
-  const [imagemPreview, setImagemPreview] = useState<string | null>(plataforma?.imagemUrl ?? null);
-  const [imagemBase64, setImagemBase64] = useState<string | undefined>(undefined);
-  const [removerImagem, setRemoverImagem] = useState(false);
+  const [marca, setMarca] = useState(plataforma?.marca ?? "");
   const [erro, setErro] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
-  const inputImagemRef = useRef<HTMLInputElement>(null);
 
-  // A categoria nunca esteve no formulário: toda plataforma criada pela UI nascia como
-  // "outro". Enquanto a exigência de checklist era herdada da categoria, isso significava
-  // que nenhum equipamento cadastrado por aqui podia exigir checklist — a causa de só a
-  // plataforma marcada como "elevatoria" no banco entrar no fluxo com checklist.
-  const [categoria, setCategoria] = useState(plataforma?.categoria ?? "outro");
+  // Galeria. `idSalvo`: depois do 1º salvamento de uma plataforma NOVA, uma nova tentativa
+  // (ex.: uma imagem falhou) vira edição — nunca cria a plataforma duas vezes.
+  const [idSalvo, setIdSalvo] = useState<string | null>(plataforma?.id ?? null);
+  const [itens, setItens] = useState<ItemGaleria[]>(() =>
+    (plataforma?.imagens ?? []).map((img) => ({
+      chave: novaChave(),
+      id: img.id,
+      url: img.url,
+      base64: null,
+      nomeArquivo: null,
+      erro: null,
+    }))
+  );
+  const [removidos, setRemovidos] = useState<string[]>([]);
+  const [avisoGaleria, setAvisoGaleria] = useState<string | null>(null);
+  const [lightbox, setLightbox] = useState<number | null>(null);
+  const inputAdicionarRef = useRef<HTMLInputElement>(null);
+  const inputSubstituirRef = useRef<HTMLInputElement>(null);
+  const substituindoChave = useRef<string | null>(null);
+
+  // Categorias administráveis (Configurações). Ativas + a atual da plataforma, mesmo que
+  // desativada depois — uma plataforma antiga nunca "perde" a categoria no formulário.
+  const [categorias, setCategorias] = useState<CategoriaEquipamento[] | null>(null);
+  useEffect(() => {
+    let cancelado = false;
+    apiFetch<CategoriaEquipamento[]>("/api/v1/categorias-equipamento")
+      .then((lista) => {
+        if (!cancelado) setCategorias(lista);
+      })
+      .catch(() => {
+        if (!cancelado) setCategorias([]);
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, []);
+
+  // Categorias vêm só do backend (Configurações → Categorias de equipamento). Nova
+  // plataforma começa sem valor e assume a primeira categoria ativa assim que a lista chega.
+  const [categoria, setCategoria] = useState(plataforma?.categoria ?? "");
+  const opcoesCategoria = (categorias ?? []).filter((c) => c.ativo || c.codigo === plataforma?.categoria);
+  useEffect(() => {
+    if (plataforma || !categorias || categorias.length === 0) return;
+    if (!categorias.some((c) => c.ativo && c.codigo === categoria)) {
+      const primeira = categorias.find((c) => c.ativo);
+      if (primeira) setCategoria(primeira.codigo);
+    }
+  }, [categorias, categoria, plataforma]);
 
   // Contato acionado quando algo dá errado COM O EQUIPAMENTO durante o uso.
   const [telefoneEmergencia, setTelefoneEmergencia] = useState(plataforma?.telefoneEmergencia ?? "");
@@ -127,24 +215,125 @@ export function PlataformaModal({ plataforma, onClose, onSalvar }: PlataformaMod
       ? MENSAGEM_TELEFONE_INVALIDO
       : null;
 
-  async function handleSelecionarImagem(arquivo: File | undefined) {
-    if (!arquivo) return;
-    setErro(null);
-    if (arquivo.size > TAMANHO_MAX_IMAGEM) {
-      setErro("A imagem excede o limite de 10 MB.");
+  function descreverRecusas(recusados: Array<{ nome: string; motivo: string }>, excedeuLimite: boolean) {
+    const frases: string[] = [];
+    if (recusados.length > 0) {
+      frases.push(`Não adicionada: ${recusados.map((r) => `${r.nome} (${r.motivo})`).join("; ")}.`);
+    }
+    if (excedeuLimite) frases.push(MENSAGEM_LIMITE_IMAGENS);
+    return frases.length > 0 ? frases.join(" ") : null;
+  }
+
+  async function handleAdicionarImagens(lista: FileList | null) {
+    const arquivos = Array.from(lista ?? []);
+    if (inputAdicionarRef.current) inputAdicionarRef.current.value = "";
+    if (arquivos.length === 0) return;
+    const { aceitos, recusados, excedeuLimite } = triarArquivos(arquivos, itens.length);
+    const novos = await Promise.all(
+      aceitos.map(async (arquivo) => {
+        const base64 = await lerArquivoComoBase64(arquivo);
+        return { chave: novaChave(), id: null, url: base64, base64, nomeArquivo: arquivo.name, erro: null };
+      })
+    );
+    setItens((atuais) => [...atuais, ...novos].slice(0, LIMITE_IMAGENS));
+    setAvisoGaleria(
+      descreverRecusas(recusados, excedeuLimite)
+    );
+  }
+
+  async function handleSubstituirImagem(lista: FileList | null) {
+    const chave = substituindoChave.current;
+    substituindoChave.current = null;
+    const arquivo = lista?.[0];
+    if (inputSubstituirRef.current) inputSubstituirRef.current.value = "";
+    if (!arquivo || !chave) return;
+    // Substituição não ocupa vaga nova: triagem só de tipo/tamanho.
+    const { aceitos, recusados } = triarArquivos([arquivo], 0);
+    if (aceitos.length === 0) {
+      setAvisoGaleria(descreverRecusas(recusados, false));
       return;
     }
     const base64 = await lerArquivoComoBase64(arquivo);
-    setImagemPreview(base64);
-    setImagemBase64(base64);
-    setRemoverImagem(false);
+    setAvisoGaleria(null);
+    setItens((atuais) =>
+      atuais.map((item) =>
+        item.chave === chave ? { ...item, url: base64, base64, nomeArquivo: arquivo.name, erro: null } : item
+      )
+    );
   }
 
-  function handleRemoverImagem() {
-    setImagemPreview(null);
-    setImagemBase64(undefined);
-    setRemoverImagem(true);
-    if (inputImagemRef.current) inputImagemRef.current.value = "";
+  function handleRemoverItem(chave: string) {
+    const item = itens.find((i) => i.chave === chave);
+    if (!item) return;
+    if (item.id) setRemovidos((atuais) => [...atuais, item.id!]);
+    setItens((atuais) => atuais.filter((i) => i.chave !== chave));
+    setAvisoGaleria(null);
+  }
+
+  function handleTornarPrincipal(chave: string) {
+    setItens((atuais) => moverParaPrincipal(atuais, atuais.findIndex((i) => i.chave === chave)));
+  }
+
+  /* Aplica a galeria no servidor, uma operação por vez: remoções → substituições/novas (na
+     ordem da tela) → principal. Devolve as falhas; o que deu certo fica salvo e marcado. */
+  async function sincronizarImagens(plataformaId: string): Promise<string[]> {
+    const falhas: string[] = [];
+    const base = `/api/v1/plataformas/${plataformaId}/imagens`;
+    let servidor: ImagemServidor[] | null = null;
+
+    const removidosOk: string[] = [];
+    for (const id of removidos) {
+      try {
+        servidor = (await apiFetch<PlataformaSalva>(`${base}/${id}`, { method: "DELETE" })).imagens;
+        removidosOk.push(id);
+      } catch (err) {
+        falhas.push(`remoção de imagem (${mensagemDeErro(err, "erro")})`);
+      }
+    }
+    setRemovidos((atuais) => atuais.filter((id) => !removidosOk.includes(id)));
+
+    const resultado = [...itens];
+    for (let i = 0; i < resultado.length; i++) {
+      const item = resultado[i];
+      if (!item.base64) continue;
+      try {
+        const corpo = JSON.stringify({ imagemBase64: item.base64 });
+        if (item.id) {
+          servidor = (await apiFetch<PlataformaSalva>(`${base}/${item.id}`, { method: "PUT", body: corpo })).imagens;
+          resultado[i] = { ...item, base64: null, erro: null };
+        } else {
+          // Ids que JÁ existiam no servidor — a imagem nova é a que não está aqui.
+          const idsAntes = new Set([
+            ...(servidor ?? plataforma?.imagens ?? []).map((img) => img.id),
+            ...resultado.flatMap((r) => (r.id ? [r.id] : [])),
+            ...removidos,
+          ]);
+          servidor = (await apiFetch<PlataformaSalva>(base, { method: "POST", body: corpo })).imagens;
+          const criada = servidor.find((img) => !idsAntes.has(img.id));
+          resultado[i] = { ...item, id: criada?.id ?? null, base64: null, erro: null };
+        }
+      } catch (err) {
+        const motivo = mensagemDeErro(err, "erro no envio");
+        resultado[i] = { ...item, erro: motivo };
+        falhas.push(`${item.nomeArquivo ?? "imagem"} (${motivo})`);
+      }
+    }
+
+    // Principal = primeira da tela, se ela já existe no servidor.
+    const desejada = resultado.find((item) => item.id)?.id ?? null;
+    const principalAtual =
+      (servidor ?? (plataforma?.imagens ?? []).filter((img) => !removidosOk.includes(img.id))).find((img) => img.principal)
+        ?.id ?? null;
+    if (desejada && resultado[0]?.id === desejada && desejada !== principalAtual) {
+      try {
+        await apiFetch(`${base}/${desejada}/principal`, { method: "PATCH" });
+      } catch (err) {
+        falhas.push(`imagem principal (${mensagemDeErro(err, "erro")})`);
+      }
+    }
+
+    setItens(resultado);
+    return falhas;
   }
 
   async function handleSubmit(event: FormEvent) {
@@ -159,19 +348,23 @@ export function PlataformaModal({ plataforma, onClose, onSalvar }: PlataformaMod
       setErro(erroTelefone);
       return;
     }
+    if (!categoria) {
+      setErro("Selecione a categoria.");
+      return;
+    }
 
     setSalvando(true);
     try {
-      await onSalvar({
+      const id = await onSalvar(
+        {
         codigo: codigo.trim(),
         nome: nome.trim(),
         localizacao: localizacao.trim() || undefined,
         capacidade: capacidade ? Number(capacidade) : undefined,
         observacoes: observacoes.trim() || undefined,
         status: plataforma ? (status as PlataformaFormValues["status"]) : undefined,
-        imagemBase64,
-        removerImagem: removerImagem || undefined,
         tipoEquipamento: tipoEquipamento.trim() || undefined,
+        marca: marca.trim() || undefined,
         alturaMaximaM: alturaMaximaM ? Number(alturaMaximaM) : undefined,
         capacidadeOperadores: capacidadeOperadores ? Number(capacidadeOperadores) : undefined,
         horimetroHoras:
@@ -180,7 +373,18 @@ export function PlataformaModal({ plataforma, onClose, onSalvar }: PlataformaMod
         telefoneEmergencia: telefoneEmergencia.trim() || undefined,
         inicioAutomaticoPadrao,
         fimAutomaticoPadrao,
-      });
+        },
+        idSalvo
+      );
+      setIdSalvo(id);
+      const falhas = await sincronizarImagens(id);
+      if (falhas.length > 0) {
+        setErro(
+          `Plataforma salva, mas ${falhas.length === 1 ? "uma operação de imagem falhou" : `${falhas.length} operações de imagem falharam`}: ${falhas.join("; ")}. As demais foram salvas — salve novamente para tentar de novo.`
+        );
+        return;
+      }
+      onConcluido();
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Erro ao salvar plataforma.");
     } finally {
@@ -195,7 +399,7 @@ export function PlataformaModal({ plataforma, onClose, onSalvar }: PlataformaMod
     >
       <div className={`${styles.modal} ${styles.modalLarge}`} ref={refDialogo} {...propsDialogo}>
         <div className={styles.modalHeader}>
-          <h3 id={idTitulo}>{plataforma ? "Editar Plataforma" : "Nova Plataforma"}</h3>
+          <h3 id={idTitulo}>{idSalvo ? "Editar Plataforma" : "Nova Plataforma"}</h3>
           <button type="button" className={styles.modalClose} onClick={onClose} aria-label="Fechar">
             ✕
           </button>
@@ -208,31 +412,116 @@ export function PlataformaModal({ plataforma, onClose, onSalvar }: PlataformaMod
               </div>
             )}
 
-            <div className={styles.imageUpload}>
+            <div className={styles.galeria}>
+              <div className={styles.galeriaCabecalho}>
+                <span className={styles.galeriaTitulo} id="pf-imagens-titulo">
+                  Imagens
+                </span>
+                <span className={styles.galeriaSub}>Até {LIMITE_IMAGENS} fotos · JPG, PNG ou WEBP</span>
+              </div>
               <input
-                ref={inputImagemRef}
+                ref={inputAdicionarRef}
                 type="file"
-                accept="image/*"
-                style={{ display: "none" }}
-                onChange={(e) => handleSelecionarImagem(e.target.files?.[0])}
+                accept={TIPOS_IMAGEM_ACEITOS.join(",")}
+                multiple
+                hidden
+                onChange={(e) => handleAdicionarImagens(e.target.files)}
               />
-              <div className={styles.imagePreviewBox} onClick={() => inputImagemRef.current?.click()}>
-                {imagemPreview ? (
-                  <img src={imagemPreview} alt="Pré-visualização" className={styles.imagePreviewImg} />
-                ) : (
-                  <span className={styles.imagePreviewPlaceholder}>+ Adicionar imagem</span>
+              <input
+                ref={inputSubstituirRef}
+                type="file"
+                accept={TIPOS_IMAGEM_ACEITOS.join(",")}
+                hidden
+                onChange={(e) => handleSubstituirImagem(e.target.files)}
+              />
+              <ul className={styles.galeriaLista} aria-labelledby="pf-imagens-titulo">
+                {itens.map((item, indice) => (
+                  <li
+                    key={item.chave}
+                    className={`${styles.galeriaItem} ${indice === 0 ? styles.galeriaItemPrincipal : ""} ${
+                      item.erro ? styles.galeriaItemErro : ""
+                    }`}
+                    title={item.erro ?? undefined}
+                  >
+                    {item.url ? (
+                      <button
+                        type="button"
+                        className={styles.galeriaMiniatura}
+                        onClick={() => setLightbox(itens.filter((i) => i.url).findIndex((i) => i.chave === item.chave))}
+                        aria-label={`Ver imagem ${indice + 1}${indice === 0 ? " (principal)" : ""}`}
+                      >
+                        <img src={item.url} alt="" />
+                      </button>
+                    ) : (
+                      <span className={styles.imagePreviewPlaceholder}>Sem prévia</span>
+                    )}
+                    <span className={styles.galeriaAcoes}>
+                      {indice > 0 && (
+                        <button
+                          type="button"
+                          className={styles.galeriaAcao}
+                          onClick={() => handleTornarPrincipal(item.chave)}
+                          aria-label={`Tornar a imagem ${indice + 1} principal`}
+                          title="Tornar principal"
+                        >
+                          <Star size={13} aria-hidden="true" />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className={styles.galeriaAcao}
+                        onClick={() => {
+                          substituindoChave.current = item.chave;
+                          inputSubstituirRef.current?.click();
+                        }}
+                        aria-label={`Substituir a imagem ${indice + 1}`}
+                        title="Substituir"
+                      >
+                        <RefreshCw size={12} aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        className={`${styles.galeriaAcao} ${styles.galeriaAcaoPerigo}`}
+                        onClick={() => handleRemoverItem(item.chave)}
+                        aria-label={`Remover a imagem ${indice + 1}`}
+                        title="Remover"
+                      >
+                        <X size={13} aria-hidden="true" />
+                      </button>
+                    </span>
+                    {indice === 0 ? (
+                      <span className={styles.galeriaSelo}>Principal</span>
+                    ) : item.base64 ? (
+                      <span className={`${styles.galeriaSelo} ${styles.galeriaSeloNova}`}>Nova</span>
+                    ) : null}
+                  </li>
+                ))}
+                {itens.length < LIMITE_IMAGENS && (
+                  <li>
+                    <button
+                      type="button"
+                      className={styles.galeriaAdicionar}
+                      onClick={() => inputAdicionarRef.current?.click()}
+                    >
+                      <ImagePlus size={18} aria-hidden="true" />
+                      Adicionar
+                    </button>
+                  </li>
                 )}
-              </div>
-              <div className={styles.imageUploadActions}>
-                <button type="button" className={styles.btnIcon} onClick={() => inputImagemRef.current?.click()}>
-                  {imagemPreview ? "Trocar imagem" : "Selecionar imagem"}
-                </button>
-                {imagemPreview && (
-                  <button type="button" className={styles.btnIconDanger} onClick={handleRemoverImagem}>
-                    Remover
-                  </button>
-                )}
-              </div>
+              </ul>
+              {avisoGaleria ? (
+                <p className={`${styles.galeriaNota} ${styles.galeriaNotaErro}`} role="status">
+                  {avisoGaleria}
+                </p>
+              ) : itens.length >= LIMITE_IMAGENS ? (
+                <p className={styles.galeriaNota} role="status">
+                  {MENSAGEM_LIMITE_IMAGENS}
+                </p>
+              ) : itens.length > 1 || removidos.length > 0 ? (
+                <p className={styles.galeriaNota}>
+                  A primeira é a capa do card. As mudanças nas imagens são aplicadas ao salvar.
+                </p>
+              ) : null}
             </div>
 
             <div className={styles.formGrid}>
@@ -292,13 +581,45 @@ export function PlataformaModal({ plataforma, onClose, onSalvar }: PlataformaMod
                 />
               </div>
               <div className={styles.formGroup}>
-                <label htmlFor="pf-categoria">Categoria</label>
-                <select id="pf-categoria" value={categoria} onChange={(e) => setCategoria(e.target.value)}>
-                  {CATEGORIAS.map((c) => (
-                    <option key={c.valor} value={c.valor}>
-                      {c.rotulo}
+                <label htmlFor="pf-categoria">Categoria *</label>
+                <select
+                  id="pf-categoria"
+                  value={categoria}
+                  onChange={(e) => {
+                    // Atalho, não valor: navega e mantém a categoria atual intacta.
+                    if (e.target.value === OPCAO_CADASTRAR_CATEGORIA) {
+                      router.push(LINK_CATEGORIAS_EQUIPAMENTO);
+                      return;
+                    }
+                    setCategoria(e.target.value);
+                  }}
+                  disabled={categorias === null}
+                  aria-required="true"
+                >
+                  {categorias === null && <option value={categoria}>{plataforma?.categoriaNome ?? "Carregando..."}</option>}
+                  {categorias !== null && categoria === "" && (
+                    <option value="" disabled>
+                      {opcoesCategoria.length === 0 ? "Nenhuma categoria cadastrada" : "Selecione a categoria"}
+                    </option>
+                  )}
+                  {categorias !== null &&
+                    categoria !== "" &&
+                    !opcoesCategoria.some((c) => c.codigo === categoria) && (
+                      <option value={categoria}>{plataforma?.categoriaNome ?? categoria}</option>
+                    )}
+                  {opcoesCategoria.map((c) => (
+                    <option key={c.codigo} value={c.codigo}>
+                      {c.ativo ? c.nome : `${c.nome} (inativa)`}
                     </option>
                   ))}
+                  {categorias !== null && podeGerenciarCategorias && (
+                    <>
+                      <option disabled value="__separador__">
+                        ──────────────
+                      </option>
+                      <option value={OPCAO_CADASTRAR_CATEGORIA}>+ Cadastrar categoria</option>
+                    </>
+                  )}
                 </select>
               </div>
               <div className={styles.formGroup}>
@@ -311,14 +632,13 @@ export function PlataformaModal({ plataforma, onClose, onSalvar }: PlataformaMod
                 />
               </div>
               <div className={styles.formGroup}>
-                <label htmlFor="pf-altura">Altura máxima (m)</label>
+                <label htmlFor="pf-marca">Marca</label>
                 <input
-                  id="pf-altura"
-                  type="number"
-                  min="0"
-                  step="0.1"
-                  value={alturaMaximaM}
-                  onChange={(e) => setAlturaMaximaM(e.target.value)}
+                  id="pf-marca"
+                  value={marca}
+                  onChange={(e) => setMarca(e.target.value)}
+                  maxLength={60}
+                  placeholder="Ex: Dingli, JLG, Genie"
                 />
               </div>
               <div className={styles.formGroup}>
@@ -329,6 +649,17 @@ export function PlataformaModal({ plataforma, onClose, onSalvar }: PlataformaMod
                   min="0"
                   value={capacidadeOperadores}
                   onChange={(e) => setCapacidadeOperadores(e.target.value)}
+                />
+              </div>
+              <div className={styles.formGroup}>
+                <label htmlFor="pf-altura">Altura máxima (m)</label>
+                <input
+                  id="pf-altura"
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  value={alturaMaximaM}
+                  onChange={(e) => setAlturaMaximaM(e.target.value)}
                 />
               </div>
               <div className={styles.formGroup}>
@@ -405,12 +736,20 @@ export function PlataformaModal({ plataforma, onClose, onSalvar }: PlataformaMod
               Cancelar
             </button>
             <button type="submit" className={styles.btnPrimary} disabled={salvando}>
-              {salvando ? "Salvando..." : plataforma ? "Salvar Alterações" : "Salvar"}
+              {salvando ? "Salvando..." : idSalvo ? "Salvar Alterações" : "Salvar"}
             </button>
           </div>
         </form>
       </div>
 
+      {lightbox !== null && (
+        <ImagemLightbox
+          imagens={itens.filter((i) => i.url).map((i) => ({ url: i.url! }))}
+          indiceInicial={lightbox}
+          titulo={nome || "Plataforma"}
+          onClose={() => setLightbox(null)}
+        />
+      )}
     </div>
   );
 }

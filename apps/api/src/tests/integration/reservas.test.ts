@@ -339,7 +339,9 @@ describe("Reservas (S14) — Admin solicita reserva escolhendo o setor de destin
     expect(response.json().setorId).toBe(setorTiId);
   });
 
-  it("setorId informado no body é ignorado para perfil Colaborador (sempre usa o setor da sessão)", async () => {
+  // Regra atual: o setor do usuário é só o padrão do "Setor solicitante" — o Colaborador
+  // pode reservar para outro setor ativo (a API confere que o setor existe e está ativo).
+  it("setorId informado no body por Colaborador define o setor solicitante da reserva", async () => {
     const response = await app.inject({
       method: "POST",
       url: "/api/v1/reservas",
@@ -350,12 +352,12 @@ describe("Reservas (S14) — Admin solicita reserva escolhendo o setor de destin
         horaInicio: "16:00",
         horaFim: "17:00",
         quantidadePessoas: 1,
-        motivo: "Colaborador tentando forjar outro setor",
+        motivo: "Colaborador reservando para a Manutenção",
         setorId: setorManutencaoId,
       },
     });
     expect(response.statusCode).toBe(201);
-    expect(response.json().setorId).toBe(setorTiId);
+    expect(response.json().setorId).toBe(setorManutencaoId);
   });
 });
 

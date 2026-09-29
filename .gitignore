@@ -12,6 +12,9 @@ coverage/
 SDD.md
 MASTER.md
 apps/api/uploads/
+# Uploads dos usuários (STORAGE_ROOT) — dado persistente do servidor, nunca vai para o Git.
+/storage/
+# Dados do antigo emulador Azurite (armazenamento agora é local; a pasta pode ser apagada).
 apps/api/.azurite/
 # E-mails gravados em disco quando o Microsoft Graph não está configurado (só em dev)
 apps/api/emails-dev/

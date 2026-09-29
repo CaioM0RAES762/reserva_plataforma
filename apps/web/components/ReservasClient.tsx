@@ -385,7 +385,13 @@ export function ReservasClient({
   // RF-RES-13: pré-preenche plataforma/motivo/prioridade (nunca data/status) de uma
   // reserva concluída/cancelada e abre o mesmo modal de criação.
   function handleReservarNovamente(reserva: Reserva) {
-    setValoresIniciais({ plataformaId: reserva.plataformaId, motivo: reserva.motivo, prioridade: reserva.prioridade });
+    setValoresIniciais({
+      plataformaId: reserva.plataformaId,
+      motivo: reserva.motivo,
+      prioridade: reserva.prioridade,
+      // Setor da reserva anterior como padrão — continua editável no modal.
+      setorId: reserva.setorId,
+    });
     setModalAberto(true);
   }
 
@@ -725,6 +731,7 @@ export function ReservasClient({
           usuarioId={usuarioId}
           solicitanteNome={solicitanteNome}
           setorNome={setorNome}
+          setorId={setorId}
           telefonePerfil={telefonePerfil}
           onClose={() => {
             setModalAberto(false);

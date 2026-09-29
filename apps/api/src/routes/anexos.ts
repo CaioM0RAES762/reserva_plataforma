@@ -5,8 +5,8 @@ import { autenticar, usuarioNoEscopoDaReserva } from "../middlewares/rbac.js";
 import {
   armazenamentoService,
   ArquivoExcedeLimiteError,
-  gerarUrlAcessoOuNulo,
   MimeNaoPermitidoError,
+  urlDeLeitura,
 } from "../services/storage.service.js";
 
 interface ReservaEscopoRow {
@@ -46,7 +46,7 @@ async function mapAnexo(row: AnexoRow) {
     enviadoPorNome: row.enviado_por_nome,
     // Blob indisponível degrada para `null` em vez de 500 — a lista de anexos (nome,
     // tamanho, autor) continua legível mesmo sem o link de download. Ver plataformas.ts.
-    url: await gerarUrlAcessoOuNulo(row.url_blob),
+    url: urlDeLeitura(row.url_blob),
     criadoEm: row.criado_em.toISOString(),
   };
 }
@@ -101,7 +101,7 @@ export async function anexosRoutes(app: FastifyInstance): Promise<void> {
 
     let salvo;
     try {
-      salvo = await armazenamentoService.salvarArquivo(`reservas/${id}`, parsed.data.nomeArquivo, buffer, mimeDeclarado);
+      salvo = await armazenamentoService.salvarArquivo(`reservas/${id}`, buffer, mimeDeclarado);
     } catch (err) {
       if (err instanceof MimeNaoPermitidoError || err instanceof ArquivoExcedeLimiteError) {
         return reply.status(422).send({ erro: err.message });

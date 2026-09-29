@@ -114,9 +114,9 @@ export const criarReservaSchema = z
       .transform((valor) => normalizarEmpresaTerceirizada(valor))
       .refine((valor) => valor.length <= EMPRESA_TERCEIRIZADA_MAX, MENSAGEM_EMPRESA_TERCEIRIZADA_LONGA),
     recorrencia: recorrenciaInputSchema.optional(),
-    // S14 (RF-RES-01): Admin não tem setor_id próprio (RN-USR-01) — precisa informar para
-    // qual setor está solicitando. Ignorado pelo backend para Gestor/Colaborador, que
-    // sempre usam o setor da própria sessão (nunca confiam no body para esses perfis).
+    // Setor solicitante escolhido no formulário (padrão: o setor do usuário). Omitido = setor
+    // da sessão; Admin sem setor próprio (RN-USR-01) precisa informar. O backend confere que
+    // o setor existe e está ativo.
     setorId: z.string().uuid("Selecione um setor válido.").optional(),
     // Automação. Omitidos = o backend herda o padrão configurado na plataforma; enviados =
     // override explícito desta reserva. A decisão fica CONGELADA na reserva no momento da

@@ -8,6 +8,9 @@ import { SIDEBAR_DRAWER_ID, useSidebarState } from "./SidebarState";
 
 export interface TopbarProps {
   titulo: string;
+  /** A página começa com um hero que sobe por baixo da topbar (Central de Operações):
+   *  no topo da página a barra fica sem fundo/borda e deixa a arte do hero aparecer. */
+  sobreHero?: boolean;
 }
 
 function formatarRelogio(data: Date): string {
@@ -16,8 +19,9 @@ function formatarRelogio(data: Date): string {
   return `${dia.toUpperCase()} · ${hora} BRT`;
 }
 
-export function Topbar({ titulo }: TopbarProps) {
+export function Topbar({ titulo, sobreHero = false }: TopbarProps) {
   const [agora, setAgora] = useState<Date | null>(null);
+  const [noTopo, setNoTopo] = useState(true);
   const { collapsed, toggle, mobileAberto, alternarMobile, gatilhoMobileRef } = useSidebarState();
 
   useEffect(() => {
@@ -28,8 +32,22 @@ export function Topbar({ titulo }: TopbarProps) {
     return () => clearInterval(id);
   }, []);
 
+  // Só escuta a rolagem quando há hero por trás: nas demais telas a barra é sempre sólida.
+  useEffect(() => {
+    if (!sobreHero) return;
+    const medir = () => setNoTopo(window.scrollY <= 4);
+    medir();
+    window.addEventListener("scroll", medir, { passive: true });
+    return () => window.removeEventListener("scroll", medir);
+  }, [sobreHero]);
+
+  const transparente = sobreHero && noTopo;
+
   return (
-    <header className={styles.topbar}>
+    <header
+      className={`${styles.topbar} ${transparente ? styles.topbarSobreHero : ""}`}
+      data-estado={transparente ? "topo" : "rolado"}
+    >
       {/* S14 (RNF-04): abre o drawer da sidebar (<=900px; escondido acima disso via CSS).
           O ref permite ao Sidebar devolver o foco a este botão quando o drawer fecha. Com o
           drawer aberto o Topbar fica inerte (AppShell), então o rótulo "Abrir menu" nunca

@@ -1,11 +1,30 @@
 import { RISCO_PADRAO_POR_CATEGORIA, type CategoriaPlataforma, type RiscoPlataforma } from "@plataformares/shared";
 
 // SDD §2.4 — quando o Admin não informa risco explicitamente, aplica o padrão da categoria.
-export function resolverRiscoPlataforma(
-  categoria: CategoriaPlataforma,
-  riscoInformado?: RiscoPlataforma
-): RiscoPlataforma {
-  return riscoInformado ?? RISCO_PADRAO_POR_CATEGORIA[categoria];
+// Categorias criadas pelo Admin (migration 0025) não têm padrão histórico: risco "baixo",
+// o mesmo de "outro".
+export function resolverRiscoPlataforma(categoria: string, riscoInformado?: RiscoPlataforma): RiscoPlataforma {
+  return riscoInformado ?? RISCO_PADRAO_POR_CATEGORIA[categoria as CategoriaPlataforma] ?? "baixo";
+}
+
+/* Código estável de uma categoria nova, derivado do nome ("Empilhadeira" → "empilhadeira").
+   O código é o que Plataforma.categoria guarda; renomear a categoria depois não o altera. */
+export function gerarCodigoCategoria(nome: string, existentes: Iterable<string>): string {
+  const base =
+    nome
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 20) || "categoria";
+  const usados = new Set(Array.from(existentes, (c) => c.toLowerCase()));
+  if (!usados.has(base)) return base;
+  for (let n = 2; ; n++) {
+    const sufixo = `_${n}`;
+    const candidato = base.slice(0, 20 - sufixo.length) + sufixo;
+    if (!usados.has(candidato)) return candidato;
+  }
 }
 
 export function normalizarCodigoPlataforma(codigo: string): string {

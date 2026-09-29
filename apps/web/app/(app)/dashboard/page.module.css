@@ -1,7 +1,7 @@
 .page {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 28px;
   max-width: 1600px;
   /* CAUSA RAIZ do "buraco" à direita com a sidebar recolhida: um bloco com max-width sem
      margin auto se alinha à ESQUERDA do container por padrão do modelo de caixa CSS. Área
@@ -20,7 +20,17 @@
 }
 
 .loading { padding: 32px; text-align: center; color: var(--ink-muted); font-size: var(--text-secondary); }
-.empty { padding: 20px; text-align: center; color: var(--ink-muted); font-size: var(--text-secondary); }
+/* Estado vazio: um campo tonal discreto em vez de texto solto no meio do painel — dá
+   forma ao vazio sem ícone, borda tracejada ou ilustração. */
+.empty {
+  padding: 30px 20px;
+  text-align: center;
+  color: var(--ink-muted);
+  font-size: var(--text-secondary);
+  line-height: 1.5;
+  background: color-mix(in oklch, var(--ink) 2.2%, transparent);
+  border-radius: var(--ind-radius-lg);
+}
 
 .error {
   background: var(--safety-soft);
@@ -31,51 +41,91 @@
   font-size: var(--text-secondary);
 }
 
-/* ---------- Hero ---------- */
+/* ---------- Hero ----------
+   Full-bleed dentro da área útil: anula o padding de .content (Topbar.module.css — 28px
+   em cima, 24px nas laterais) e sobe a altura da topbar para passar por baixo dela. A
+   topbar fica transparente enquanto a página está no topo (Topbar `sobreHero`).
+   O fundo é composição, não ilustração: papel claro à esquerda, grafite suave do centro
+   para a direita, um brilho quente discreto na transição e a malha de fios (HeroFundo). */
 
 .hero {
+  --hero-grafite: oklch(0.17 0.008 65);
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-end;
+  min-height: calc(var(--topbar-h) + 250px);
+  margin: calc(-1 * (var(--topbar-h) + 28px)) -24px 32px;
+  padding: calc(var(--topbar-h) + 44px) 0 52px;
+  background-color: var(--paper);
+  background-image:
+    /* brilho quente na transição */
+    radial-gradient(ellipse 18% 42% at 66% 74%, oklch(0.82 0.1 70 / 0.34), transparent 72%),
+    /* o grafite adensa no canto superior direito */
+    radial-gradient(ellipse 55% 130% at 100% 0%, oklch(0.13 0.008 65 / 0.85), transparent 70%),
+    linear-gradient(
+      102deg,
+      var(--paper) 0%,
+      var(--paper) 36%,
+      oklch(0.9 0.006 75) 47%,
+      oklch(0.58 0.01 68) 60%,
+      oklch(0.3 0.01 65) 72%,
+      var(--hero-grafite) 86%
+    );
+}
+
+.heroArte {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* Mesma largura máxima e mesmo recuo de .page: o texto do hero alinha com os KPIs. */
+.heroInner {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 24px;
+  gap: 32px;
   flex-wrap: wrap;
-  padding-bottom: 22px;
-  border-bottom: 1px solid var(--hairline);
+  width: 100%;
+  max-width: calc(1600px + 48px);
+  margin-inline: auto;
+  padding-inline: 24px;
 }
 
-/* Único destaque sutil do cabeçalho: um friso vertical laranja — o mesmo acento usado no
-   resto do produto (ver ComentariosReserva, badges), não um elemento novo. Sinaliza "isto é
-   a sua visão operacional de hoje" sem virar hero/banner. */
-.heroTexto {
-  padding-left: 16px;
-  border-left: 2px solid var(--safety);
-}
+.heroTexto { min-width: 0; max-width: 720px; }
 
 .eyebrow {
-  font-size: var(--text-eyebrow);
-  font-weight: 600;
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: var(--tracking-eyebrow);
-  color: var(--ink-soft);
-  margin-bottom: 10px;
+  letter-spacing: 0.1em;
+  color: var(--ink-muted);
+  margin-bottom: 18px;
 }
 
 .h1 {
   font-family: var(--font-display);
-  font-weight: 500;
-  font-size: var(--text-hero);
-  line-height: 1.1;
-  letter-spacing: -0.015em;
+  font-weight: 450;
+  font-size: clamp(2.4rem, 3.7vw, 3.35rem);
+  line-height: 1.04;
+  letter-spacing: -0.022em;
   color: var(--ink);
 }
 .h1 em {
   display: block;
-  font-size: 0.62em;
+  font-size: 0.56em;
   font-weight: 400;
   font-style: italic;
-  line-height: 1.3;
+  line-height: 1.35;
+  letter-spacing: -0.005em;
   color: var(--ink-soft);
-  margin-top: 8px;
+  margin-top: 14px;
 }
 
 .heroActions {
@@ -83,7 +133,8 @@
   align-items: center;
   gap: 10px;
   flex-shrink: 0;
-  margin-top: 6px;
+  align-self: flex-start;
+  margin-top: 2px;
 }
 
 .btnOutline {
@@ -91,126 +142,109 @@
   align-items: center;
   gap: 6px;
   min-height: var(--control-h);
-  padding: 0 20px;
+  padding: 0 22px;
   font-size: var(--text-secondary);
   font-weight: 500;
   color: var(--ink);
   background: var(--paper-elev);
   border: 1px solid var(--hairline);
-  border-radius: var(--ind-radius-sm);
+  border-radius: var(--ind-radius-lg);
   white-space: nowrap;
-  transition: border-color 0.15s, background 0.15s;
+  transition: border-color 0.18s, background-color 0.18s;
 }
-.btnOutline:hover { border-color: var(--ink-muted); background: color-mix(in oklch, var(--ink) 4%, transparent); }
+.btnOutline:hover { border-color: var(--ink-muted); background: var(--paper); }
 
 .btnSolid {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   min-height: var(--control-h);
-  padding: 0 20px;
+  padding: 0 22px;
   font-size: var(--text-secondary);
   font-weight: 500;
   color: var(--paper);
   background: var(--ink);
   border: 1px solid var(--ink);
-  border-radius: var(--ind-radius-sm);
+  border-radius: var(--ind-radius-lg);
   white-space: nowrap;
-  transition: background 0.15s;
+  transition: background-color 0.18s, border-color 0.18s;
 }
 .btnSolid:hover { background: var(--ink-soft); }
+.btnOutline:focus-visible,
+.btnSolid:focus-visible { outline: 2px solid var(--safety); outline-offset: 2px; }
 
-/* ---------- KPI strip ---------- */
+/* No desktop os botões ficam sobre o grafite: o contorno vira papel sólido e o botão
+   escuro ganha um filete claro para não se dissolver no fundo. */
+@media (min-width: 901px) {
+  .hero .btnOutline { border-color: transparent; }
+  .hero .btnSolid { background: var(--hero-grafite); border-color: oklch(1 0 0 / 0.16); }
+  .hero .btnSolid:hover { background: oklch(0.24 0.01 65); border-color: oklch(1 0 0 / 0.28); }
+}
 
-/* `minmax(0, 1fr)` e não `1fr`: a trilha `1fr` tem mínimo `auto` (= largura do conteúdo),
-   e o .kpiSub é nowrap — a célula não encolhia abaixo do texto e a faixa transbordava em
-   telas estreitas. Com mínimo 0 a coluna encolhe e o texto trunca/quebra dentro dela. */
+/* ---------- KPIs ----------
+   Seis cartões claros e independentes: sem ícone, sem friso colorido. A hierarquia vem só
+   da tipografia — rótulo pequeno, número em serifa com presença, contexto em tom suave.
+   `minmax(0, 1fr)`: a trilha `1fr` tem mínimo `auto` e o .kpiSub (nowrap) impedia a
+   coluna de encolher em telas estreitas. */
 .kpiStrip {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  border: 1px solid var(--hairline);
-  border-radius: var(--ind-radius-md);
-  background: var(--paper-elev);
-  overflow: hidden;
+  gap: 14px;
 }
 
 .kpiCell {
-  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 5px;
   min-width: 0;
-  /* Menos altura: a célula perdeu a quarta linha (ver DashboardClient), então o padding
-     generoso que compensava o texto empilhado virou espaço morto. */
-  padding: 20px 20px 18px;
-  /* Divisória mais sutil que um hairline cheio — a grade não deveria competir com os
-     números, só separar o suficiente para a leitura não escorregar de uma célula pra outra. */
-  border-left: 1px solid color-mix(in oklch, var(--hairline) 65%, transparent);
-  margin-left: -1px;
+  padding: 22px 22px 20px;
+  background: var(--paper-elev);
+  border: 1px solid color-mix(in oklch, var(--hairline) 75%, transparent);
+  border-radius: var(--ind-radius-lg);
   color: inherit;
   text-decoration: none;
-  transition: background 0.15s;
+  transition: border-color 0.18s ease, background-color 0.18s ease;
 }
-/* Hover sutil (célula virou link — KPIs com rota natural ficam clicáveis): leve mudança de
-   fundo, sem elevar/sombrear — nada que faça a faixa parecer um conjunto de cards soltos. */
-.kpiCell:hover { background: color-mix(in oklch, var(--ink) 3%, transparent); }
-.kpiCell:focus-visible { outline: 2px solid var(--ink-muted); outline-offset: -2px; }
-.kpiCell::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 22px;
-  width: 28px;
-  height: 2px;
-}
-.kpiInk::before { background: var(--ink); }
-.kpiGreen::before { background: var(--signal); }
-.kpiBlue::before { background: var(--chart-3); }
-.kpiOrange::before { background: var(--safety); }
-.kpiAmber::before { background: var(--caution); }
-.kpiRed::before { background: var(--hazard); }
+.kpiCell:hover { border-color: var(--hairline); background: color-mix(in oklch, var(--paper) 55%, var(--paper-elev)); }
+.kpiCell:focus-visible { outline: 2px solid var(--ink-muted); outline-offset: 2px; }
 
 .kpiLabel {
-  font-size: var(--text-eyebrow);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-eyebrow);
-  color: var(--ink-muted);
-}
-.kpiValue {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: 2.2rem;
+  font-size: 0.74rem;
   font-weight: 500;
-  color: var(--ink);
-  letter-spacing: -0.01em;
-  line-height: 1.1;
-  margin: 2px 0;
-}
-.kpiSub {
-  font-size: var(--text-meta);
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
   color: var(--ink-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.kpiValue {
+  font-family: var(--font-display);
+  font-variant-numeric: lining-nums tabular-nums;
+  font-size: 2.45rem;
+  font-weight: 400;
+  color: var(--ink);
+  letter-spacing: -0.02em;
+  line-height: 1;
+  margin: 18px 0 10px;
+}
+.kpiSub {
+  font-size: var(--text-meta);
+  color: color-mix(in oklch, var(--ink-muted) 85%, var(--paper));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
-/* 6 células = 6x1, 3x2 ou 2x3: sempre divisível, sem célula órfã na última linha. Os
-   limites são da área útil (.page é o contêiner), não da janela. Ficam DEPOIS das regras
-   base de .kpiCell/.kpiSub de propósito: mesma especificidade, quem vem por último vence. */
+/* 6 cartões = 6x1, 3x2 ou 2x3: sempre divisível. Os limites são da área útil (.page é o
+   contêiner), não da janela; ficam depois das regras base por ordem de cascata. */
 @container (max-width: 1000px) {
   .kpiStrip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  /* Ao quebrar em mais de uma linha, as células da segunda linha ganham a linha-guia que a
-     faixa de uma linha só nunca precisou. */
-  .kpiCell:nth-child(n+4) { border-top: 1px solid var(--hairline); }
 }
 @container (max-width: 600px) {
-  .kpiStrip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .kpiCell:nth-child(n+3) { border-top: 1px solid var(--hairline); }
-  .kpiCell { padding: 16px 14px 14px; }
-  .kpiCell::before { left: 16px; }
-  /* Com 2 colunas a célula tem ~140px de texto: nowrap cortaria o contexto de cada KPI no
-     meio ("1 em manutenç…"). Aqui a linha de contexto pode ocupar duas linhas. */
+  .kpiStrip { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .kpiCell { padding: 18px 16px 16px; }
+  .kpiValue { font-size: 2.05rem; margin: 14px 0 8px; }
+  /* Com 2 colunas a célula tem ~140px de texto: a linha de contexto pode quebrar. */
   .kpiSub { white-space: normal; }
 }
 
@@ -234,7 +268,7 @@
      `minmax(0, 1.3fr) repeat(n, minmax(0, 1fr))` quando cabem mais. `minmax(0, …)` deixa
      a trilha encolher abaixo do conteúdo (timeline, tabela) em vez de estourar a página. */
   grid-template-columns: minmax(0, 1fr);
-  gap: 24px;
+  gap: 20px;
   /* `start`: cada pilha tem a altura do próprio conteúdo. Esticar deixaria os painéis da
      pilha mais curta com miolo vazio para igualar a altura — o vão só mudaria de lugar. */
   align-items: start;
@@ -242,7 +276,7 @@
 .pilha {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 20px;
   min-width: 0;
 }
 /* Painel de tabela larga (Ranking): linha própria abaixo das pilhas, largura total. */
@@ -250,40 +284,42 @@
 
 .panel {
   background: var(--paper-elev);
-  border: 1px solid var(--hairline);
-  border-radius: var(--ind-radius-md);
+  border: 1px solid color-mix(in oklch, var(--hairline) 75%, transparent);
+  border-radius: var(--ind-radius-lg);
   overflow: hidden;
 }
 
+/* Cabeçalho sem divisória: o respiro separa título e conteúdo. */
 .panelHeader {
   display: flex;
-  align-items: flex-start;
+  align-items: flex-end;
   justify-content: space-between;
-  gap: 12px;
-  padding: 22px 24px 18px;
-  border-bottom: 1px solid var(--hairline);
+  gap: 12px 20px;
+  padding: 26px 28px 0;
   flex-wrap: wrap;
 }
 .panelEyebrow {
-  font-size: var(--text-eyebrow);
-  font-weight: 600;
+  font-size: 0.72rem;
+  font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: var(--tracking-eyebrow);
+  letter-spacing: 0.1em;
   color: var(--ink-muted);
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 .panelTitle {
   font-family: var(--font-display);
-  font-weight: 500;
-  font-size: var(--text-section-title);
+  font-weight: 450;
+  font-size: 1.42rem;
+  line-height: 1.2;
+  letter-spacing: -0.012em;
   color: var(--ink);
 }
 .panelHeaderMeta { font-family: var(--font-mono); font-size: var(--text-meta); color: var(--ink-muted); white-space: nowrap; }
-.panelBody { padding: 18px 24px 22px; }
+.panelBody { padding: 22px 28px 26px; }
 
-.legend { display: flex; align-items: center; gap: 14px; margin-top: 6px; }
-.legendItem { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-meta); color: var(--ink-muted); }
-.legendDot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.legend { display: flex; align-items: center; gap: 16px; padding-bottom: 3px; }
+.legendItem { display: inline-flex; align-items: center; gap: 7px; font-size: var(--text-meta); color: var(--ink-muted); }
+.legendDot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
 .legendEmUso { background: var(--chart-3); }
 .legendConcluida { background: var(--signal); }
 .legendChecklist { background: var(--safety); }
@@ -412,9 +448,10 @@
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--hairline);
+  padding: 14px 0;
+  border-bottom: 1px solid color-mix(in oklch, var(--hairline) 65%, transparent);
 }
+.agendaRow:first-child, .fleetRow:first-child { padding-top: 4px; }
 .agendaRow:last-child, .fleetRow:last-child { border-bottom: none; }
 
 .agendaTime {
@@ -494,7 +531,7 @@
 }
 
 .fleetStatus { flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; text-align: right; }
-.fleetStatusLabel { font-size: var(--text-eyebrow); font-weight: 600; text-transform: uppercase; letter-spacing: var(--tracking-label); }
+.fleetStatusLabel { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; }
 .fleetCorDisponivel { color: var(--signal); }
 .fleetCorEmUso { color: var(--chart-3); }
 .fleetCorManutencao { color: var(--safety); }
@@ -509,8 +546,9 @@
      a lado; sem quebra, o link espremia e partia no meio da frase. */
   flex-wrap: wrap;
   gap: 4px 12px;
-  padding: 13px 24px;
-  border-top: 1px solid var(--hairline);
+  padding: 15px 28px;
+  border-top: 1px solid color-mix(in oklch, var(--hairline) 65%, transparent);
+  background: color-mix(in oklch, var(--ink) 1.2%, transparent);
   font-family: var(--font-mono);
   font-size: var(--text-meta);
   color: var(--ink-muted);
@@ -527,22 +565,23 @@
 
 /* ---------- Tables (Fila de aprovações / Ranking) ---------- */
 
-.tableWrap { overflow-x: auto; }
+.tableWrap { overflow-x: auto; margin-top: 18px; }
+.tableWrap > .empty { margin: 0 28px 26px; }
 .table { width: 100%; border-collapse: collapse; font-size: var(--text-secondary); }
 .table th {
   text-align: left;
-  padding: 11px 24px;
-  font-size: var(--text-eyebrow);
-  font-weight: 600;
+  padding: 12px 28px;
+  font-size: 0.72rem;
+  font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: var(--tracking-label);
+  letter-spacing: 0.09em;
   color: var(--ink-muted);
-  border-bottom: 1px solid var(--hairline);
+  border-bottom: 1px solid color-mix(in oklch, var(--hairline) 75%, transparent);
   white-space: nowrap;
 }
-.table th:first-child, .table td:first-child { padding-left: 24px; }
-.table th:last-child, .table td:last-child { padding-right: 24px; }
-.table td { padding: 13px 16px; border-bottom: 1px solid var(--hairline); color: var(--ink-soft); vertical-align: middle; }
+.table th:first-child, .table td:first-child { padding-left: 28px; }
+.table th:last-child, .table td:last-child { padding-right: 28px; }
+.table td { padding: 14px 16px; border-bottom: 1px solid color-mix(in oklch, var(--hairline) 65%, transparent); color: var(--ink-soft); vertical-align: middle; }
 .table tbody tr { transition: background 0.15s; }
 .table tbody tr:hover { background: color-mix(in oklch, var(--ink) 4%, transparent); }
 .table tbody tr:last-child td { border-bottom: none; }
@@ -651,14 +690,14 @@
 
 /* ---------- Utilization bars ---------- */
 
-.utilList { display: flex; flex-direction: column; gap: 14px; }
-.utilRow { display: flex; flex-direction: column; gap: 6px; }
-.utilLabelRow { display: flex; align-items: center; justify-content: space-between; font-size: var(--text-meta); color: var(--ink); }
-.utilTrack { height: 6px; width: 100%; background: color-mix(in oklch, var(--ink) 8%, transparent); border-radius: var(--ind-radius-sm); overflow: hidden; }
-.utilFill { height: 100%; border-radius: var(--ind-radius-sm); }
+.utilList { display: flex; flex-direction: column; gap: 18px; }
+.utilRow { display: flex; flex-direction: column; gap: 8px; }
+.utilLabelRow { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; font-size: var(--text-meta); color: var(--ink); }
+.utilTrack { height: 4px; width: 100%; background: color-mix(in oklch, var(--ink) 7%, transparent); border-radius: 999px; overflow: hidden; }
+.utilFill { height: 100%; border-radius: 999px; }
 .utilBarAlta { background: var(--safety); }
 .utilBarMedia { background: var(--chart-3); }
-.utilBarBaixa { background: color-mix(in oklch, var(--ink) 40%, transparent); }
+.utilBarBaixa { background: color-mix(in oklch, var(--ink) 55%, transparent); }
 
 /* ---------- Ranking de setores ---------- */
 
@@ -667,11 +706,11 @@
   display: block;
   height: 4px;
   width: 100%;
-  background: color-mix(in oklch, var(--ink) 8%, transparent);
-  border-radius: var(--ind-radius-sm);
+  background: color-mix(in oklch, var(--ink) 7%, transparent);
+  border-radius: 999px;
   overflow: hidden;
 }
-.distribuicaoFill { display: block; height: 100%; background: var(--ink); border-radius: var(--ind-radius-sm); }
+.distribuicaoFill { display: block; height: 100%; background: var(--ink-soft); border-radius: 999px; }
 
 /* ---------- Responsividade em telas estreitas (RNF-04) ----------
    O Dashboard foi redesenhado depois da matriz de responsividade da S14 e reintroduziu
@@ -681,7 +720,33 @@
    por container query, junto da própria régua) e a tabela de ranking com 4 colunas de
    largura fixa. */
 
+/* Tablet/celular: o texto ocupa a largura toda, então o grafite recua para o canto
+   inferior direito e a malha perde intensidade — a leitura nunca cai sobre o escuro. A
+   topbar também deixa de clarear os ícones (Topbar.module.css, só >=901px). */
+@media (max-width: 900px) {
+  .hero {
+    min-height: calc(var(--topbar-h) + 210px);
+    padding: calc(var(--topbar-h) + 32px) 0 36px;
+    margin-bottom: 26px;
+    background-image:
+      radial-gradient(ellipse 30% 50% at 78% 92%, oklch(0.82 0.1 70 / 0.22), transparent 72%),
+      radial-gradient(ellipse 75% 95% at 100% 100%, oklch(0.3 0.01 65 / 0.5), transparent 72%),
+      linear-gradient(180deg, var(--paper), oklch(0.95 0.005 80));
+  }
+  .heroArte { opacity: 0.45; }
+  .heroInner { gap: 24px; }
+}
+
 @media (max-width: 640px) {
+  .hero {
+    min-height: 0;
+    padding: calc(var(--topbar-h) + 24px) 0 28px;
+    margin-bottom: 20px;
+  }
+  .heroArte { opacity: 0.3; }
+  .eyebrow { margin-bottom: 12px; }
+  .h1 em { margin-top: 10px; }
+
   /* Os botões do hero (198px + 146px + gap) não cabem em 360px lado a lado. */
   .heroActions {
     width: 100%;
@@ -706,16 +771,17 @@
      encolhia (16px) e o corpo continuava em 24px: o texto do título e o da lista ficavam
      desalinhados, e a lista perdia 16px de largura útil justo onde cada pixel importa. */
   .panelHeader {
-    padding: 16px;
+    padding: 20px 18px 0;
   }
   .panelBody {
-    padding: 14px 16px 18px;
+    padding: 18px 18px 20px;
   }
   .panelFooter {
-    padding: 12px 16px;
+    padding: 13px 18px;
   }
-  .table th:first-child, .table td:first-child { padding-left: 16px; }
-  .table th:last-child, .table td:last-child { padding-right: 16px; }
+  .tableWrap > .empty { margin: 0 18px 20px; }
+  .table th:first-child, .table td:first-child { padding-left: 18px; }
+  .table th:last-child, .table td:last-child { padding-right: 18px; }
 }
 
 @media (max-width: 480px) {

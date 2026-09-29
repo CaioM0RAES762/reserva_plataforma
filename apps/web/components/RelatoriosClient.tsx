@@ -16,6 +16,7 @@ import {
 } from "recharts";
 import styles from "../app/(app)/relatorios/page.module.css";
 import { CampoFiltro, FiltrosAvancados } from "./FiltrosAvancados";
+import { formatarDataCompletaGrafico, formatarDiaMesEixo } from "../lib/datasGrafico";
 import { apiDownload, apiFetch, mensagemDeErro } from "../lib/api";
 
 // Paleta categórica validada (skill dataviz/references/palette.md) — ordem FIXA, nunca
@@ -660,13 +661,13 @@ export function RelatoriosClient({ perfil }: RelatoriosClientProps) {
                       <ResponsiveContainer width="100%" height={240}>
                         <LineChart data={operacional?.evolucaoDiaria ?? []} margin={{ left: -12, right: 16 }}>
                           <CartesianGrid vertical={false} stroke="#e1e0d9" />
-                          <XAxis dataKey="data" tick={{ fontSize: 10, fill: "#898781" }} />
+                          <XAxis dataKey="data" tick={{ fontSize: 10, fill: "#898781" }} tickFormatter={formatarDiaMesEixo} minTickGap={8} />
                           <YAxis tick={{ fontSize: 11, fill: "#898781" }} allowDecimals={false} />
                           <Tooltip
                             content={
                               <TooltipDetalhado
                                 montar={(d) => ({
-                                  titulo: String(d.data),
+                                  titulo: formatarDataCompletaGrafico(d.data),
                                   linhas: [
                                     { rotulo: "Reservas", valor: String(d.quantidadeReservas) },
                                     { rotulo: "Horas reservadas", valor: `${d.horasReservadas}h` },
@@ -1192,9 +1193,12 @@ export function RelatoriosClient({ perfil }: RelatoriosClientProps) {
                       <ResponsiveContainer width="100%" height={200}>
                         <LineChart data={bloqueios?.tendencia ?? []} margin={{ left: -12, right: 16 }}>
                           <CartesianGrid vertical={false} stroke="#e1e0d9" />
-                          <XAxis dataKey="data" tick={{ fontSize: 10, fill: "#898781" }} />
+                          <XAxis dataKey="data" tick={{ fontSize: 10, fill: "#898781" }} tickFormatter={formatarDiaMesEixo} minTickGap={8} />
                           <YAxis tick={{ fontSize: 11, fill: "#898781" }} allowDecimals={false} />
-                          <Tooltip formatter={(valor: number) => [`${valor}h`, "Horas bloqueadas"]} />
+                          <Tooltip
+                            labelFormatter={formatarDataCompletaGrafico}
+                            formatter={(valor: number) => [`${valor}h`, "Horas bloqueadas"]}
+                          />
                           <Line
                             type="monotone"
                             dataKey="horasBloqueadas"

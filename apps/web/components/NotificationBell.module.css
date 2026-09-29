@@ -1,24 +1,36 @@
 .wrapper { position: relative; }
 
+/* Só o ícone: sem borda nem fundo em repouso. A área de clique continua confortável
+   (34px, 44px no toque) e o hover/foco ganham um fundo muito leve. As cores vêm de
+   variáveis que a Topbar redefine quando está sobre o hero escuro. */
 .bellButton {
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   background: transparent;
-  border: 1px solid var(--hairline);
-  border-radius: var(--ind-radius-sm);
-  color: var(--ink-muted);
-  transition: all 0.15s;
+  border: 0;
+  border-radius: 999px;
+  color: var(--topbar-icone, var(--ink-muted));
+  cursor: pointer;
+  transition: background-color 0.18s ease, color 0.18s ease;
 }
-.bellButton:hover { background: color-mix(in oklch, var(--ink) 5%, transparent); color: var(--ink); }
+.bellButton:hover {
+  background: var(--topbar-icone-fundo, color-mix(in oklch, var(--ink) 5%, transparent));
+  color: var(--topbar-icone-hover, var(--ink));
+}
+.bellButton:focus-visible {
+  outline: 2px solid var(--topbar-icone-hover, var(--ink));
+  outline-offset: 2px;
+  background: var(--topbar-icone-fundo, color-mix(in oklch, var(--ink) 5%, transparent));
+}
 
 .badge {
   position: absolute;
-  top: -6px;
-  right: -6px;
+  top: 1px;
+  right: 0;
   min-width: 18px;
   height: 18px;
   padding: 0 4px;

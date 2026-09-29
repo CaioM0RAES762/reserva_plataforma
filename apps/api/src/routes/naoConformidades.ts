@@ -6,7 +6,7 @@ import {
 } from "@plataformares/shared";
 import { getPool, sql } from "../db/pool.js";
 import { autenticar, requireRole } from "../middlewares/rbac.js";
-import { gerarUrlAcessoOuNulo } from "../services/storage.service.js";
+import { urlDeLeitura } from "../services/storage.service.js";
 
 /* Área "Não Conformidades" (sidebar, sob OPERAÇÃO).
  *
@@ -71,7 +71,7 @@ async function imagensDoComentario(comentarioId: string) {
       id: imagem.id,
       nomeArquivo: imagem.nome_arquivo,
       tipoMime: imagem.tipo_mime,
-      url: (await gerarUrlAcessoOuNulo(imagem.url_blob)) ?? "",
+      url: urlDeLeitura(imagem.url_blob) ?? "",
     }))
   );
 }

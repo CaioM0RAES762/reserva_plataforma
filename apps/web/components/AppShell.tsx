@@ -59,7 +59,7 @@ export function AppShell({ children, perfil }: AppShellProps) {
       className={`${styles.wrapper} ${collapsed ? styles.wrapperCollapsed : ""}`}
       inert={mobileAberto || undefined}
     >
-      <Topbar titulo={resolverTitulo(pathname, perfil)} />
+      <Topbar titulo={resolverTitulo(pathname, perfil)} sobreHero={pathname === "/dashboard"} />
       {/* id de destino do link "pular para o conteúdo" (ver globals.css) — permite a quem
           navega por teclado saltar a sidebar inteira a cada troca de página. */}
       <main id="conteudo-principal" className={styles.content}>

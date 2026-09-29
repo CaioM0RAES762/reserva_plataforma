@@ -1,10 +1,13 @@
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import {
+  adicionarImagemPlataformaSchema,
   atualizarStatusPlataformaSchema,
   criarPlataformaSchema,
   editarPlataformaSchema,
   horimetroAtualHoras,
+  LIMITE_IMAGENS_PLATAFORMA,
+  MIMES_IMAGEM_PLATAFORMA,
 } from "@plataformares/shared";
 import { getPool, sql } from "../db/pool.js";
 import { autenticar, requireRole } from "../middlewares/rbac.js";
@@ -20,8 +23,10 @@ import { publicarEventoGlobal } from "../services/eventos.service.js";
 import {
   armazenamentoService,
   ArquivoExcedeLimiteError,
-  gerarUrlAcessoOuNulo,
+  FormatoImagemNaoPermitidoError,
   MimeNaoPermitidoError,
+  urlDeLeitura,
+  validarImagemDataUrl,
 } from "../services/storage.service.js";
 
 const CONFLITO_UNIQUE_SQL_ERROS = new Set([2601, 2627]);
@@ -35,10 +40,12 @@ interface PlataformaRow {
   capacidade: number | null;
   status: string;
   categoria: string;
+  categoria_nome: string | null;
+  categoria_ativa: boolean | null;
+  marca: string | null;
   risco: string;
   aprovacao_automatica: boolean;
   observacoes: string | null;
-  imagem_url: string | null;
   tipo_equipamento: string | null;
   altura_maxima_m: number | null;
   capacidade_operadores: number | null;
@@ -53,7 +60,45 @@ interface PlataformaRow {
   atualizado_em: Date;
 }
 
-async function mapPlataforma(row: PlataformaRow, aoFalharImagem?: (erro: unknown) => void) {
+interface ImagemRow {
+  id: string;
+  plataforma_id: string;
+  blob_path: string;
+  ordem: number;
+  principal: boolean;
+}
+
+/* Imagens de uma ou de todas as plataformas, na ordem de exibição (principal = ordem 0).
+   Uma consulta só para a listagem inteira — no máximo 4 linhas por plataforma. */
+async function buscarImagens(
+  executor: { request: () => sql.Request },
+  plataformaId?: string
+): Promise<Map<string, ImagemRow[]>> {
+  const req = executor.request();
+  let where = "";
+  if (plataformaId) {
+    req.input("plataforma_id", sql.UniqueIdentifier, plataformaId);
+    where = "WHERE plataforma_id = @plataforma_id";
+  }
+  const result = await req.query<ImagemRow>(
+    `SELECT id, plataforma_id, blob_path, ordem, principal FROM PlataformaImagem ${where} ORDER BY plataforma_id, ordem`
+  );
+  const mapa = new Map<string, ImagemRow[]>();
+  for (const img of result.recordset) {
+    const chave = img.plataforma_id.toLowerCase();
+    mapa.set(chave, [...(mapa.get(chave) ?? []), img]);
+  }
+  return mapa;
+}
+
+function mapPlataforma(row: PlataformaRow, imagensRows: ImagemRow[] = []) {
+  // A chave do arquivo nunca sai da API — sempre convertida em URL de leitura assinada.
+  const imagens = imagensRows.map((img) => ({
+    id: img.id.toLowerCase(),
+    url: urlDeLeitura(img.blob_path),
+    ordem: img.ordem,
+    principal: img.principal,
+  }));
   return {
     id: row.id,
     codigo: row.codigo,
@@ -63,13 +108,16 @@ async function mapPlataforma(row: PlataformaRow, aoFalharImagem?: (erro: unknown
     capacidade: row.capacidade,
     status: row.status,
     categoria: row.categoria,
+    categoriaNome: row.categoria_nome,
+    categoriaAtiva: row.categoria_ativa ?? false,
+    marca: row.marca,
     risco: row.risco,
     aprovacaoAutomatica: row.aprovacao_automatica,
     observacoes: row.observacoes,
-    // Chave do blob nunca sai da API — sempre convertida em SAS de leitura sob demanda.
-    // Falha na assinatura degrada para `null` (a UI mostra "Sem imagem") em vez de
-    // derrubar a listagem inteira com 500 — ver gerarUrlAcessoOuNulo.
-    imagemUrl: await gerarUrlAcessoOuNulo(row.imagem_url, aoFalharImagem),
+    // Capa = imagem principal. Derivada da galeria (fonte única), mantida por compatibilidade
+    // com as telas que só mostram uma imagem.
+    imagemUrl: imagens.find((i) => i.principal)?.url ?? null,
+    imagens,
     tipoEquipamento: row.tipo_equipamento,
     alturaMaximaM: row.altura_maxima_m,
     capacidadeOperadores: row.capacidade_operadores,
@@ -90,8 +138,8 @@ async function mapPlataforma(row: PlataformaRow, aoFalharImagem?: (erro: unknown
 }
 
 const SELECT_COLUNAS =
-  "id, codigo, nome, localizacao, telefone_emergencia, capacidade, status, categoria, risco, aprovacao_automatica, " +
-  "observacoes, imagem_url, tipo_equipamento, altura_maxima_m, capacidade_operadores, horimetro_horas, horimetro_uso_minutos, " +
+  "id, codigo, nome, localizacao, telefone_emergencia, capacidade, status, categoria, categoria_nome, categoria_ativa, " +
+  "marca, risco, aprovacao_automatica, observacoes, tipo_equipamento, altura_maxima_m, capacidade_operadores, horimetro_horas, horimetro_uso_minutos, " +
   "utilizacao_30d, evento_texto, evento_detalhe, inicio_automatico_padrao, fim_automatico_padrao, " +
   "criado_em, atualizado_em";
 
@@ -103,7 +151,8 @@ function buildQueryPlataformas(whereEOrder: string): string {
     WITH PlataformaComStatus AS (
       SELECT p.id, p.codigo, p.nome, p.localizacao, p.telefone_emergencia, p.capacidade,
              ${sqlStatusPlataformaDerivado("p")} AS status,
-             p.categoria, p.risco, p.aprovacao_automatica, p.observacoes, p.imagem_url,
+             p.categoria, cat.nome AS categoria_nome, cat.ativo AS categoria_ativa, p.marca,
+             p.risco, p.aprovacao_automatica, p.observacoes,
              p.tipo_equipamento, p.altura_maxima_m, p.capacidade_operadores, p.horimetro_horas,
              p.horimetro_uso_minutos,
              ${sqlUtilizacao30dPlataforma("p")} AS utilizacao_30d,
@@ -111,6 +160,7 @@ function buildQueryPlataformas(whereEOrder: string): string {
              p.inicio_automatico_padrao, p.fim_automatico_padrao,
              p.criado_em, p.atualizado_em
       FROM Plataforma p
+      LEFT JOIN CategoriaEquipamento cat ON cat.codigo = p.categoria
       ${sqlEventoAtivoPlataforma("p")}
     )
     SELECT ${SELECT_COLUNAS} FROM PlataformaComStatus ${whereEOrder}
@@ -126,6 +176,28 @@ async function buscarPlataformaPorId(
     .input("id", sql.UniqueIdentifier, id)
     .query<PlataformaRow>(buildQueryPlataformas("WHERE id = @id"));
   return result.recordset[0] ?? null;
+}
+
+async function carregarPlataformaCompleta(pool: Awaited<ReturnType<typeof getPool>>, id: string) {
+  const [row, imagens] = await Promise.all([buscarPlataformaPorId(pool, id), buscarImagens(pool, id)]);
+  return mapPlataforma(row!, imagens.get(id.toLowerCase()));
+}
+
+/* Categoria precisa existir em CategoriaEquipamento e estar ATIVA — exceto quando é a que a
+   plataforma já usa (categoria desativada depois continua valendo para quem já a tinha). */
+async function validarCategoria(
+  pool: Awaited<ReturnType<typeof getPool>>,
+  categoria: string,
+  categoriaAtual: string | null
+): Promise<string | null> {
+  const result = await pool
+    .request()
+    .input("codigo", sql.VarChar, categoria)
+    .query<{ ativo: boolean }>("SELECT ativo FROM CategoriaEquipamento WHERE codigo = @codigo");
+  const cat = result.recordset[0];
+  if (!cat) return "Categoria inválida.";
+  if (!cat.ativo && categoria !== categoriaAtual) return "Categoria desativada — escolha uma categoria ativa.";
+  return null;
 }
 
 async function registrarAuditoria(
@@ -159,25 +231,18 @@ export async function plataformasRoutes(app: FastifyInstance): Promise<void> {
     let where = "WHERE 1=1";
     if (q) {
       dbRequest.input("q", sql.NVarChar, `%${q}%`);
-      where += " AND (nome LIKE @q OR codigo LIKE @q OR localizacao LIKE @q)";
+      where += " AND (nome LIKE @q OR codigo LIKE @q OR localizacao LIKE @q OR marca LIKE @q)";
     }
     if (status) {
       dbRequest.input("status", sql.VarChar, status);
       where += " AND status = @status";
     }
 
-    const result = await dbRequest.query<PlataformaRow>(buildQueryPlataformas(`${where} ORDER BY codigo`));
-    // Uma única advertência por requisição, mesmo com várias imagens indisponíveis —
-    // evita inundar o log quando o Blob Storage está fora do ar.
-    let imagemJaAvisada = false;
-    const aoFalharImagem = (erro: unknown) => {
-      if (imagemJaAvisada) return;
-      imagemJaAvisada = true;
-      request.log.warn({ err: erro }, "falha ao gerar URL de imagem de plataforma — exibindo sem imagem");
-    };
-    return reply
-      .status(200)
-      .send(await Promise.all(result.recordset.map((row) => mapPlataforma(row, aoFalharImagem))));
+    const [result, imagens] = await Promise.all([
+      dbRequest.query<PlataformaRow>(buildQueryPlataformas(`${where} ORDER BY codigo`)),
+      buscarImagens(pool),
+    ]);
+    return reply.status(200).send(result.recordset.map((row) => mapPlataforma(row, imagens.get(row.id.toLowerCase()))));
   });
 
   app.post(
@@ -200,21 +265,12 @@ export async function plataformasRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(409).send({ erro: "Já existe uma plataforma com este código." });
       }
 
-      // Upload feito fora da transação de banco (mesmo padrão de anexos.ts) — id
-      // gerado aqui para poder nomear a pasta do blob antes do INSERT existir.
+      const erroCategoria = await validarCategoria(pool, parsed.data.categoria, null);
+      if (erroCategoria) return reply.status(422).send({ erro: erroCategoria });
+
+      // Imagens entram depois, uma a uma, em POST /plataformas/:id/imagens.
       const novoId = randomUUID();
-      let imagemUrlBlob: string | null = null;
-      if (parsed.data.imagemBase64) {
-        try {
-          const salvo = await armazenamentoService.salvarFotoBase64(`plataformas/${novoId}`, parsed.data.imagemBase64);
-          imagemUrlBlob = salvo.url;
-        } catch (err) {
-          if (err instanceof MimeNaoPermitidoError || err instanceof ArquivoExcedeLimiteError) {
-            return reply.status(422).send({ erro: err.message });
-          }
-          throw err;
-        }
-      }
+      const marca = parsed.data.marca?.trim() || null;
 
       const transaction = pool.transaction();
       await transaction.begin();
@@ -230,7 +286,7 @@ export async function plataformasRoutes(app: FastifyInstance): Promise<void> {
           .input("risco", sql.VarChar, risco)
           .input("aprovacao_automatica", sql.Bit, parsed.data.aprovacaoAutomatica)
           .input("observacoes", sql.NVarChar, parsed.data.observacoes ?? null)
-          .input("imagem_url", sql.NVarChar, imagemUrlBlob)
+          .input("marca", sql.NVarChar, marca)
           .input("tipo_equipamento", sql.NVarChar, parsed.data.tipoEquipamento ?? null)
           .input("altura_maxima_m", sql.Decimal(4, 1), parsed.data.alturaMaximaM ?? null)
           .input("capacidade_operadores", sql.Int, parsed.data.capacidadeOperadores ?? null)
@@ -246,12 +302,12 @@ export async function plataformasRoutes(app: FastifyInstance): Promise<void> {
             // mas nenhuma escrita nova as define — ficam no default 0/NULL.
             `INSERT INTO Plataforma (
                id, codigo, nome, localizacao, capacidade, categoria, risco, aprovacao_automatica,
-               observacoes, imagem_url, tipo_equipamento, altura_maxima_m, capacidade_operadores, horimetro_horas,
+               observacoes, marca, tipo_equipamento, altura_maxima_m, capacidade_operadores, horimetro_horas,
                telefone_emergencia, inicio_automatico_padrao, fim_automatico_padrao
              )
              VALUES (
                @id, @codigo, @nome, @localizacao, @capacidade, @categoria, @risco, @aprovacao_automatica,
-               @observacoes, @imagem_url, @tipo_equipamento, @altura_maxima_m, @capacidade_operadores, @horimetro_horas,
+               @observacoes, @marca, @tipo_equipamento, @altura_maxima_m, @capacidade_operadores, @horimetro_horas,
                @telefone_emergencia, @inicio_automatico_padrao, @fim_automatico_padrao
              )`
           );
@@ -259,17 +315,15 @@ export async function plataformasRoutes(app: FastifyInstance): Promise<void> {
         await registrarAuditoria(transaction, request.usuario!.sub, "criar_plataforma", novoId, {
           codigo,
           nome: parsed.data.nome,
+          categoria: parsed.data.categoria,
+          marca,
           telefoneEmergencia: parsed.data.telefoneEmergencia?.trim() || null,
         });
 
         await transaction.commit();
-        const completa = await buscarPlataformaPorId(pool, novoId);
-        return reply.status(201).send(await mapPlataforma(completa!));
+        return reply.status(201).send(await carregarPlataformaCompleta(pool, novoId));
       } catch (err) {
         await transaction.rollback();
-        if (imagemUrlBlob) {
-          await armazenamentoService.excluirArquivo(imagemUrlBlob).catch(() => undefined);
-        }
         const sqlErr = err as { number?: number };
         if (sqlErr.number && CONFLITO_UNIQUE_SQL_ERROS.has(sqlErr.number)) {
           return reply.status(409).send({ erro: "Já existe uma plataforma com este código." });
@@ -295,13 +349,17 @@ export async function plataformasRoutes(app: FastifyInstance): Promise<void> {
       const atual = await pool
         .request()
         .input("id", sql.UniqueIdentifier, id)
-        .query<{ id: string; imagem_url: string | null; telefone_emergencia: string | null }>(
-          "SELECT id, imagem_url, telefone_emergencia FROM Plataforma WHERE id = @id"
+        .query<{ id: string; categoria: string; marca: string | null; telefone_emergencia: string | null }>(
+          "SELECT id, categoria, marca, telefone_emergencia FROM Plataforma WHERE id = @id"
         );
       if (atual.recordset.length === 0) {
         return reply.status(404).send({ erro: "Plataforma não encontrada." });
       }
-      const imagemAnteriorBlob = atual.recordset[0].imagem_url;
+      // Categoria desativada continua válida para quem JÁ a usa — só não pode ser escolhida de novo.
+      const erroCategoria = await validarCategoria(pool, parsed.data.categoria, atual.recordset[0].categoria);
+      if (erroCategoria) return reply.status(422).send({ erro: erroCategoria });
+      const marcaAnterior = atual.recordset[0].marca;
+      const marcaNova = parsed.data.marca?.trim() || null;
       // Lido ANTES do UPDATE para poder comparar e só auditar quando o número realmente muda.
       const telefoneEmergenciaAnterior = atual.recordset[0].telefone_emergencia;
       const telefoneEmergenciaNovo = parsed.data.telefoneEmergencia?.trim() || null;
@@ -314,26 +372,6 @@ export async function plataformasRoutes(app: FastifyInstance): Promise<void> {
       if (duplicado.recordset.length > 0) {
         return reply.status(409).send({ erro: "Já existe uma plataforma com este código." });
       }
-
-      // Upload feito fora da transação de banco (mesmo padrão de anexos.ts/criação acima).
-      // - imagemBase64 enviada: substitui a imagem atual (blob antigo é removido após o commit).
-      // - removerImagem = true (sem imagemBase64): apaga a imagem atual.
-      // - nenhum dos dois: mantém a imagem atual como está.
-      let novaImagemUrlBlob: string | null | undefined;
-      if (parsed.data.imagemBase64) {
-        try {
-          const salvo = await armazenamentoService.salvarFotoBase64(`plataformas/${id}`, parsed.data.imagemBase64);
-          novaImagemUrlBlob = salvo.url;
-        } catch (err) {
-          if (err instanceof MimeNaoPermitidoError || err instanceof ArquivoExcedeLimiteError) {
-            return reply.status(422).send({ erro: err.message });
-          }
-          throw err;
-        }
-      } else if (parsed.data.removerImagem) {
-        novaImagemUrlBlob = null;
-      }
-      const imagemUrlFinal = novaImagemUrlBlob !== undefined ? novaImagemUrlBlob : imagemAnteriorBlob;
 
       const transaction = pool.transaction();
       await transaction.begin();
@@ -349,7 +387,7 @@ export async function plataformasRoutes(app: FastifyInstance): Promise<void> {
           .input("risco", sql.VarChar, risco)
           .input("aprovacao_automatica", sql.Bit, parsed.data.aprovacaoAutomatica)
           .input("observacoes", sql.NVarChar, parsed.data.observacoes ?? null)
-          .input("imagem_url", sql.NVarChar, imagemUrlFinal)
+          .input("marca", sql.NVarChar, marcaNova)
           .input("tipo_equipamento", sql.NVarChar, parsed.data.tipoEquipamento ?? null)
           .input("altura_maxima_m", sql.Decimal(4, 1), parsed.data.alturaMaximaM ?? null)
           .input("capacidade_operadores", sql.Int, parsed.data.capacidadeOperadores ?? null)
@@ -364,7 +402,7 @@ export async function plataformasRoutes(app: FastifyInstance): Promise<void> {
                codigo = @codigo, nome = @nome, localizacao = @localizacao,
                capacidade = @capacidade, categoria = @categoria, risco = @risco,
                aprovacao_automatica = @aprovacao_automatica, observacoes = @observacoes,
-               imagem_url = @imagem_url, tipo_equipamento = @tipo_equipamento,
+               marca = @marca, tipo_equipamento = @tipo_equipamento,
                altura_maxima_m = @altura_maxima_m, capacidade_operadores = @capacidade_operadores,
                telefone_emergencia = @telefone_emergencia,
                inicio_automatico_padrao = @inicio_automatico_padrao,
@@ -376,7 +414,16 @@ export async function plataformasRoutes(app: FastifyInstance): Promise<void> {
         await registrarAuditoria(transaction, request.usuario!.sub, "editar_plataforma", id, {
           codigo,
           nome: parsed.data.nome,
+          categoria: parsed.data.categoria,
         });
+
+        if (marcaAnterior !== marcaNova) {
+          await registrarAuditoria(transaction, request.usuario!.sub, "alterar_marca_plataforma", id, {
+            codigo,
+            marcaAnterior,
+            marcaNova,
+          });
+        }
 
         /* Correção manual do horímetro (Admin). O formulário envia o horímetro atual em horas
            inteiras; só há correção quando o valor DIFERE do atual. Corrigir redefine o
@@ -421,17 +468,9 @@ export async function plataformasRoutes(app: FastifyInstance): Promise<void> {
         }
 
         await transaction.commit();
-        // Remove o blob antigo só depois do commit confirmar a troca/remoção (best-effort).
-        if (imagemAnteriorBlob && imagemAnteriorBlob !== imagemUrlFinal) {
-          await armazenamentoService.excluirArquivo(imagemAnteriorBlob).catch(() => undefined);
-        }
-        const completa = await buscarPlataformaPorId(pool, id);
-        return reply.status(200).send(await mapPlataforma(completa!));
+        return reply.status(200).send(await carregarPlataformaCompleta(pool, id));
       } catch (err) {
         await transaction.rollback();
-        if (novaImagemUrlBlob) {
-          await armazenamentoService.excluirArquivo(novaImagemUrlBlob).catch(() => undefined);
-        }
         const sqlErr = err as { number?: number };
         if (sqlErr.number && CONFLITO_UNIQUE_SQL_ERROS.has(sqlErr.number)) {
           return reply.status(409).send({ erro: "Já existe uma plataforma com este código." });
@@ -498,12 +537,319 @@ export async function plataformasRoutes(app: FastifyInstance): Promise<void> {
         // S10 (SDD §3.4): plataforma.status_alterado — Central de Operações e demais
         // telas com a grade de status aberta atualizam sem F5.
         publicarEventoGlobal("plataforma.status_alterado", { id, status });
-        const completa = await buscarPlataformaPorId(pool, id);
-        return reply.status(200).send(await mapPlataforma(completa!));
+        return reply.status(200).send(await carregarPlataformaCompleta(pool, id));
       } catch (err) {
         await transaction.rollback();
         throw err;
       }
     }
   );
+
+  // -------------------------------------------------------------------------
+  // Galeria (migration 0025): até 4 imagens, uma operação por requisição. Cada upload é
+  // independente — se a 3ª falhar, a 1ª e a 2ª continuam salvas, e reenviar só a que
+  // falhou não duplica nada. Todas respondem com a plataforma completa (galeria atual).
+  // -------------------------------------------------------------------------
+
+  app.post(
+    "/api/v1/plataformas/:id/imagens",
+    { preHandler: [autenticar, requireRole(["admin"])] },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      if (!UUID_REGEX.test(id)) return reply.status(404).send({ erro: "Plataforma não encontrada." });
+      const parsed = adicionarImagemPlataformaSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(422).send({ erro: "Dados inválidos.", detalhes: parsed.error.flatten() });
+      }
+      const pool = await getPool();
+
+      const plataforma = await buscarIdentificacao(pool, id);
+      if (!plataforma) return reply.status(404).send({ erro: "Plataforma não encontrada." });
+      // Checagem barata ANTES do upload (evita subir um arquivo que seria recusado); a
+      // garantia de verdade é a contagem com lock abaixo + CHECK/UNIQUE do banco.
+      const total = await pool
+        .request()
+        .input("id", sql.UniqueIdentifier, id)
+        .query<{ n: number }>("SELECT COUNT(*) AS n FROM PlataformaImagem WHERE plataforma_id = @id");
+      if (total.recordset[0].n >= LIMITE_IMAGENS_PLATAFORMA) {
+        return reply.status(409).send({ erro: MENSAGEM_LIMITE_IMAGENS });
+      }
+
+      const blobPath = await enviarImagemOuResponder(reply, id, parsed.data.imagemBase64);
+      if (!blobPath) return reply;
+
+      const transaction = pool.transaction();
+      await transaction.begin();
+      try {
+        const existentes = await transaction
+          .request()
+          .input("id", sql.UniqueIdentifier, id)
+          .query<{ ordem: number }>(
+            "SELECT ordem FROM PlataformaImagem WITH (UPDLOCK, HOLDLOCK) WHERE plataforma_id = @id ORDER BY ordem"
+          );
+        if (existentes.recordset.length >= LIMITE_IMAGENS_PLATAFORMA) {
+          await transaction.rollback();
+          await armazenamentoService.excluirArquivo(blobPath).catch(() => undefined);
+          return reply.status(409).send({ erro: MENSAGEM_LIMITE_IMAGENS });
+        }
+        const ordem = existentes.recordset.length;
+        const principal = ordem === 0;
+        const imagemId = randomUUID();
+        await transaction
+          .request()
+          .input("id", sql.UniqueIdentifier, imagemId)
+          .input("plataforma_id", sql.UniqueIdentifier, id)
+          .input("blob_path", sql.NVarChar, blobPath)
+          .input("ordem", sql.Int, ordem)
+          .input("principal", sql.Bit, principal)
+          .input("criado_por_id", sql.UniqueIdentifier, request.usuario!.sub)
+          .query(
+            `INSERT INTO PlataformaImagem (id, plataforma_id, blob_path, ordem, principal, criado_por_id)
+             VALUES (@id, @plataforma_id, @blob_path, @ordem, @principal, @criado_por_id)`
+          );
+        await registrarAuditoria(transaction, request.usuario!.sub, "adicionar_imagem_plataforma", id, {
+          ...plataforma,
+          imagemId,
+          posicao: ordem + 1,
+          principal,
+        });
+        await transaction.commit();
+        return reply.status(201).send(await carregarPlataformaCompleta(pool, id));
+      } catch (err) {
+        await transaction.rollback().catch(() => undefined);
+        await armazenamentoService.excluirArquivo(blobPath).catch(() => undefined);
+        const sqlErr = err as { number?: number };
+        // Dois uploads simultâneos disputando a mesma posição: o banco recusa o 5º.
+        if (sqlErr.number && CONFLITO_UNIQUE_SQL_ERROS.has(sqlErr.number)) {
+          return reply.status(409).send({ erro: MENSAGEM_LIMITE_IMAGENS });
+        }
+        throw err;
+      }
+    }
+  );
+
+  // Substituir: mesma posição e mesmo papel (principal ou não), arquivo novo.
+  app.put(
+    "/api/v1/plataformas/:id/imagens/:imagemId",
+    { preHandler: [autenticar, requireRole(["admin"])] },
+    async (request, reply) => {
+      const { id, imagemId } = request.params as { id: string; imagemId: string };
+      if (!UUID_REGEX.test(id) || !UUID_REGEX.test(imagemId)) {
+        return reply.status(404).send({ erro: "Imagem não encontrada." });
+      }
+      const parsed = adicionarImagemPlataformaSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(422).send({ erro: "Dados inválidos.", detalhes: parsed.error.flatten() });
+      }
+      const pool = await getPool();
+      const plataforma = await buscarIdentificacao(pool, id);
+      if (!plataforma) return reply.status(404).send({ erro: "Plataforma não encontrada." });
+
+      const blobPath = await enviarImagemOuResponder(reply, id, parsed.data.imagemBase64);
+      if (!blobPath) return reply;
+
+      const transaction = pool.transaction();
+      await transaction.begin();
+      let blobAnterior: string;
+      try {
+        const atual = await transaction
+          .request()
+          .input("id", sql.UniqueIdentifier, imagemId)
+          .input("plataforma_id", sql.UniqueIdentifier, id)
+          .query<{ blob_path: string; ordem: number; principal: boolean }>(
+            `SELECT blob_path, ordem, principal FROM PlataformaImagem WITH (UPDLOCK)
+             WHERE id = @id AND plataforma_id = @plataforma_id`
+          );
+        const imagem = atual.recordset[0];
+        if (!imagem) {
+          await transaction.rollback();
+          await armazenamentoService.excluirArquivo(blobPath).catch(() => undefined);
+          return reply.status(404).send({ erro: "Imagem não encontrada." });
+        }
+        blobAnterior = imagem.blob_path;
+        await transaction
+          .request()
+          .input("id", sql.UniqueIdentifier, imagemId)
+          .input("blob_path", sql.NVarChar, blobPath)
+          .query("UPDATE PlataformaImagem SET blob_path = @blob_path, criado_em = SYSUTCDATETIME() WHERE id = @id");
+        await registrarAuditoria(transaction, request.usuario!.sub, "substituir_imagem_plataforma", id, {
+          ...plataforma,
+          imagemId,
+          posicao: imagem.ordem + 1,
+          principal: imagem.principal,
+        });
+        await transaction.commit();
+      } catch (err) {
+        await transaction.rollback().catch(() => undefined);
+        await armazenamentoService.excluirArquivo(blobPath).catch(() => undefined);
+        throw err;
+      }
+      // Arquivo antigo só sai do storage depois do commit (best-effort, sem órfão no caminho feliz).
+      await armazenamentoService.excluirArquivo(blobAnterior).catch(() => undefined);
+      return reply.status(200).send(await carregarPlataformaCompleta(pool, id));
+    }
+  );
+
+  app.delete(
+    "/api/v1/plataformas/:id/imagens/:imagemId",
+    { preHandler: [autenticar, requireRole(["admin"])] },
+    async (request, reply) => {
+      const { id, imagemId } = request.params as { id: string; imagemId: string };
+      if (!UUID_REGEX.test(id) || !UUID_REGEX.test(imagemId)) {
+        return reply.status(404).send({ erro: "Imagem não encontrada." });
+      }
+      const pool = await getPool();
+      const plataforma = await buscarIdentificacao(pool, id);
+      if (!plataforma) return reply.status(404).send({ erro: "Plataforma não encontrada." });
+
+      const transaction = pool.transaction();
+      await transaction.begin();
+      let blobRemovido: string;
+      try {
+        const atual = await transaction
+          .request()
+          .input("id", sql.UniqueIdentifier, imagemId)
+          .input("plataforma_id", sql.UniqueIdentifier, id)
+          .query<{ blob_path: string; ordem: number; principal: boolean }>(
+            `SELECT blob_path, ordem, principal FROM PlataformaImagem WITH (UPDLOCK)
+             WHERE id = @id AND plataforma_id = @plataforma_id`
+          );
+        const imagem = atual.recordset[0];
+        if (!imagem) {
+          await transaction.rollback();
+          return reply.status(404).send({ erro: "Imagem não encontrada." });
+        }
+        blobRemovido = imagem.blob_path;
+        await transaction
+          .request()
+          .input("id", sql.UniqueIdentifier, imagemId)
+          .query("DELETE FROM PlataformaImagem WHERE id = @id");
+        // Ordem volta a ser contígua (0..n-1) e a 1ª passa a ser a principal — se a removida
+        // era a principal, a seguinte assume a capa.
+        await reordenarGaleria(transaction, id, null);
+        await registrarAuditoria(transaction, request.usuario!.sub, "remover_imagem_plataforma", id, {
+          ...plataforma,
+          imagemId,
+          posicao: imagem.ordem + 1,
+          eraPrincipal: imagem.principal,
+        });
+        await transaction.commit();
+      } catch (err) {
+        await transaction.rollback().catch(() => undefined);
+        throw err;
+      }
+      await armazenamentoService.excluirArquivo(blobRemovido).catch(() => undefined);
+      return reply.status(200).send(await carregarPlataformaCompleta(pool, id));
+    }
+  );
+
+  // A principal vai para a posição 1 (capa); as demais mantêm a ordem relativa.
+  app.patch(
+    "/api/v1/plataformas/:id/imagens/:imagemId/principal",
+    { preHandler: [autenticar, requireRole(["admin"])] },
+    async (request, reply) => {
+      const { id, imagemId } = request.params as { id: string; imagemId: string };
+      if (!UUID_REGEX.test(id) || !UUID_REGEX.test(imagemId)) {
+        return reply.status(404).send({ erro: "Imagem não encontrada." });
+      }
+      const pool = await getPool();
+      const plataforma = await buscarIdentificacao(pool, id);
+      if (!plataforma) return reply.status(404).send({ erro: "Plataforma não encontrada." });
+
+      const transaction = pool.transaction();
+      await transaction.begin();
+      try {
+        const atual = await transaction
+          .request()
+          .input("id", sql.UniqueIdentifier, imagemId)
+          .input("plataforma_id", sql.UniqueIdentifier, id)
+          .query<{ principal: boolean }>(
+            `SELECT principal FROM PlataformaImagem WITH (UPDLOCK, HOLDLOCK)
+             WHERE id = @id AND plataforma_id = @plataforma_id`
+          );
+        const imagem = atual.recordset[0];
+        if (!imagem) {
+          await transaction.rollback();
+          return reply.status(404).send({ erro: "Imagem não encontrada." });
+        }
+        if (!imagem.principal) {
+          await reordenarGaleria(transaction, id, imagemId);
+          await registrarAuditoria(transaction, request.usuario!.sub, "definir_imagem_principal", id, {
+            ...plataforma,
+            imagemId,
+          });
+        }
+        await transaction.commit();
+      } catch (err) {
+        await transaction.rollback().catch(() => undefined);
+        throw err;
+      }
+      return reply.status(200).send(await carregarPlataformaCompleta(pool, id));
+    }
+  );
+}
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MENSAGEM_LIMITE_IMAGENS = `Limite de ${LIMITE_IMAGENS_PLATAFORMA} imagens atingido.`;
+
+// Snapshot de identificação para a auditoria (a plataforma pode ser renomeada depois).
+async function buscarIdentificacao(
+  pool: Awaited<ReturnType<typeof getPool>>,
+  id: string
+): Promise<{ codigo: string; nome: string } | null> {
+  const result = await pool
+    .request()
+    .input("id", sql.UniqueIdentifier, id)
+    .query<{ codigo: string; nome: string }>("SELECT codigo, nome FROM Plataforma WHERE id = @id");
+  return result.recordset[0] ?? null;
+}
+
+/* Valida (JPG/PNG/WEBP por magic bytes, até 10 MB) e grava no armazenamento FORA da transação,
+   mesmo padrão de anexos. Em caso de arquivo recusado já responde 422 e devolve null. */
+async function enviarImagemOuResponder(
+  reply: import("fastify").FastifyReply,
+  plataformaId: string,
+  imagemBase64: string
+): Promise<string | null> {
+  let validada: { buffer: Buffer; mimeReal: string };
+  try {
+    validada = validarImagemDataUrl(imagemBase64, MIMES_IMAGEM_PLATAFORMA);
+  } catch (err) {
+    if (
+      err instanceof FormatoImagemNaoPermitidoError ||
+      err instanceof ArquivoExcedeLimiteError ||
+      err instanceof MimeNaoPermitidoError
+    ) {
+      await reply.status(422).send({ erro: err.message });
+      return null;
+    }
+    await reply.status(422).send({ erro: "Formato de imagem inválido." });
+    return null;
+  }
+  // Pasta em minúsculas: o id pode chegar em maiúsculas (GUID do SQL Server) e a pasta física
+  // precisa ser a mesma em Windows e Linux.
+  const salvo = await armazenamentoService.salvarArquivo(
+    `plataformas/${plataformaId.toLowerCase()}`,
+    validada.buffer,
+    validada.mimeReal
+  );
+  return salvo.url;
+}
+
+/* Renumera a galeria para 0..n-1 numa única instrução (o UNIQUE de ordem e o índice filtrado
+   da principal são verificados no fim do statement). `primeiraId` = imagem que deve virar a
+   principal; null = mantém a ordem atual. A principal é sempre a de ordem 0. */
+async function reordenarGaleria(transaction: sql.Transaction, plataformaId: string, primeiraId: string | null) {
+  await transaction
+    .request()
+    .input("plataforma_id", sql.UniqueIdentifier, plataformaId)
+    .input("primeira_id", sql.UniqueIdentifier, primeiraId)
+    .query(
+      `WITH ordenada AS (
+         SELECT ordem, principal,
+                ROW_NUMBER() OVER (ORDER BY CASE WHEN id = @primeira_id THEN 0 ELSE 1 END, ordem) - 1 AS nova
+         FROM PlataformaImagem WHERE plataforma_id = @plataforma_id
+       )
+       UPDATE ordenada SET ordem = nova, principal = CASE WHEN nova = 0 THEN 1 ELSE 0 END`
+    );
 }

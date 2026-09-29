@@ -441,6 +441,80 @@ export const EVENTOS_AUDITORIA: Record<string, AuditoriaEventoMeta> = {
     icone: "Construction",
     descricao: "Contato acionado em caso de problema com o equipamento durante o uso.",
   },
+
+  // Marca, galeria e categorias de equipamento (migration 0025).
+  alterar_marca_plataforma: {
+    titulo: "Marca da plataforma alterada",
+    categoria: "Frota",
+    tom: "neutro",
+    relevancia: "normal",
+    icone: "Pencil",
+  },
+  adicionar_imagem_plataforma: {
+    titulo: "Imagem adicionada à plataforma",
+    categoria: "Frota",
+    tom: "neutro",
+    relevancia: "informativa",
+    icone: "Paperclip",
+  },
+  substituir_imagem_plataforma: {
+    titulo: "Imagem da plataforma substituída",
+    categoria: "Frota",
+    tom: "neutro",
+    relevancia: "informativa",
+    icone: "Paperclip",
+  },
+  remover_imagem_plataforma: {
+    titulo: "Imagem removida da plataforma",
+    categoria: "Frota",
+    tom: "neutro",
+    relevancia: "normal",
+    icone: "Trash2",
+  },
+  definir_imagem_principal: {
+    titulo: "Imagem principal da plataforma alterada",
+    categoria: "Frota",
+    tom: "neutro",
+    relevancia: "informativa",
+    icone: "Paperclip",
+  },
+  criar_categoria_equipamento: {
+    titulo: "Categoria de equipamento criada",
+    categoria: "Configurações",
+    tom: "neutro",
+    relevancia: "normal",
+    icone: "Settings",
+  },
+  editar_categoria_equipamento: {
+    titulo: "Categoria de equipamento renomeada",
+    categoria: "Configurações",
+    tom: "neutro",
+    relevancia: "normal",
+    icone: "Pencil",
+  },
+  ativar_categoria_equipamento: {
+    titulo: "Categoria de equipamento ativada",
+    categoria: "Configurações",
+    tom: "sucesso",
+    relevancia: "normal",
+    icone: "CircleCheck",
+  },
+  desativar_categoria_equipamento: {
+    titulo: "Categoria de equipamento desativada",
+    categoria: "Configurações",
+    tom: "atencao",
+    relevancia: "normal",
+    icone: "Ban",
+    descricao: "Deixa de aparecer em novos cadastros; plataformas que já a usam não mudam.",
+  },
+  excluir_categoria_equipamento: {
+    titulo: "Categoria de equipamento excluída",
+    categoria: "Configurações",
+    tom: "atencao",
+    relevancia: "normal",
+    icone: "Trash2",
+    descricao: "Só é possível excluir categoria que nenhuma plataforma usa.",
+  },
 };
 
 /** Meta usada quando o código gravado ainda não tem entrada no catálogo (ver `traduzirAcao`). */
@@ -469,6 +543,7 @@ export const RECURSOS_AUDITORIA: Record<string, string> = {
   Ocorrencia: "Ocorrência",
   Anexo: "Anexo",
   ConfiguracaoSistema: "Configurações",
+  CategoriaEquipamento: "Categoria de equipamento",
 };
 
 /**
@@ -504,6 +579,12 @@ export const CAMPOS_AUDITORIA: Record<string, string> = {
   telefoneContato: "Telefone de contato",
   telefoneAnterior: "Telefone anterior",
   telefoneNovo: "Novo telefone",
+  marcaAnterior: "Marca anterior",
+  marcaNova: "Nova marca",
+  nomeAnterior: "Nome anterior",
+  nomeNovo: "Novo nome",
+  posicao: "Posição na galeria",
+  eraPrincipal: "Era a imagem principal",
   tipo: "Tipo",
   totalImagens: "Imagens",
   email: "E-mail",

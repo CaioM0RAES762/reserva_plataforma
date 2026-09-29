@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CATEGORIAS_PLATAFORMA, RISCOS_PLATAFORMA, STATUS_PLATAFORMA } from "../enums.js";
+import { RISCOS_PLATAFORMA, STATUS_PLATAFORMA } from "../enums.js";
 import { MENSAGEM_TELEFONE_INVALIDO, TELEFONE_TAMANHO_MAXIMO, telefoneValido } from "../telefone.js";
 
 // Mesmo formato de S11 (Anexo/checklist) — data URL base64, mime real verificado no
@@ -12,6 +12,24 @@ export const eventoAtivoPlataformaSchema = z.object({
 });
 export type EventoAtivoPlataforma = z.infer<typeof eventoAtivoPlataformaSchema>;
 
+/* Até 4 imagens por plataforma (migration 0025). A principal é sempre a de ordem 0 e é a
+   capa do card; `url` é URL de leitura assinada de curta duração, nunca a chave do arquivo. */
+export const LIMITE_IMAGENS_PLATAFORMA = 4;
+export const MIMES_IMAGEM_PLATAFORMA = ["image/jpeg", "image/png", "image/webp"] as const;
+
+export const imagemPlataformaSchema = z.object({
+  id: z.string().uuid(),
+  url: z.string().nullable(),
+  ordem: z.number().int(),
+  principal: z.boolean(),
+});
+export type ImagemPlataforma = z.infer<typeof imagemPlataformaSchema>;
+
+export const adicionarImagemPlataformaSchema = z.object({
+  imagemBase64: z.string().regex(DATA_URL_REGEX, "Formato inválido — esperado data URL base64."),
+});
+export type AdicionarImagemPlataformaInput = z.infer<typeof adicionarImagemPlataformaSchema>;
+
 export const plataformaPublicaSchema = z.object({
   id: z.string().uuid(),
   codigo: z.string(),
@@ -23,12 +41,19 @@ export const plataformaPublicaSchema = z.object({
   telefoneEmergencia: z.string().nullable(),
   capacidade: z.number().int().nullable(),
   status: z.enum(STATUS_PLATAFORMA),
-  categoria: z.enum(CATEGORIAS_PLATAFORMA),
+  /* Código da categoria (CategoriaEquipamento, administrável — migration 0025). Os seis
+     códigos históricos continuam valendo; o nome exibido vem de `categoriaNome`. */
+  categoria: z.string(),
+  categoriaNome: z.string().nullable(),
+  categoriaAtiva: z.boolean(),
+  // Texto livre e opcional (Dingli, JLG, Genie...).
+  marca: z.string().nullable(),
   risco: z.enum(RISCOS_PLATAFORMA),
   aprovacaoAutomatica: z.boolean(),
   observacoes: z.string().nullable(),
-  // SAS de leitura, curta duração (RNF-09) — gerado sob demanda, nunca persistido.
+  // URL de leitura da imagem PRINCIPAL — derivada de `imagens`, nunca uma segunda fonte.
   imagemUrl: z.string().nullable(),
+  imagens: z.array(imagemPlataformaSchema),
   tipoEquipamento: z.string().nullable(),
   alturaMaximaM: z.number().nullable(),
   capacidadeOperadores: z.number().int().nullable(),
@@ -70,7 +95,9 @@ export const criarPlataformaSchema = z.object({
     .refine((valor) => valor === "" || telefoneValido(valor), MENSAGEM_TELEFONE_INVALIDO)
     .optional(),
   capacidade: z.number().int().positive().optional(),
-  categoria: z.enum(CATEGORIAS_PLATAFORMA).default("outro"),
+  // Validada no backend contra CategoriaEquipamento (existente e ativa).
+  categoria: z.string().trim().min(1, "Selecione a categoria.").max(20).default("elevatoria"),
+  marca: z.string().trim().max(60, "Marca deve ter no máximo 60 caracteres.").optional(),
   // RN: risco tem default por categoria (SDD §2.4) — quando omitido, o backend aplica
   // RISCO_PADRAO_POR_CATEGORIA; quando informado, o Admin pode sobrescrever.
   risco: z.enum(RISCOS_PLATAFORMA).optional(),
@@ -80,10 +107,7 @@ export const criarPlataformaSchema = z.object({
   alturaMaximaM: z.number().positive().max(999).optional(),
   capacidadeOperadores: z.number().int().positive().max(50).optional(),
   horimetroHoras: z.number().int().nonnegative().optional(),
-  // Imagem opcional do equipamento — sem imagem, o card exibe placeholder.
-  imagemBase64: z.string().regex(DATA_URL_REGEX, "Formato inválido — esperado data URL base64.").optional(),
-  // Só relevante na edição: remove a imagem atual quando nenhuma nova é enviada.
-  removerImagem: z.boolean().optional(),
+  // Imagens NÃO vêm aqui: são geridas uma a uma em /plataformas/:id/imagens (até 4).
   /* Padrões de automação herdados por novas reservas desta plataforma. Default `true`:
      iniciar e concluir por horário é o comportamento normal do fluxo, não um opt-in. */
   inicioAutomaticoPadrao: z.boolean().default(true),
@@ -106,3 +130,31 @@ export const dashboardKpisSchema = z.object({
   disponiveis: z.number().int().nonnegative(),
 });
 export type DashboardKpis = z.infer<typeof dashboardKpisSchema>;
+
+// ---------------------------------------------------------------------------
+// Categorias de equipamento (migration 0025) — administradas pelo Admin em Configurações.
+// ---------------------------------------------------------------------------
+
+export const categoriaEquipamentoSchema = z.object({
+  id: z.string().uuid(),
+  codigo: z.string(),
+  nome: z.string(),
+  ativo: z.boolean(),
+  // Plataformas que usam a categoria — informativo (desativar não afeta as existentes).
+  emUso: z.number().int().nonnegative(),
+});
+export type CategoriaEquipamento = z.infer<typeof categoriaEquipamentoSchema>;
+
+const nomeCategoriaSchema = z
+  .string()
+  .trim()
+  .min(2, "Nome deve ter no mínimo 2 caracteres.")
+  .max(60, "Nome deve ter no máximo 60 caracteres.");
+
+export const criarCategoriaEquipamentoSchema = z.object({ nome: nomeCategoriaSchema });
+export type CriarCategoriaEquipamentoInput = z.infer<typeof criarCategoriaEquipamentoSchema>;
+
+export const editarCategoriaEquipamentoSchema = z
+  .object({ nome: nomeCategoriaSchema.optional(), ativo: z.boolean().optional() })
+  .refine((v) => v.nome !== undefined || v.ativo !== undefined, "Nada para alterar.");
+export type EditarCategoriaEquipamentoInput = z.infer<typeof editarCategoriaEquipamentoSchema>;

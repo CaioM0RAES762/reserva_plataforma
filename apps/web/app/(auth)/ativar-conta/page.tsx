@@ -11,6 +11,7 @@ import { CodeField, PasswordField, SelectField, TextField } from "../../../compo
 import { PasswordStrength, senhaAtendeRequisitos } from "../../../components/auth/PasswordStrength";
 import { useResendCooldown } from "../../../components/auth/useResendCooldown";
 import { mascararEmail } from "../../../components/auth/mascararEmail";
+import { DicaCaixaOutros } from "../../../components/auth/DicaCaixaOutros";
 import { apiFetch, mensagemDeErro } from "../../../lib/api";
 
 const ETAPAS = ["Identificação", "Código e senha", "Conta ativa"];
@@ -348,6 +349,7 @@ export default function AtivarContaPage() {
               <span className={styles.maskedEmail}>{mascararEmail(email)}</span>. Informe-o e crie a
               senha do seu primeiro acesso.
             </p>
+            <DicaCaixaOutros />
           </div>
 
           <form className={styles.form} onSubmit={handleAtivar} noValidate>

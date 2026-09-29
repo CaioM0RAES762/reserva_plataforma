@@ -339,3 +339,34 @@ select.inputBase {
     line-height: 1.25;
   }
 }
+
+/* ── Dica "aba Outros" do Outlook (fluxos com código por e-mail) ─────────────
+   Tom de dica, não de alerta: cinza da interface, filete à esquerda discreto. */
+.dicaOutros {
+  margin-top: 14px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 19px;
+  color: var(--muted-foreground);
+  background: color-mix(in oklab, var(--muted-foreground) 6%, transparent);
+  border-left: 2px solid color-mix(in oklab, var(--muted-foreground) 35%, transparent);
+  border-radius: 4px;
+}
+.dicaOutros strong {
+  color: var(--foreground);
+  font-weight: 500;
+}
+.dicaOutrosIcone {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.dicaOutrosCurta {
+  display: none;
+}
+@media (max-width: 420px) {
+  .dicaOutrosLonga { display: none; }
+  .dicaOutrosCurta { display: inline; }
+}

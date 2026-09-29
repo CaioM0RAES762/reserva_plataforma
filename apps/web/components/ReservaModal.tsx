@@ -50,8 +50,7 @@ export interface ReservaFormValues {
   recorrencia?: { quantidadeOcorrencias: number };
   inicioAutomatico: boolean;
   fimAutomatico: boolean;
-  // S14 (RF-RES-01): só preenchido quando quem solicita é Admin (sem setor_id próprio,
-  // RN-USR-01) — ver seletor de "Setor solicitante" mais abaixo.
+  // Setor solicitante escolhido no formulário (padrão: o setor do usuário) — sempre enviado.
   setorId?: string;
   /* Só enviado quando o setor da reserva é "Terceirizados" (setorExigeEmpresaTerceirizada);
      já normalizado (trim + espaços colapsados). Omitido em setores internos — o backend
@@ -100,12 +99,16 @@ export interface ReservaValoresIniciais {
   data?: string;
   horaInicio?: string;
   horaFim?: string;
+  /** "Reservar novamente": setor da reserva anterior, usado como padrão do seletor. */
+  setorId?: string;
 }
 
 interface ReservaModalProps {
   usuarioId: string;
   solicitanteNome: string;
   setorNome: string | null;
+  /** Setor do usuário logado (sessão) — padrão do "Setor solicitante" numa nova reserva. */
+  setorId: string | null;
   /** Telefone cadastrado no perfil do usuário logado (GET /conta) — preenche o contato
    *  automaticamente; ausente para contas anteriores à migration 0021 (fallback abaixo). */
   telefonePerfil?: string | null;
@@ -221,6 +224,7 @@ export function ReservaModal({
   usuarioId,
   solicitanteNome,
   setorNome,
+  setorId,
   telefonePerfil,
   onClose,
   onSalvar,
@@ -288,12 +292,12 @@ export function ReservaModal({
   const [fimAutomatico, setFimAutomatico] = useState(true);
   const [automacaoTocada, setAutomacaoTocada] = useState(false);
 
-  // S14 (RF-RES-01): Admin não tem setor_id de sessão (RN-USR-01) — precisa escolher o
-  // setor de destino da reserva. `setorNome === null` é como o resto do app já identifica
-  // "sou Admin" nesta tela (ver Sidebar/Topbar).
-  const exigeSelecaoDeSetor = setorNome === null;
+  // Setor solicitante: campo de todo perfil. O setor do usuário (ou, em "Reservar novamente",
+  // o da reserva anterior) é só o PADRÃO, definido uma única vez na abertura — o modal é
+  // montado a cada abertura, então reabrir volta ao padrão. Depois disso, só o próprio
+  // usuário muda a escolha (aoTrocarSetor); nenhum efeito a sobrescreve.
   const [setores, setSetores] = useState<SetorOpcao[]>([]);
-  const [setorSelecionadoId, setSetorSelecionadoId] = useState("");
+  const [setorSelecionadoId, setSetorSelecionadoId] = useState(() => valoresIniciais?.setorId ?? setorId ?? "");
 
   const [empresa, setEmpresa] = useState("");
   const [empresaTocada, setEmpresaTocada] = useState(false);
@@ -337,11 +341,19 @@ export function ReservaModal({
   }, [carregarPlataformas]);
 
   useEffect(() => {
-    if (!exigeSelecaoDeSetor) return;
     apiFetch<SetorOpcao[]>("/api/v1/setores")
-      .then(setSetores)
+      .then((lista) => {
+        setSetores(lista);
+        // Padrão que não está entre os setores ativos (ex.: setor da reserva anterior foi
+        // desativado): cai para o setor do usuário, ou fica sem seleção. Só troca um valor
+        // inválido — uma escolha feita no select é sempre de um setor da lista.
+        setSetorSelecionadoId((atual) =>
+          !atual || lista.some((s) => s.id === atual) ? atual : lista.some((s) => s.id === setorId) ? setorId! : ""
+        );
+      })
       .catch(() => setSetores([]));
-  }, [exigeSelecaoDeSetor]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- carrega uma vez por abertura
+  }, []);
 
   // Uma consulta de disponibilidade POR DATA (todas as plataformas), compartilhada com a
   // timeline pelo cache do hook. A plataforma escolhida é só um filtro local sobre essa
@@ -425,7 +437,8 @@ export function ReservaModal({
   // Empresa terceirizada: decidida pelo NOME do setor efetivo (o do usuário, ou o que o
   // Admin escolheu) — não existe flag no banco. Mesma função que a API usa.
   const setorSelecionado = setores.find((s) => s.id === setorSelecionadoId) ?? null;
-  const setorEfetivoNome = exigeSelecaoDeSetor ? (setorSelecionado?.nome ?? null) : setorNome;
+  // Enquanto a lista carrega, o padrão (setor do usuário) já tem nome conhecido.
+  const setorEfetivoNome = setorSelecionado?.nome ?? (setorSelecionadoId && setorSelecionadoId === setorId ? setorNome : null);
   const exigeEmpresa = setorExigeEmpresaTerceirizada(setorEfetivoNome);
   const erroEmpresa = validarEmpresaTerceirizada(empresa, exigeEmpresa);
   const erroEmpresaExibido = (empresaTocada || tentouEnviar ? erroEmpresa : null) ?? erroEmpresaServidor;
@@ -477,7 +490,7 @@ export function ReservaModal({
   // Primeiro item que falta, na ordem em que o formulário é preenchido. Vira o texto ao lado
   // do botão desabilitado e a mensagem de um envio por Enter.
   const motivoBloqueio: string | null =
-    exigeSelecaoDeSetor && !setorSelecionadoId
+    !setorSelecionadoId
       ? "Selecione o setor solicitante."
       : exigeEmpresa && erroEmpresa
         ? "Informe a empresa terceirizada."
@@ -635,7 +648,7 @@ export function ReservaModal({
         motivo: motivo.trim(),
         prioridade,
         recorrencia: repetirSemanalmente ? { quantidadeOcorrencias: ocorrenciasNum } : undefined,
-        setorId: exigeSelecaoDeSetor ? setorSelecionadoId : undefined,
+        setorId: setorSelecionadoId,
         inicioAutomatico,
         fimAutomatico,
         // Só quando exigida: enviar o campo em setor interno é dizer algo que não vale.
@@ -730,11 +743,11 @@ export function ReservaModal({
           </div>
 
           <div className={styles.body}>
-            {/* Quem solicita e o setor são fatos da sessão: uma linha de leitura, não
-                campos. Admin não tem setor de sessão e escolhe o de destino. */}
+            {/* Quem solicita é fato da sessão (linha de leitura). O setor do usuário aparece
+                aqui como contexto, mas o setor DA RESERVA é o campo logo abaixo. */}
             <p className={styles.contexto} data-testid="reserva-solicitante">
               <strong>{solicitanteNome}</strong>
-              {!exigeSelecaoDeSetor && (
+              {setorNome && (
                 <>
                   <span aria-hidden="true">·</span>
                   <span>{setorNome}</span>
@@ -742,27 +755,32 @@ export function ReservaModal({
               )}
             </p>
 
-            {exigeSelecaoDeSetor && (
-              <div className={styles.campo}>
-                <label htmlFor="rm-setor" className={styles.rotulo}>
-                  Setor solicitante *
-                </label>
-                <select
-                  id="rm-setor"
-                  className={styles.controle}
-                  value={setorSelecionadoId}
-                  onChange={(e) => aoTrocarSetor(e.target.value)}
-                  aria-required="true"
-                >
-                  <option value="">Selecione o setor</option>
-                  {setores.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.nome}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
+            <div className={styles.campo}>
+              <label htmlFor="rm-setor" className={styles.rotulo}>
+                Setor solicitante *
+              </label>
+              <select
+                id="rm-setor"
+                className={styles.controle}
+                value={setorSelecionadoId}
+                onChange={(e) => aoTrocarSetor(e.target.value)}
+                aria-required="true"
+              >
+                <option value="">Selecione o setor</option>
+                {/* Antes de a lista chegar, o padrão já aparece pelo nome (sem "piscar" vazio). */}
+                {setorSelecionadoId &&
+                  setorSelecionadoId === setorId &&
+                  setorNome &&
+                  !setores.some((s) => s.id === setorSelecionadoId) && (
+                    <option value={setorSelecionadoId}>{setorNome}</option>
+                  )}
+                {setores.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.nome}
+                  </option>
+                ))}
+              </select>
+            </div>
 
             {/* Só existe para o setor Terceirizados; ao sair dele o estado é zerado (ver
                 aoTrocarSetor), não apenas o campo escondido. */}

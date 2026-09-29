@@ -187,6 +187,14 @@ export async function limparResiduos(prefixos: PrefixosResiduos): Promise<void> 
   const reservasDeTeste = `SELECT id FROM Reserva
     WHERE plataforma_id IN (SELECT id FROM Plataforma WHERE codigo LIKE @plataforma)
        OR solicitante_id IN (SELECT id FROM Usuario WHERE email LIKE @email)`;
+  // Comentários (com imagens/NC) e anexos das reservas de teste saem antes (FK para Reserva).
+  const comentariosDeTeste = `SELECT id FROM Comentario WHERE reserva_id IN (${reservasDeTeste})`;
+  await executar(`DELETE FROM ComentarioImagem WHERE comentario_id IN (${comentariosDeTeste})`);
+  await executar(`DELETE FROM NaoConformidade WHERE comentario_id IN (${comentariosDeTeste})`);
+  await executar(`DELETE FROM LogAuditoria WHERE entidade_id IN (${comentariosDeTeste})`);
+  await executar(`DELETE FROM Comentario WHERE id IN (${comentariosDeTeste})`);
+  await executar(`DELETE FROM LogAuditoria WHERE entidade_id IN (SELECT id FROM Anexo WHERE reserva_id IN (${reservasDeTeste}))`);
+  await executar(`DELETE FROM Anexo WHERE reserva_id IN (${reservasDeTeste})`);
   await executar(`DELETE FROM LogAuditoria WHERE entidade_id IN (${reservasDeTeste})`);
   await executar(`DELETE FROM Reserva WHERE id IN (${reservasDeTeste})`);
   // Séries semanais criadas pelos usuários de teste: sem isto a FK para Usuario impedia o
@@ -220,6 +228,8 @@ export async function limparResiduos(prefixos: PrefixosResiduos): Promise<void> 
   await executar(
     `UPDATE ConfiguracaoSistema SET atualizado_por_id = NULL WHERE atualizado_por_id IN (${usuariosDeTeste})`
   );
+  // Imagem de plataforma enviada por usuário de teste (FK criado_por_id): solta a autoria.
+  await executar(`UPDATE PlataformaImagem SET criado_por_id = NULL WHERE criado_por_id IN (${usuariosDeTeste})`);
   await executar(`DELETE FROM LogAuditoria WHERE usuario_id IN (${usuariosDeTeste})`);
   await executar(`DELETE FROM Notificacao WHERE usuario_id IN (${usuariosDeTeste})`);
   await executar(`DELETE FROM CodigoVerificacao WHERE usuario_id IN (${usuariosDeTeste})`);

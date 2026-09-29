@@ -16,7 +16,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
             </span>
             <span className={styles.brandText}>
               <span className={styles.brandName}>PlataformaRes</span>
-              <span className={styles.brandSub}>Gestão de equipamentos</span>
+              <span className={styles.brandSub}>Gestão de reservas</span>
             </span>
           </Link>
         </header>

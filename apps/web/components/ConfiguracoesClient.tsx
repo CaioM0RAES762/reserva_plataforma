@@ -5,6 +5,7 @@ import { Check } from "lucide-react";
 import styles from "./Admin.module.css";
 import local from "./ConfiguracoesClient.module.css";
 import { ApiRequestError, apiFetch } from "../lib/api";
+import { CategoriasEquipamentoSecao } from "./CategoriasEquipamentoSecao";
 
 interface Configuracao {
   chave: string;
@@ -352,6 +353,8 @@ export function ConfiguracoesClient() {
           )}
         </div>
       )}
+
+      <CategoriasEquipamentoSecao />
     </section>
   );
 }

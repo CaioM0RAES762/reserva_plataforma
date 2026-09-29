@@ -9,7 +9,7 @@ import {
   removerJobsLegadosDeEscalonamento,
 } from "./services/queue.js";
 import { logConfiguracaoEmail, testarConexaoEmail, validarConfiguracaoEmailNoBoot } from "./services/email.service.js";
-import { testarConexaoStorage } from "./services/storage.service.js";
+import { prepararArmazenamento } from "./services/storage.service.js";
 
 async function main() {
   // Falha alto e claro ANTES de abrir a porta: se EMAIL_PROVIDER foi declarado
@@ -53,18 +53,17 @@ async function main() {
     })
     .catch(() => undefined);
 
-  // Mesmo diagnóstico best-effort, para o Blob Storage (upload de anexos/comentários/
-  // checklist). Em dev, o alvo é o emulador Azurite local (127.0.0.1:10000) — se ele não
-  // estiver rodando, é aqui que isso aparece, em vez de só no primeiro upload de um usuário.
-  testarConexaoStorage()
+  // Armazenamento local de uploads (STORAGE_ROOT): cria a pasta se ainda não existir e confere
+  // permissão de escrita. Best-effort — um problema aqui aparece no log do boot, em vez de só
+  // no primeiro upload de um usuário.
+  prepararArmazenamento()
     .then((resultado) => {
       if (resultado.ok) {
-        app.log.info("[STORAGE CONFIG] conexão com o Blob Storage verificada com sucesso");
+        app.log.info({ raiz: resultado.raiz }, "[STORAGE] pasta de arquivos pronta");
       } else {
         app.log.warn(
-          { detalhe: resultado.detalhe },
-          "[STORAGE CONFIG] Blob Storage inacessível no boot — uploads de imagem vão falhar até isso ser corrigido " +
-            "(em dev: confira se o Azurite está rodando, `npx azurite-blob --location apps/api/.azurite`)"
+          { raiz: resultado.raiz, detalhe: resultado.detalhe },
+          "[STORAGE] pasta de arquivos sem permissão de leitura/escrita — uploads vão falhar até isso ser corrigido"
         );
       }
     })

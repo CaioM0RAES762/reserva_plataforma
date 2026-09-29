@@ -577,3 +577,175 @@
 @media (max-width: 900px) {
   .formGrid { grid-template-columns: 1fr; }
 }
+
+/* ---------- Carrossel do card (até 4 imagens) ----------
+   Setas discretas sobre a foto, visíveis ao passar o mouse/focar (sempre no toque);
+   indicador "1 / 4" no canto inferior esquerdo (normas ficam à direita). */
+.cardImageBotao {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: zoom-in;
+}
+.cardImageBotao:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
+}
+
+.cardSeta {
+  position: absolute;
+  top: 50%;
+  width: 28px;
+  height: 28px;
+  margin-top: -14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: var(--ink);
+  background: color-mix(in oklch, var(--paper-elev) 86%, transparent);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.14s, background 0.12s;
+}
+.cardSetaAnterior { left: 8px; }
+.cardSetaProxima { right: 8px; }
+.cardImageWrap:hover .cardSeta,
+.cardSeta:focus-visible { opacity: 1; }
+.cardSeta:hover { background: var(--paper-elev); }
+@media (hover: none) {
+  .cardSeta { opacity: 0.92; }
+}
+
+.cardIndicador {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: var(--text-micro);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--paper);
+  background: color-mix(in oklch, var(--ink) 62%, transparent);
+  pointer-events: none;
+}
+
+/* ---------- Galeria do formulário (até 4 imagens) ---------- */
+.galeria { margin-bottom: 18px; }
+.galeriaCabecalho {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.galeriaTitulo {
+  font-size: var(--text-micro);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--ink-muted);
+}
+.galeriaSub { font-size: var(--text-meta); color: var(--ink-muted); }
+
+.galeriaLista {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.galeriaItem {
+  position: relative;
+  width: 112px;
+  height: 84px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--ind-radius-sm);
+  overflow: hidden;
+  background: color-mix(in oklch, var(--ink) 3%, transparent);
+}
+.galeriaItemPrincipal { border-color: var(--ink-muted); }
+.galeriaItemErro { border-color: var(--hazard); }
+
+.galeriaMiniatura {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: zoom-in;
+}
+.galeriaMiniatura img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.galeriaAcoes {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  gap: 3px;
+}
+.galeriaAcao {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: var(--ink);
+  background: color-mix(in oklch, var(--paper-elev) 90%, transparent);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+}
+.galeriaAcao:hover { background: var(--paper-elev); }
+.galeriaAcaoPerigo:hover { color: var(--hazard); }
+
+.galeriaSelo {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--paper);
+  background: color-mix(in oklch, var(--ink) 72%, transparent);
+  pointer-events: none;
+}
+.galeriaSeloNova { background: color-mix(in oklch, var(--signal) 80%, var(--ink) 10%); }
+
+.galeriaAdicionar {
+  width: 112px;
+  height: 84px;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 1px dashed var(--hairline);
+  border-radius: var(--ind-radius-sm);
+  background: none;
+  font: inherit;
+  font-size: var(--text-meta);
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.galeriaAdicionar:hover { border-color: var(--ink-muted); color: var(--ink); }
+
+.galeriaNota {
+  margin-top: 6px;
+  font-size: var(--text-meta);
+  color: var(--ink-muted);
+}
+.galeriaNotaErro { color: var(--hazard); }

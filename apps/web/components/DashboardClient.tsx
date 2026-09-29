@@ -403,6 +403,46 @@ function Composicao({ paineis }: { paineis: PainelDef[] }) {
   );
 }
 
+/* Fundo do hero: um feixe de curvas finas que atravessa a transição claro → grafite.
+   Geradas aqui (e não como imagem) para escalar sem serrilhar e não pesar no carregamento.
+   O traço usa um gradiente: invisível no lado claro, quente na transição e claro sobre o
+   grafite — a malha só "aparece" onde o fundo escurece. Puramente decorativo. */
+const HERO_FIOS = Array.from({ length: 56 }, (_, i) => {
+  const t = i / 55;
+  const d =
+    `M 380 ${(190 + t * 70).toFixed(1)} ` +
+    `C 700 ${(120 + t * 150).toFixed(1)}, 900 ${(350 - t * 30).toFixed(1)}, 1140 ${(262 - t * 64).toFixed(1)} ` +
+    `S 1480 ${(40 + t * 40).toFixed(1)}, 1680 ${(-20 + t * 110).toFixed(1)}`;
+  return { d, opacidade: 0.35 + 0.65 * Math.sin(Math.PI * t) };
+});
+
+function HeroFundo() {
+  return (
+    <svg
+      className={styles.heroArte}
+      viewBox="0 0 1600 360"
+      preserveAspectRatio="xMidYMid slice"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <defs>
+        <linearGradient id="heroFioTraco" gradientUnits="userSpaceOnUse" x1="380" y1="0" x2="1600" y2="0">
+          <stop offset="0" stopColor="oklch(0.3 0.01 65)" stopOpacity="0" />
+          <stop offset="0.3" stopColor="oklch(0.3 0.01 65)" stopOpacity="0.07" />
+          <stop offset="0.56" stopColor="oklch(0.86 0.09 75)" stopOpacity="0.55" />
+          <stop offset="0.72" stopColor="oklch(0.94 0.04 80)" stopOpacity="0.32" />
+          <stop offset="1" stopColor="oklch(0.96 0.005 80)" stopOpacity="0.12" />
+        </linearGradient>
+      </defs>
+      <g fill="none" stroke="url(#heroFioTraco)" strokeWidth="0.7">
+        {HERO_FIOS.map((f, i) => (
+          <path key={i} d={f.d} strokeOpacity={f.opacidade} vectorEffect="non-scaling-stroke" />
+        ))}
+      </g>
+    </svg>
+  );
+}
+
 export function DashboardClient({ usuarioId, usuarioNome, perfil }: DashboardClientProps) {
   const ehAprovador = perfil === "admin" || perfil === "gestor_setor";
   const periodo = useMemo(() => ({ dateFrom: primeiroDiaMesesAtras(5), dateTo: hoje() }), []);
@@ -996,95 +1036,103 @@ export function DashboardClient({ usuarioId, usuarioNome, perfil }: DashboardCli
   }
 
   return (
-    <section className={styles.page} data-perfil={perfil}>
+    <>
+      {/* Hero full-bleed: ocupa a área útil inteira (da sidebar à borda direita) e sobe por
+          baixo da topbar, que fica transparente enquanto a página está no topo (Topbar
+          sobreHero). O conteúdo interno segue a mesma largura máxima de .page. */}
       <div className={styles.hero}>
-        <div className={styles.heroTexto}>
-          <div className={styles.eyebrow}>{eyebrowHero()}</div>
-          <h1 className={styles.h1}>
-            {saudacao()}, {usuarioNome.split(" ")[0]}.
-            <em>{contextoHero}</em>
-          </h1>
-        </div>
-        {/* Uma ação dominante só. "Abrir fila de aprovações" saiu junto com a fila; o
-            botão de relatórios deixou de prometer um "briefing" (que nunca existiu como
-            artefato) e passa a dizer para onde leva. */}
-        <div className={styles.heroActions}>
-          <Link href="/relatorios" className={styles.btnOutline}>
-            Ver relatório
-          </Link>
-          <Link href="/reservas" className={styles.btnSolid}>
-            {ehAprovador ? "Ver reservas" : "Minhas reservas"}
-            <ArrowRight size={15} strokeWidth={1.75} />
-          </Link>
+        <HeroFundo />
+        <div className={styles.heroInner}>
+          <div className={styles.heroTexto}>
+            <div className={styles.eyebrow}>{eyebrowHero()}</div>
+            <h1 className={styles.h1}>
+              {saudacao()}, {usuarioNome.split(" ")[0]}.
+              <em>{contextoHero}</em>
+            </h1>
+          </div>
+          {/* Uma ação dominante só. "Abrir fila de aprovações" saiu junto com a fila; o
+              botão de relatórios deixou de prometer um "briefing" (que nunca existiu como
+              artefato) e passa a dizer para onde leva. */}
+          <div className={styles.heroActions}>
+            <Link href="/relatorios" className={styles.btnOutline}>
+              Ver relatório
+            </Link>
+            <Link href="/reservas" className={styles.btnSolid}>
+              {ehAprovador ? "Ver reservas" : "Minhas reservas"}
+              <ArrowRight size={15} strokeWidth={1.75} />
+            </Link>
+          </div>
         </div>
       </div>
 
-      {erro && (
-        <div className={styles.error} role="alert">
-          {erro}
-        </div>
-      )}
+      <section className={styles.page} data-perfil={perfil}>
+        {erro && (
+          <div className={styles.error} role="alert">
+            {erro}
+          </div>
+        )}
 
-      {/* KPI = rótulo, número e UMA linha de contexto. Antes cada célula carregava duas
-          linhas auxiliares (sub + trend), e seis células somavam doze fragmentos de texto
-          disputando atenção com os próprios números — que são o motivo da faixa existir.
-          A segunda linha só reaparece quando é exceção (aprovações atrasadas), em hazard. */}
-      {kpis && (
-        <div className={styles.kpiStrip}>
-          <Link href="/plataformas" className={`${styles.kpiCell} ${styles.kpiInk}`}>
-            <span className={styles.kpiLabel}>Frota Total</span>
-            <span className={styles.kpiValue}>{kpis.totalPlataformas}</span>
-            <span className={styles.kpiSub}>
-              {kpis.manutencao > 0 ? `${kpis.manutencao} em manutenção` : "todas operacionais"}
-            </span>
-          </Link>
-          <Link href="/plataformas" className={`${styles.kpiCell} ${styles.kpiGreen}`}>
-            <span className={styles.kpiLabel}>Disponíveis Agora</span>
-            <span className={styles.kpiValue}>{kpis.disponiveis}</span>
-            <span className={styles.kpiSub}>
-              de {kpis.totalPlataformas}
-              {kpis.totalPlataformas > 0 ? ` · ${Math.round((kpis.disponiveis / kpis.totalPlataformas) * 100)}%` : ""}
-            </span>
-          </Link>
-          <Link href="/plataformas" className={`${styles.kpiCell} ${styles.kpiBlue}`}>
-            <span className={styles.kpiLabel}>Em Operação</span>
-            <span className={styles.kpiValue}>{kpis.emUso}</span>
-            <span className={styles.kpiSub}>
-              {emUsoAgora
-                ? `${plataformasPorId.get(emUsoAgora.plataformaId)?.codigo ?? emUsoAgora.plataformaNome} · até ${emUsoAgora.horaFim}`
-                : "nenhuma em uso"}
-            </span>
-          </Link>
-          <Link href="/plataformas" className={`${styles.kpiCell} ${styles.kpiOrange}`}>
-            <span className={styles.kpiLabel}>Em Manutenção</span>
-            <span className={styles.kpiValue}>{kpis.manutencao}</span>
-            {/* Os códigos das plataformas paradas vão para o title: numa célula estreita
-                eles truncavam no meio da sigla e não diziam mais nada. */}
-            <span className={styles.kpiSub} title={manutencaoPlataformas.map((p) => p.nome).join(" · ") || undefined}>
-              {manutencaoPlataformas.map((p) => p.codigo).join(" · ") || "nenhuma parada"}
-            </span>
-          </Link>
-          {/* "Aprovações Pendentes" e "Checklists NR" mediam um fluxo que não existe
-              mais — ficariam zerados para sempre. No lugar entram as duas perguntas que o
-              painel ainda precisa responder: o que está agendado e o que deu errado.
-              Cor própria (âmbar) — antes reusava o azul de "Em Operação", dois KPIs
-              distintos não deveriam compartilhar o mesmo indicador. */}
-          <Link href="/reservas" className={`${styles.kpiCell} ${styles.kpiAmber}`}>
-            <span className={styles.kpiLabel}>Reservas Hoje</span>
-            <span className={styles.kpiValue}>{kpis.reservasHoje}</span>
-            <span className={styles.kpiSub}>{kpis.reservasProximos7Dias} nos próx. 7 dias</span>
-          </Link>
-          <Link href="/nao-conformidades" className={`${styles.kpiCell} ${styles.kpiRed}`}>
-            <span className={styles.kpiLabel}>Não Conformidades</span>
-            <span className={styles.kpiValue}>{kpis.naoConformidadesRecentes}</span>
-            {/* "registradas nos últimos 30 dias" truncava em "registradas nos últi…" na
-                célula de seis colunas; o rótulo já diz o que é, sobra só o período. */}
-            <span className={styles.kpiSub}>nos últimos 30 dias</span>
-          </Link>
-        </div>
-      )}
+        {/* KPI = rótulo, número e UMA linha de contexto. Antes cada célula carregava duas
+            linhas auxiliares (sub + trend), e seis células somavam doze fragmentos de texto
+            disputando atenção com os próprios números — que são o motivo da faixa existir.
+            A segunda linha só reaparece quando é exceção (aprovações atrasadas), em hazard. */}
+        {kpis && (
+          <div className={styles.kpiStrip}>
+            <Link href="/plataformas" className={styles.kpiCell}>
+              <span className={styles.kpiLabel}>Frota Total</span>
+              <span className={styles.kpiValue}>{kpis.totalPlataformas}</span>
+              <span className={styles.kpiSub}>
+                {kpis.manutencao > 0 ? `${kpis.manutencao} em manutenção` : "todas operacionais"}
+              </span>
+            </Link>
+            <Link href="/plataformas" className={styles.kpiCell}>
+              <span className={styles.kpiLabel}>Disponíveis Agora</span>
+              <span className={styles.kpiValue}>{kpis.disponiveis}</span>
+              <span className={styles.kpiSub}>
+                de {kpis.totalPlataformas}
+                {kpis.totalPlataformas > 0 ? ` · ${Math.round((kpis.disponiveis / kpis.totalPlataformas) * 100)}%` : ""}
+              </span>
+            </Link>
+            <Link href="/plataformas" className={styles.kpiCell}>
+              <span className={styles.kpiLabel}>Em Operação</span>
+              <span className={styles.kpiValue}>{kpis.emUso}</span>
+              <span className={styles.kpiSub}>
+                {emUsoAgora
+                  ? `${plataformasPorId.get(emUsoAgora.plataformaId)?.codigo ?? emUsoAgora.plataformaNome} · até ${emUsoAgora.horaFim}`
+                  : "nenhuma em uso"}
+              </span>
+            </Link>
+            <Link href="/plataformas" className={styles.kpiCell}>
+              <span className={styles.kpiLabel}>Em Manutenção</span>
+              <span className={styles.kpiValue}>{kpis.manutencao}</span>
+              {/* Os códigos das plataformas paradas vão para o title: numa célula estreita
+                  eles truncavam no meio da sigla e não diziam mais nada. */}
+              <span className={styles.kpiSub} title={manutencaoPlataformas.map((p) => p.nome).join(" · ") || undefined}>
+                {manutencaoPlataformas.map((p) => p.codigo).join(" · ") || "nenhuma parada"}
+              </span>
+            </Link>
+            {/* "Aprovações Pendentes" e "Checklists NR" mediam um fluxo que não existe
+                mais — ficariam zerados para sempre. No lugar entram as duas perguntas que o
+                painel ainda precisa responder: o que está agendado e o que deu errado.
+                Cor própria (âmbar) — antes reusava o azul de "Em Operação", dois KPIs
+                distintos não deveriam compartilhar o mesmo indicador. */}
+            <Link href="/reservas" className={styles.kpiCell}>
+              <span className={styles.kpiLabel}>Reservas Hoje</span>
+              <span className={styles.kpiValue}>{kpis.reservasHoje}</span>
+              <span className={styles.kpiSub}>{kpis.reservasProximos7Dias} nos próx. 7 dias</span>
+            </Link>
+            <Link href="/nao-conformidades" className={styles.kpiCell}>
+              <span className={styles.kpiLabel}>Não Conformidades</span>
+              <span className={styles.kpiValue}>{kpis.naoConformidadesRecentes}</span>
+              {/* "registradas nos últimos 30 dias" truncava em "registradas nos últi…" na
+                  célula de seis colunas; o rótulo já diz o que é, sobra só o período. */}
+              <span className={styles.kpiSub}>nos últimos 30 dias</span>
+            </Link>
+          </div>
+        )}
 
-      <Composicao paineis={paineis} />
-    </section>
+        <Composicao paineis={paineis} />
+      </section>
+    </>
   );
 }

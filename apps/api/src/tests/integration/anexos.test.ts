@@ -5,7 +5,7 @@ import { getPool, sql, closePool } from "../../db/pool.js";
 import { hashPassword } from "../../utils/password.js";
 
 // S11 — RF-RES-14: anexos (foto/PDF/ART) por reserva, escopo de setor, validação real de
-// mime via magic bytes e acesso de leitura só via SAS de curta duração (RNF-09).
+// mime via magic bytes e acesso de leitura só via URL assinada de curta duração (RNF-09).
 
 const EMAIL_COLABORADOR = "teste.s11.anexos@metalsider.com.br";
 const EMAIL_OUTRO_SETOR = "teste.s11.anexos.outro@metalsider.com.br";
@@ -150,7 +150,7 @@ afterAll(async () => {
 });
 
 describe("POST /reservas/:id/anexos — RF-RES-14/SDD §12", () => {
-  it("envia um PNG real e o anexo fica acessível via URL com SAS assinado", async () => {
+  it("envia um PNG real e o anexo fica acessível via URL assinada da API", async () => {
     const response = await app.inject({
       method: "POST",
       url: `/api/v1/reservas/${reservaId}/anexos`,
@@ -162,9 +162,9 @@ describe("POST /reservas/:id/anexos — RF-RES-14/SDD §12", () => {
     expect(anexo.tipoMime).toBe("image/png");
     expect(anexo.url).toContain("sig=");
 
-    const arquivo = await fetch(anexo.url);
-    expect(arquivo.status).toBe(200);
-    const bytes = Buffer.from(await arquivo.arrayBuffer());
+    const arquivo = await app.inject({ method: "GET", url: anexo.url });
+    expect(arquivo.statusCode).toBe(200);
+    const bytes = arquivo.rawPayload;
     expect(bytes.equals(Buffer.from(PNG_BASE64, "base64"))).toBe(true);
   });
 

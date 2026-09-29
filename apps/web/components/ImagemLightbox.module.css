@@ -1,0 +1,105 @@
+/* Lightbox da galeria de plataforma — fundo escuro neutro, foto inteira (contain),
+   controles discretos. Acima dos modais (z-index do Modal.module.css é menor). */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(12 12 11 / 0.9);
+  animation: surgir 0.14s ease-out;
+}
+@keyframes surgir {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.dialogo {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 56px 72px;
+  outline: none;
+}
+
+.imagem {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 4px;
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.45);
+  user-select: none;
+}
+
+.fechar,
+.seta {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  background: rgb(255 255 255 / 0.08);
+  color: rgb(255 255 255 / 0.92);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.fechar:hover,
+.seta:hover {
+  background: rgb(255 255 255 / 0.16);
+  border-color: rgb(255 255 255 / 0.28);
+}
+.fechar:focus-visible,
+.seta:focus-visible {
+  outline: 2px solid rgb(255 255 255 / 0.85);
+  outline-offset: 2px;
+}
+
+.fechar {
+  top: 14px;
+  right: 14px;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+}
+
+.seta {
+  top: 50%;
+  width: 44px;
+  height: 44px;
+  margin-top: -22px;
+  border-radius: 50%;
+}
+.setaAnterior { left: 16px; }
+.setaProxima { right: 16px; }
+
+.indicador {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.1);
+  color: rgb(255 255 255 / 0.9);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+@media (max-width: 640px) {
+  .dialogo { padding: 56px 8px 52px; }
+  .seta {
+    top: auto;
+    bottom: 10px;
+    margin-top: 0;
+    width: 40px;
+    height: 40px;
+  }
+  .setaAnterior { left: 12px; }
+  .setaProxima { right: 12px; }
+}

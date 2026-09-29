@@ -18,7 +18,7 @@ flowchart LR
     A["Fastify 4 · API REST<br/>porta 3335"]
     D[("SQL Server 2022<br/>PlataformaRes")]
     R[("Redis<br/>rate limit · cache · BullMQ")]
-    B[("Azure Blob<br/>imagens e anexos")]
+    B[("Pasta local storage/<br/>imagens e anexos")]
     E["SMTP / MS Graph<br/>e-mail"]
     W["Worker BullMQ<br/>automação · 60s"]
 
@@ -65,7 +65,7 @@ flowchart LR
 | Banco | SQL Server | 2022 | Persistência |
 | | driver `mssql` | 11.0 | Acesso |
 | Infra | Redis | 7 | Rate limit, cache de relatórios, filas |
-| | Azure Blob Storage | SDK 12.33 | Imagens e anexos (Azurite em dev) |
+| | Pasta local (`STORAGE_ROOT`) | — | Imagens e anexos, lidos por URL assinada da API |
 | | Microsoft Graph / SMTP | 3.0 / nodemailer 9 | Envio de e-mail |
 | Testes | Vitest | 3.2 | Unitários e integração |
 | | Playwright | 1.48 | E2E |
@@ -145,7 +145,7 @@ reserva_plataforma/
 | [`apps/api/src/services/conflito.service.ts`](../apps/api/src/services/conflito.service.ts) | Sobreposição de horário e validação de janela (puro) |
 | [`apps/api/src/services/configuracao.service.ts`](../apps/api/src/services/configuracao.service.ts) | Lê `ConfiguracaoSistema` com cache em memória, invalidado na escrita |
 | [`apps/api/src/services/plataforma.service.ts`](../apps/api/src/services/plataforma.service.ts) | Fragmentos SQL do status derivado, utilização 30d e evento em destaque |
-| [`apps/api/src/services/storage.service.ts`](../apps/api/src/services/storage.service.ts) | Azure Blob + SAS de leitura + **detecção de mime por magic bytes** |
+| [`apps/api/src/services/storage.service.ts`](../apps/api/src/services/storage.service.ts) | Pasta local (`STORAGE_ROOT`) + URL de leitura assinada + **detecção de mime por magic bytes** + proteção contra path traversal |
 | [`apps/api/src/services/email.service.ts`](../apps/api/src/services/email.service.ts) | Resolve provedor (SMTP/Graph/disco), templates, diagnóstico no boot |
 | [`apps/api/src/services/otp.service.ts`](../apps/api/src/services/otp.service.ts) | Ponto único de emissão de código, com lock de 30 s no Redis |
 | [`apps/api/src/services/eventos.service.ts`](../apps/api/src/services/eventos.service.ts) | Registro de clientes SSE e fan-out de eventos |
@@ -237,7 +237,7 @@ Endpoint   GET /plataformas (todos) · POST/PUT/PATCH :id/status (Admin)
 Backend    routes/plataformas.ts → services/plataforma.service.ts, storage.service.ts
 Banco      Plataforma, Ocorrencia (evento em destaque), Reserva (status derivado)
 Fluxo      O status 'reservada' e a utilização 30d são CALCULADOS na leitura, via CTE —
-           nunca persistidos. A imagem é chave de blob; o SAS é gerado por requisição.
+           nunca persistidos. A imagem é chave relativa do storage; a URL assinada é gerada por requisição.
 ```
 
 ### Timeline da reserva (comentários, anexos, ocorrências)
@@ -250,8 +250,8 @@ Endpoint   GET/POST /reservas/:id/comentarios
 Backend    routes/comentarios.ts — UNION de Comentario + Anexo + Ocorrencia numa só linha
            do tempo; as duas últimas entram marcadas como histórico somente-leitura
 Banco      Comentario, ComentarioImagem, Anexo, Ocorrencia
-Fluxo      Upload dos blobs ANTES da transação (não segurar lock durante I/O de rede);
-           mime verificado pelos bytes reais; rollback limpa os blobs órfãos.
+Fluxo      Arquivos gravados ANTES da transação (não segurar lock durante I/O);
+           mime verificado pelos bytes reais; rollback limpa os arquivos órfãos.
 ```
 
 ### Bloqueios de agenda
@@ -454,9 +454,15 @@ Backend: `apps/api/.env`. Frontend: `apps/web/.env.local`. Modelo em `.env.examp
 | `EMAIL_PROVIDER` | `smtp` ou `graph`. Declarado ⇒ boot falha se a config estiver incompleta |
 | `EMAIL_HOST` / `EMAIL_PORT` / `EMAIL_SECURE` / `EMAIL_USER` / `EMAIL_PASSWORD` / `EMAIL_FROM` / `EMAIL_FROM_NAME` | Provedor SMTP |
 | `GRAPH_TENANT_ID` / `GRAPH_CLIENT_ID` / `GRAPH_CLIENT_SECRET` / `GRAPH_SENDER` | Provedor Microsoft Graph |
-| `AZURE_STORAGE_CONNECTION_STRING` / `AZURE_STORAGE_CONTAINER` | Blob Storage (Azurite em dev) |
+| `STORAGE_ROOT` | Pasta dos uploads (padrão `./storage`, relativo à raiz do projeto). Dado persistente |
 | `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | Usadas por `pnpm seed` **e pela suíte de integração** |
 | `NEXT_PUBLIC_API_URL` | URL da API vista pelo navegador |
+
+> **Arquivos enviados** ficam em `storage/` (ou no `STORAGE_ROOT` configurado), fora do Git.
+> A API grava só a chave relativa no banco e serve a leitura por `GET /api/v1/arquivos/*`
+> (URL assinada, até 1 h; o web encaminha esse caminho para a API). Em deploy, a pasta é
+> **dado persistente**: não pode ser apagada nem substituída ao atualizar o código — faça
+> backup dela junto com o banco.
 
 > Sem nenhuma credencial de e-mail, em desenvolvimento o e-mail é **gravado em disco** em
 > `apps/api/emails-dev/*.html` e o fluxo continua testável. Em produção, o envio falha
@@ -467,7 +473,7 @@ Backend: `apps/api/.env`. Frontend: `apps/web/.env.local`. Modelo em `.env.examp
 ## 9. Como rodar o projeto
 
 ```text
-Pré-requisitos       Node ≥ 20 · pnpm 11 · SQL Server 2022 · Redis 7 · (Azurite, opcional)
+Pré-requisitos       Node ≥ 20 · pnpm 11 · SQL Server 2022 · Redis 7
         ↓
 Configuração         cp .env.example apps/api/.env  e preencher
                      echo "NEXT_PUBLIC_API_URL=http://localhost:3335" > apps/web/.env.local

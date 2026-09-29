@@ -1761,6 +1761,7 @@ export function CalendarioClient({
           usuarioId={usuarioId}
           solicitanteNome={solicitanteNome}
           setorNome={setorNome}
+          setorId={setorId}
           telefonePerfil={telefonePerfil}
           onClose={() => {
             setModalCriarAberto(false);

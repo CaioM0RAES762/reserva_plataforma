@@ -5,6 +5,8 @@ import helmet from "@fastify/helmet";
 import { authRoutes } from "./routes/auth.js";
 import { contaRoutes } from "./routes/conta.js";
 import { plataformasRoutes } from "./routes/plataformas.js";
+import { categoriasEquipamentoRoutes } from "./routes/categoriasEquipamento.js";
+import { arquivosRoutes } from "./routes/arquivos.js";
 import { dashboardRoutes } from "./routes/dashboard.js";
 import { reservasRoutes } from "./routes/reservas.js";
 import { historicoRoutes } from "./routes/historico.js";
@@ -92,6 +94,8 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(authRoutes);
   await app.register(contaRoutes);
   await app.register(plataformasRoutes);
+  await app.register(categoriasEquipamentoRoutes);
+  await app.register(arquivosRoutes);
   await app.register(dashboardRoutes);
   await app.register(reservasRoutes);
   await app.register(historicoRoutes);

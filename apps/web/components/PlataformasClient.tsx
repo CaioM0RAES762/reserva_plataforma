@@ -7,7 +7,14 @@ import { apiFetch, mensagemDeErro } from "../lib/api";
 import { useDebounce } from "../lib/useDebounce";
 import { useEventosSSE } from "../lib/useEventosSSE";
 import { StatusBadge } from "./StatusBadge";
-import { PlataformaModal, type PlataformaEditavel, type PlataformaFormValues } from "./PlataformaModal";
+import {
+  PlataformaModal,
+  type ImagemServidor,
+  type PlataformaEditavel,
+  type PlataformaFormValues,
+} from "./PlataformaModal";
+import { CarrosselPlataforma } from "./CarrosselPlataforma";
+import { ImagemLightbox } from "./ImagemLightbox";
 import { formatarHorimetro, formatarTelefone, telefoneParaLink } from "@plataformares/shared";
 
 interface EventoAtivoPlataforma {
@@ -24,9 +31,12 @@ interface Plataforma {
   capacidade: number | null;
   status: "disponivel" | "reservada" | "manutencao" | "inativa";
   categoria: string;
+  categoriaNome: string | null;
+  marca: string | null;
   risco: string;
   observacoes: string | null;
   imagemUrl: string | null;
+  imagens: ImagemServidor[];
   tipoEquipamento: string | null;
   alturaMaximaM: number | null;
   capacidadeOperadores: number | null;
@@ -51,6 +61,7 @@ export function PlataformasClient({ isAdmin }: { isAdmin: boolean }) {
   const [statusFiltro, setStatusFiltro] = useState("");
   const [modalAberto, setModalAberto] = useState(false);
   const [editando, setEditando] = useState<PlataformaEditavel | null>(null);
+  const [ampliada, setAmpliada] = useState<{ titulo: string; urls: string[]; indice: number } | null>(null);
   // Atalho "Editar template" do card: abre o editor de templates direto no template
   // vinculado, sem passar pelo formulário do equipamento.
 
@@ -89,9 +100,9 @@ export function PlataformasClient({ isAdmin }: { isAdmin: boolean }) {
     },
   });
 
-  async function handleSalvar(valores: PlataformaFormValues) {
+  async function handleSalvar(valores: PlataformaFormValues, idExistente: string | null): Promise<string> {
     const { status: novoStatus, ...campos } = valores;
-    if (editando) {
+    if (editando && idExistente === editando.id) {
       // `risco` continua fora do formulário — sem reenviá-lo, o zod aplicaria o default
       // ("baixo") e apagaria a classificação real da plataforma a cada edição. `categoria`
       // agora vem do próprio formulário.
@@ -105,15 +116,26 @@ export function PlataformasClient({ isAdmin }: { isAdmin: boolean }) {
           body: JSON.stringify({ status: novoStatus }),
         });
       }
-    } else {
-      await apiFetch("/api/v1/plataformas", {
-        method: "POST",
-        body: JSON.stringify(campos),
-      });
+      return editando.id;
     }
+    // Plataforma nova já criada numa tentativa anterior (ex.: uma imagem falhou): nova
+    // tentativa é edição, nunca um segundo cadastro.
+    if (idExistente) {
+      await apiFetch(`/api/v1/plataformas/${idExistente}`, { method: "PUT", body: JSON.stringify(campos) });
+      return idExistente;
+    }
+    const criada = await apiFetch<{ id: string }>("/api/v1/plataformas", {
+      method: "POST",
+      body: JSON.stringify(campos),
+    });
+    return criada.id;
+  }
+
+  function fecharModal() {
     setModalAberto(false);
     setEditando(null);
-    await carregar();
+    // Mesmo cancelando depois de um salvamento parcial, a lista reflete o que foi gravado.
+    carregar();
   }
 
   async function handleToggleStatus(plataforma: Plataforma) {
@@ -161,7 +183,7 @@ export function PlataformasClient({ isAdmin }: { isAdmin: boolean }) {
       <div className={styles.filterBar}>
         <input
           type="search"
-          placeholder="Buscar por nome, código ou localização..."
+          placeholder="Buscar por nome, código, marca ou localização..."
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
           className={styles.search}
@@ -199,6 +221,7 @@ export function PlataformasClient({ isAdmin }: { isAdmin: boolean }) {
             // (tipo, alcance, capacidade). Antes a altura aparecia duas vezes — no
             // subtítulo e de novo na grade de metadados logo abaixo.
             const ficha = [
+              p.marca,
               p.tipoEquipamento,
               p.alturaMaximaM ? `${p.alturaMaximaM} m` : null,
               p.capacidadeOperadores ? `${p.capacidadeOperadores} pessoas` : null,
@@ -210,6 +233,7 @@ export function PlataformasClient({ isAdmin }: { isAdmin: boolean }) {
             // Detalhes que não participam da escolha e só interessam quando o usuário já
             // está olhando aquele equipamento em particular.
             const horimetroAtual = p.horimetroAtualHoras ?? p.horimetroHoras;
+            const urlsDoCard = (p.imagens ?? []).flatMap((img) => (img.url ? [img.url] : []));
             const temDetalhes =
               horimetroAtual !== null ||
               p.utilizacao30d !== null ||
@@ -219,27 +243,13 @@ export function PlataformasClient({ isAdmin }: { isAdmin: boolean }) {
             return (
               <div className={styles.card} key={p.id}>
                 <div className={styles.cardImageWrap}>
-                  {p.imagemUrl ? (
-                    <img
-                      src={p.imagemUrl}
-                      // A imagem é decorativa: nome, código e status já estão no texto do
-                      // card logo abaixo. Um alt repetindo o nome faria o leitor de tela
-                      // anunciar a mesma informação duas vezes por plataforma.
-                      alt=""
-                      className={styles.cardImage}
-                      // Uma frota com dezenas de plataformas baixava TODAS as imagens no
-                      // primeiro paint, mesmo as que estavam muitas telas abaixo.
-                      loading="lazy"
-                      decoding="async"
-                      // SAS expirado / blob removido deixava um ícone de imagem quebrada;
-                      // agora o card cai para o mesmo placeholder de "sem imagem".
-                      onError={(evento) => {
-                        evento.currentTarget.style.display = "none";
-                      }}
-                    />
-                  ) : (
-                    <div className={styles.cardImagePlaceholder}>Sem imagem</div>
-                  )}
+                  {/* Galeria: principal primeiro (capa). 0 = placeholder, 1 = só a foto,
+                      2–4 = setas discretas + "1 / N". Clique amplia no lightbox. */}
+                  <CarrosselPlataforma
+                    urls={urlsDoCard}
+                    nome={p.nome}
+                    onAbrir={(indice) => setAmpliada({ titulo: p.nome, urls: urlsDoCard, indice })}
+                  />
                   <div className={styles.cardBadge}>
                     <StatusBadge status={p.status} />
                   </div>
@@ -358,11 +368,19 @@ export function PlataformasClient({ isAdmin }: { isAdmin: boolean }) {
       {modalAberto && (
         <PlataformaModal
           plataforma={editando}
-          onClose={() => {
-            setModalAberto(false);
-            setEditando(null);
-          }}
+          podeGerenciarCategorias={isAdmin}
+          onClose={fecharModal}
           onSalvar={handleSalvar}
+          onConcluido={fecharModal}
+        />
+      )}
+
+      {ampliada && (
+        <ImagemLightbox
+          imagens={ampliada.urls.map((url) => ({ url }))}
+          indiceInicial={ampliada.indice}
+          titulo={ampliada.titulo}
+          onClose={() => setAmpliada(null)}
         />
       )}
 

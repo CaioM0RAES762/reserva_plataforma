@@ -16,8 +16,8 @@ import { templateComentarioNovo } from "../services/email.service.js";
 import {
   armazenamentoService,
   ArquivoExcedeLimiteError,
-  gerarUrlAcessoOuNulo,
   MimeNaoPermitidoError,
+  urlDeLeitura,
 } from "../services/storage.service.js";
 
 /* Timeline operacional da reserva.
@@ -144,8 +144,8 @@ async function montarTimeline(reservaId: string, usuario: Pick<JwtPayload, "perf
           id: imagem.id,
           nomeArquivo: imagem.nome_arquivo,
           tipoMime: imagem.tipo_mime,
-          // Chave do blob nunca sai da API — sempre SAS de leitura de curta duração.
-          url: (await gerarUrlAcessoOuNulo(imagem.url_blob)) ?? "",
+          // A chave nunca sai da API — sempre URL de leitura assinada, de curta duração.
+          url: urlDeLeitura(imagem.url_blob) ?? "",
         }))
       );
 
@@ -160,7 +160,7 @@ async function montarTimeline(reservaId: string, usuario: Pick<JwtPayload, "perf
             id: linha.id,
             nomeArquivo: linha.historico_nome_arquivo ?? "arquivo",
             tipoMime: linha.historico_tipo_mime ?? "",
-            url: (await gerarUrlAcessoOuNulo(linha.historico_url_blob)) ?? "",
+            url: urlDeLeitura(linha.historico_url_blob) ?? "",
           });
         }
       }
@@ -226,7 +226,6 @@ async function salvarImagensComentario(
       }
       const salvo = await armazenamentoService.salvarArquivo(
         `reservas/${reservaId}/comentarios`,
-        imagem.nomeArquivo,
         Buffer.from(conteudo, "base64"),
         mimeDeclarado
       );

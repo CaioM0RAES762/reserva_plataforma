@@ -8,10 +8,10 @@ const TOTAL_PLATAFORMAS = 14;
 const EM_OPERACAO = 9;
 
 const TURNOS = [
-  { setor: "Laminação", codigo: "PTA-04", hora: "06:00", ativo: true },
-  { setor: "Aciaria", codigo: "PTA-11", hora: "14:00", ativo: false },
+  { setor: "Elétrica", codigo: "PTA-04", hora: "06:00", ativo: true },
+  { setor: "PMC", codigo: "PTA-11", hora: "14:00", ativo: false },
   { setor: "Manutenção", codigo: "PTA-02", hora: "07:30", ativo: true },
-  { setor: "Expedição", codigo: "PTA-07", hora: "22:00", ativo: false },
+  { setor: "Termoelétrica", codigo: "PTA-07", hora: "22:00", ativo: false },
 ];
 
 export function AuthSidePanel() {
